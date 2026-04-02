@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FEES RECEIPT - EdHorizon</title>
     <meta name="description" content="EdHorizon Fees Receipt Generator. Generate professional receipts for educational fees.">
-    <link rel="stylesheet" href="style.css?v=3">
+    <link rel="stylesheet" href="style.css?v=4">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
@@ -76,12 +76,16 @@
 
             <div class="receipt-body">
                 <div class="content-row">
-                    <div class="label">Received with thanks from</div>
+                    <div class="label">Received from</div>
                     <div class="dots-value" id="viewStudentName"></div>
                 </div>
                 <div class="content-row">
-                    <div class="label">Towards</div>
+                    <div class="label">Towards fees for</div>
                     <div class="dots-value" id="viewCourse"></div>
+                </div>
+                <div class="content-row">
+                    <div class="label">The sum of Rupees</div>
+                    <div class="dots-value" id="viewAmountWords"></div>
                 </div>
                 <div class="payment-details">
                     <div class="amount-box">
@@ -123,6 +127,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=3"></script>
+    <script src="script.js?v=4"></script>
 </body>
 </html>

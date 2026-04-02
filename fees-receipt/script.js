@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('viewDate').innerText = formatDate(date);
         document.getElementById('viewStudentName').innerText = studentName;
         document.getElementById('viewCourse').innerText = course;
+        document.getElementById('viewAmountWords').innerText = numberToWords(amount) + " Only";
         document.getElementById('viewAmount').innerText = parseFloat(amount).toLocaleString('en-IN', { minimumFractionDigits: 2 });
         document.getElementById('viewPaymentMode').innerText = paymentMode;
 
@@ -40,6 +41,28 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!dateStr) return "";
         const options = { year: 'numeric', month: 'long', day: 'numeric' };
         return new Date(dateStr).toLocaleDateString(undefined, options);
+    }
+
+    function numberToWords(num) {
+        const singleDigits = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
+        const teenDigits = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+        const doubleDigits = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+        
+        const convert = (n) => {
+            if (n < 10) return singleDigits[n];
+            if (n < 20) return teenDigits[n - 10];
+            if (n < 100) return doubleDigits[Math.floor(n / 10)] + (n % 10 !== 0 ? " " + singleDigits[n % 10] : "");
+            if (n < 1000) return singleDigits[Math.floor(n / 100)] + " Hundred" + (n % 100 !== 0 ? " and " + convert(n % 100) : "");
+            if (n < 100000) return convert(Math.floor(n / 1000)) + " Thousand" + (n % 1000 !== 0 ? " " + convert(n % 1000) : "");
+            if (n < 10000000) return convert(Math.floor(n / 100000)) + " Lakh" + (n % 100000 !== 0 ? " " + convert(n % 100000) : "");
+            return n.toString(); // Fallback for very large numbers
+        };
+        
+        try {
+            return convert(parseInt(num));
+        } catch (e) {
+            return num.toString();
+        }
     }
 });
 
