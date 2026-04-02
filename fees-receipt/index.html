@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FEES RECEIPT - EdHorizon</title>
+    <meta name="description" content="EdHorizon Fees Receipt Generator. Generate professional receipts for educational fees.">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+    <div class="container no-print">
+        <div class="card">
+            <h1>Fees Receipt Generator</h1>
+            <form id="receiptForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="receiptNo">Receipt Number</label>
+                        <input type="text" id="receiptNo" placeholder="Enter Receipt No. (e.g. 300)" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="date">Date</label>
+                        <input type="date" id="date" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="studentName">Student Name</label>
+                    <input type="text" id="studentName" placeholder="Enter full name" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="course">Course/Grade</label>
+                        <input type="text" id="course" placeholder="e.g. Class 10th" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="amount">Amount (₹)</label>
+                        <input type="number" id="amount" placeholder="0.00" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="paymentMode">Payment Mode</label>
+                    <select id="paymentMode" required>
+                        <option value="Cash">Cash</option>
+                        <option value="UPI">UPI / Online</option>
+                        <option value="Cheque">Cheque</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Generate Receipt</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Receipt Preview Section -->
+    <div id="receiptPreview" class="receipt-container" style="display: none;">
+        <div class="receipt-box" id="printableArea">
+            <div class="receipt-header">
+                <div class="logo-area">
+                    <img id="displayLogo" src="logo.png" alt="EdHorizon Logo">
+                </div>
+                <div class="header-text">
+                    <h2>EdHorizon</h2>
+                    <p>Education Excellence Everywhere</p>
+                </div>
+            </div>
+            
+            <div class="receipt-title">FEES RECEIPT</div>
+
+            <div class="receipt-meta">
+                <div class="meta-item"><strong>Receipt No:</strong> <span id="viewReceiptNo"></span></div>
+                <div class="meta-item"><strong>Date:</strong> <span id="viewDate"></span></div>
+            </div>
+
+            <div class="receipt-body">
+                <p>Received with thanks from <strong><span id="viewStudentName"></span></strong></p>
+                <p>Towards <strong><span id="viewCourse"></span></strong></p>
+                <p>The sum of <strong>INR <span id="viewAmount"></span></strong></p>
+                <p>Paid via <strong><span id="viewPaymentMode"></span></strong></p>
+            </div>
+
+            <div class="receipt-footer">
+                <div class="terms">
+                    <p><strong>Terms & Conditions:</strong></p>
+                    <p>Fees once paid are non-refundable and non-transferable under any circumstances.</p>
+                </div>
+                <div class="signature-box">
+                    <div class="signature-image-wrapper">
+                        <img src="signature.png" alt="Authorized Signature" id="displaySignature">
+                    </div>
+                    <div class="signature-line"></div>
+                    <span>Authorized Signature</span>
+                </div>
+                <div class="footer-note">
+                    <p>Thank you for choosing EdHorizon!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions for Generated Receipt -->
+    <div class="container secondary-actions no-print" id="postActions" style="display: none;">
+        <div class="card">
+            <h3>Receipt Actions</h3>
+            <div class="action-buttons">
+                <button class="btn btn-success" onclick="printReceipt()">Print Receipt</button>
+                <button class="btn btn-info" onclick="downloadPDF()">Download as PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
