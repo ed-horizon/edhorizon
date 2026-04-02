@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FEES RECEIPT - EdHorizon</title>
     <meta name="description" content="EdHorizon Fees Receipt Generator. Generate professional receipts for educational fees.">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=3">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
@@ -56,34 +56,45 @@
     </div>
 
     <!-- Receipt Preview Section -->
-    <div id="receiptPreview" class="receipt-container" style="display: none;">
-        <div class="receipt-box" id="printableArea">
+    <div id="receiptPreview" class="receipt-outer-container">
+        <div class="receipt-inner" id="printableArea">
             <div class="receipt-header">
-                <div class="logo-area">
+                <div class="logo-wrapper">
                     <img id="displayLogo" src="logo.png" alt="EdHorizon Logo">
                 </div>
-                <div class="header-text">
-                    <h2>EdHorizon</h2>
-                    <p>Education Excellence Everywhere</p>
-                </div>
+                <div class="document-title">FEES RECEIPT</div>
             </div>
-            
-            <div class="receipt-title">FEES RECEIPT</div>
 
             <div class="receipt-meta">
-                <div class="meta-item"><strong>Receipt No:</strong> <span id="viewReceiptNo"></span></div>
-                <div class="meta-item"><strong>Date:</strong> <span id="viewDate"></span></div>
+                <div class="meta-item">
+                    <span class="label">Date: </span><span class="value" id="viewDate"></span>
+                </div>
+                <div class="meta-item">
+                    <span class="label">Receipt No: </span><span class="value" id="viewReceiptNo"></span>
+                </div>
             </div>
 
             <div class="receipt-body">
-                <p>Received with thanks from <strong><span id="viewStudentName"></span></strong></p>
-                <p>Towards <strong><span id="viewCourse"></span></strong></p>
-                <p>The sum of <strong>INR <span id="viewAmount"></span></strong></p>
-                <p>Paid via <strong><span id="viewPaymentMode"></span></strong></p>
+                <div class="content-row">
+                    <div class="label">Received with thanks from</div>
+                    <div class="dots-value" id="viewStudentName"></div>
+                </div>
+                <div class="content-row">
+                    <div class="label">Towards</div>
+                    <div class="dots-value" id="viewCourse"></div>
+                </div>
+                <div class="payment-details">
+                    <div class="amount-box">
+                        INR <span class="amount-value" id="viewAmount"></span>
+                    </div>
+                    <div class="mode-box">
+                        <span class="label">Paid via: </span><span class="value" id="viewPaymentMode"></span>
+                    </div>
+                </div>
             </div>
 
             <div class="receipt-footer">
-                <div class="terms">
+                <div class="footer-terms">
                     <p><strong>Terms & Conditions:</strong></p>
                     <p>Fees once paid are non-refundable and non-transferable under any circumstances.</p>
                 </div>
@@ -112,6 +123,6 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=3"></script>
 </body>
 </html>
