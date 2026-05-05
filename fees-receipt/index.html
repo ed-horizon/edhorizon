@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FEES RECEIPT - EdHorizon</title>
     <meta name="description" content="EdHorizon Fees Receipt Generator. Generate professional receipts for educational fees.">
-    <link rel="stylesheet" href="style.css?v=4">
+    <link rel="stylesheet" href="style.css?v=5">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
@@ -35,19 +35,25 @@
                         <input type="text" id="course" placeholder="e.g. Class 10th" required>
                     </div>
                     <div class="form-group">
-                        <label for="amount">Amount (₹)</label>
+                        <label for="amount">Amount Paid (₹)</label>
                         <input type="number" id="amount" placeholder="0.00" required>
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="paymentMode">Payment Mode</label>
-                    <select id="paymentMode" required>
-                        <option value="Cash">Cash</option>
-                        <option value="UPI">UPI / Online</option>
-                        <option value="Cheque">Cheque</option>
-                        <option value="Bank Transfer">Bank Transfer</option>
-                    </select>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="remainingFees">Remaining Fees (₹)</label>
+                        <input type="number" id="remainingFees" placeholder="0.00" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="paymentMode">Payment Mode</label>
+                        <select id="paymentMode" required>
+                            <option value="Cash">Cash</option>
+                            <option value="UPI">UPI / Online</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                        </select>
+                    </div>
                 </div>
 
                 <button type="submit" class="btn btn-primary">Generate Receipt</button>
@@ -86,6 +92,10 @@
                 <div class="content-row">
                     <div class="label">The sum of Rupees</div>
                     <div class="dots-value" id="viewAmountWords"></div>
+                </div>
+                <div class="content-row" id="remainingFeesRow">
+                    <div class="label">Remaining Fees</div>
+                    <div class="dots-value" style="color: #dc2626; font-weight: bold;">INR <span id="viewRemainingFees">0.00</span></div>
                 </div>
                 <div class="payment-details">
                     <div class="amount-box">
@@ -127,6 +137,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=4"></script>
+    <script src="script.js?v=5"></script>
 </body>
 </html>

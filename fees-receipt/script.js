@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const studentName = document.getElementById('studentName').value;
         const course = document.getElementById('course').value;
         const amount = document.getElementById('amount').value;
+        const remainingFees = document.getElementById('remainingFees').value;
         const paymentMode = document.getElementById('paymentMode').value;
 
         // Populate Receipt Preview
@@ -27,6 +28,12 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('viewCourse').innerText = course;
         document.getElementById('viewAmountWords').innerText = numberToWords(amount) + " Only";
         document.getElementById('viewAmount').innerText = parseFloat(amount).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+        
+        // Handle Remaining Fees
+        const remFeesFloat = parseFloat(remainingFees) || 0;
+        document.getElementById('viewRemainingFees').innerText = remFeesFloat.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+        document.getElementById('remainingFeesRow').style.display = remFeesFloat > 0 ? 'flex' : 'none';
+
         document.getElementById('viewPaymentMode').innerText = paymentMode;
 
         // Show UI Elements
