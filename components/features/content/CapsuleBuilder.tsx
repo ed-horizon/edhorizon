@@ -13,23 +13,25 @@ import { saveCapsule } from "@/app/(dashboard)/content/actions"
 import { McqBuilder } from "./McqBuilder"
 import { FlashcardBuilder } from "./FlashcardBuilder"
 
-export function CapsuleBuilder({ topics }: { topics: any[] }) {
+export function CapsuleBuilder({ topics, students }: { topics: any[]; students: any[] }) {
     const [step, setStep] = useState(1)
     const [type, setType] = useState('video')
     const [title, setTitle] = useState('')
     const [topicId, setTopicId] = useState('')
+    const [studentId, setStudentId] = useState('')
     const [loading, setLoading] = useState(false)
     const [quizContent, setQuizContent] = useState<{ questions: any[] }>({ questions: [] })
     const [flashcardContent, setFlashcardContent] = useState<{ cards: any[] }>({ cards: [] })
     const router = useRouter()
 
     const handleSave = async () => {
-        if (!title || !topicId) return;
+        if (!title || !topicId || !studentId) return;
         setLoading(true)
         try {
             await saveCapsule({
                 title,
                 topic_id: topicId,
+                student_id: studentId,
                 type,
                 content: type === 'quiz'
                     ? quizContent
@@ -45,6 +47,9 @@ export function CapsuleBuilder({ topics }: { topics: any[] }) {
             setLoading(false)
         }
     }
+
+    // Filter topics so that they belong to the selected student's modules
+    const studentTopics = topics.filter(t => !studentId || t.courses?.modules?.student_id === studentId);
 
     return (
         <div className="max-w-4xl mx-auto space-y-12 pb-20">
@@ -105,14 +110,36 @@ export function CapsuleBuilder({ topics }: { topics: any[] }) {
                         </div>
 
                         <div className="space-y-2">
+                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground italic ml-1">Allocate to Student</Label>
+                            <select
+                                value={studentId}
+                                onChange={(e) => {
+                                    setStudentId(e.target.value);
+                                    setTopicId(''); // Reset topic selection when student changes
+                                }}
+                                className="w-full h-14 rounded-2xl bg-muted/30 border-none outline-none focus:ring-2 focus:ring-indigo-600 font-bold text-sm px-6 appearance-none cursor-pointer"
+                            >
+                                <option value="">Select a Student...</option>
+                                {students.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.full_name} ({s.email})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="space-y-2">
                             <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground italic ml-1">Parent Topic</Label>
                             <select
                                 value={topicId}
                                 onChange={(e) => setTopicId(e.target.value)}
-                                className="w-full h-14 rounded-2xl bg-muted/30 border-none outline-none focus:ring-2 focus:ring-indigo-600 font-bold text-sm px-6 appearance-none cursor-pointer"
+                                disabled={!studentId}
+                                className="w-full h-14 rounded-2xl bg-muted/30 border-none outline-none focus:ring-2 focus:ring-indigo-600 font-bold text-sm px-6 appearance-none cursor-pointer disabled:opacity-50"
                             >
-                                <option value="">Select a Topic...</option>
-                                {topics.map((t) => (
+                                <option value="">
+                                    {!studentId ? "Please select a student first..." : "Select a Topic..."}
+                                </option>
+                                {studentTopics.map((t) => (
                                     <option key={t.id} value={t.id}>
                                         {t.courses?.title} (G{t.courses?.grade}) • {t.title}
                                     </option>
@@ -132,7 +159,7 @@ export function CapsuleBuilder({ topics }: { topics: any[] }) {
                         </Button>
                         <Button
                             onClick={() => setStep(3)}
-                            disabled={!title || !topicId}
+                            disabled={!title || !topicId || !studentId}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-14 px-10 font-black uppercase tracking-widest text-xs gap-3 shadow-xl"
                         >
                             Next: Build Content
@@ -142,7 +169,7 @@ export function CapsuleBuilder({ topics }: { topics: any[] }) {
                 </div>
             )}
 
-            {/* Step 3: Content Editor (Placeholders for now) */}
+            {/* Step 3: Content Editor */}
             {step === 3 && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="text-center">

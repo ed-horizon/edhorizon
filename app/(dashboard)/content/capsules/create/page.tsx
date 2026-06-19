@@ -1,4 +1,4 @@
-import { getTopics } from "../../actions";
+import { getTopics, getTutorStudents } from "../../actions";
 import { CapsuleBuilder } from "@/components/features/content/CapsuleBuilder";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import Link from "next/link";
 
 export default async function CreateCapsulePage() {
     const topics = await getTopics();
+    const students = await getTutorStudents();
 
     return (
         <div className="space-y-10 pb-12">
@@ -29,7 +30,7 @@ export default async function CreateCapsulePage() {
             </div>
 
             {/* Builder Component */}
-            <CapsuleBuilder topics={topics} />
+            <CapsuleBuilder topics={topics} students={students} />
         </div>
     );
 }

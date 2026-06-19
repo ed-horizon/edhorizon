@@ -29,6 +29,34 @@ export async function login(formData: FormData) {
         .single()
 
     const role = profile?.role as keyof typeof ROLE_REDIRECTS || 'student'
+
+    // Check status based on user role to block inactive users
+    let isInactive = false;
+    if (role === 'student' || role === 'parent') {
+        const { data: details } = await supabase
+            .from('student_details')
+            .select('status')
+            .eq('id', authData.user.id)
+            .maybeSingle();
+        if (details?.status === 'inactive') {
+            isInactive = true;
+        }
+    } else {
+        const { data: details } = await supabase
+            .from('staff_details')
+            .select('status')
+            .eq('id', authData.user.id)
+            .maybeSingle();
+        if (details?.status === 'inactive') {
+            isInactive = true;
+        }
+    }
+
+    if (isInactive) {
+        await supabase.auth.signOut();
+        return redirect('/login?error=' + encodeURIComponent("Your account has been deactivated. Please contact administration."));
+    }
+
     const targetPath = ROLE_REDIRECTS[role] || '/student'
 
     revalidatePath('/', 'layout')
@@ -76,4 +104,11 @@ export async function signup(formData: FormData) {
 
     revalidatePath('/', 'layout')
     return redirect('/login?message=Account created! Please check your email to confirm.')
+}
+
+export async function signOut() {
+    const supabase = await createClient()
+    await supabase.auth.signOut()
+    revalidatePath('/', 'layout')
+    redirect('/login')
 }

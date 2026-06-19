@@ -1,4 +1,4 @@
--- Create Enum for Roles
+ -- Create Enum for Roles
 create type user_role as enum (
   'super_admin',
   'admin',

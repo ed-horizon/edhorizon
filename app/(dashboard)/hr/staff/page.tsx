@@ -16,15 +16,25 @@ export default async function StaffDirectory() {
         .not('role', 'in', '("super_admin","admin","student","parent")')
         .order('full_name', { ascending: true });
 
-    // For each staff member who is a teacher, fetch their student count
+    // For each staff member who is a teacher, fetch their student count (assigned + active schedules)
     if (staff) {
         for (const member of staff) {
             if (member.role === 'teacher') {
-                const { count } = await supabase
+                const { data: assigned } = await supabase
                     .from('student_details')
-                    .select('*', { count: 'exact', head: true })
+                    .select('id')
                     .eq('assigned_teacher_id', member.id);
-                member.student_count = count || 0;
+
+                const { data: scheduled } = await supabase
+                    .from('class_schedules')
+                    .select('student_id')
+                    .eq('teacher_id', member.id)
+                    .eq('status', 'active');
+
+                const studentIds = new Set();
+                assigned?.forEach(s => studentIds.add(s.id));
+                scheduled?.forEach(s => studentIds.add(s.student_id));
+                member.student_count = studentIds.size;
             }
         }
     }

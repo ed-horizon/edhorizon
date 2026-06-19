@@ -29,6 +29,22 @@ export default async function StudentDirectory() {
         student_details: Array.isArray(s.student_details) ? s.student_details[0] : s.student_details
     })) || [];
 
+    // Fetch teachers/tutors list for assignment selection
+    const { data: teachers } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .eq('role', 'teacher')
+        .order('full_name', { ascending: true });
+
+    // Fetch current user role
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user?.id)
+        .single();
+    const currentUserRole = profile?.role || 'student';
+
     return (
         <div className="space-y-10">
             {/* Header */}
@@ -42,7 +58,11 @@ export default async function StudentDirectory() {
                 </div>
             </div>
 
-            <StudentDirectoryClient initialStudents={processedStudents} />
+            <StudentDirectoryClient 
+                initialStudents={processedStudents} 
+                teachers={teachers || []}
+                currentUserRole={currentUserRole}
+            />
         </div>
     );
 }

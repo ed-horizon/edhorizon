@@ -70,3 +70,57 @@ export async function createCapsule(formData: FormData) {
     revalidatePath("/teacher", "page");
     return { success: true };
 }
+
+export async function getTeacherStats() {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { students: 0, capsules: 0, hours: 0, monthlyClassCount: 0 };
+
+    // 1. Active Students assigned to this teacher
+    const { count: studentCount } = await supabase
+        .from('student_details')
+        .select('*', { count: 'exact', head: true })
+        .eq('assigned_teacher_id', user.id);
+
+    // 2. Total Capsules created by this teacher
+    const { count: capsuleCount } = await supabase
+        .from('capsules')
+        .select('*', { count: 'exact', head: true })
+        .eq('author_id', user.id);
+
+    // 3. Completed teaching hours
+    const { data: classData } = await supabase
+        .from('live_classes')
+        .select('duration_hours, student_attendance(status)')
+        .eq('teacher_id', user.id)
+        .eq('status', 'completed');
+
+    const validClassesForHours = (classData || []).filter((c: any) => {
+        const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
+        return att?.status !== 'absent';
+    });
+
+    const totalHours = validClassesForHours.reduce((acc, curr) => acc + Number(curr.duration_hours || 0), 0) || 0;
+
+    // 4. Completed classes in current month
+    const now = new Date();
+    const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const { data: monthlyClassesData } = await supabase
+        .from('live_classes')
+        .select('id, student_attendance(status)')
+        .eq('teacher_id', user.id)
+        .eq('status', 'completed')
+        .gte('scheduled_at', startOfCurrentMonth);
+
+    const monthlyClassCount = (monthlyClassesData || []).filter((c: any) => {
+        const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
+        return att?.status !== 'absent';
+    }).length;
+
+    return {
+        students: studentCount || 0,
+        capsules: capsuleCount || 0,
+        hours: totalHours,
+        monthlyClassCount: monthlyClassCount || 0
+    };
+}

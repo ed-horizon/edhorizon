@@ -9,7 +9,8 @@ import {
     FileText,
     GraduationCap,
     Briefcase,
-    UsersRound
+    UsersRound,
+    CalendarDays
 } from "lucide-react";
 
 export const ROLE_REDIRECTS = {
@@ -20,20 +21,40 @@ export const ROLE_REDIRECTS = {
     parent: "/student", // Parents view student dashboard (read-only)
     sales: "/sales",
     hr: "/hr",
+    operations: "/operations",
 };
 
 export const NAV_ITEMS = [
+    {
+        title: "Operations",
+        href: "/operations",
+        icon: Settings,
+        roles: ["super_admin", "admin", "sales", "operations"],
+    },
+    {
+        title: "Schedules Monitor",
+        href: "/operations/schedules",
+        icon: CalendarDays,
+        roles: ["super_admin", "admin", "operations"],
+    },
+    {
+        title: "Fees Ledger",
+        href: "/operations/fee-ledger",
+        icon: DollarSign,
+        roles: ["super_admin", "admin", "operations"],
+    },
     {
         title: "Dashboard",
         href: "/student",
         icon: LayoutDashboard,
         roles: ["student", "parent"],
     },
+
     {
-        title: "Tutoring",
-        href: "/tutoring",
-        icon: UsersRound,
-        roles: ["hr", "super_admin", "admin", "teacher"],
+        title: "Class Schedules",
+        href: "/admin/schedules",
+        icon: CalendarDays,
+        roles: ["super_admin", "admin", "hr", "operations"],
     },
     {
         title: "Learn",
@@ -87,18 +108,24 @@ export const NAV_ITEMS = [
         title: "Staff Directory",
         href: "/hr/staff",
         icon: Users,
-        roles: ["hr", "super_admin"],
+        roles: ["hr", "super_admin", "admin"],
     },
     {
         title: "Student Directory",
         href: "/hr/students",
         icon: GraduationCap,
-        roles: ["hr", "super_admin", "admin"],
+        roles: ["hr", "super_admin", "admin", "operations"],
     },
     {
         title: "Payroll Pulse",
         href: "/hr/payroll",
         icon: DollarSign,
         roles: ["hr", "super_admin"],
+    },
+    {
+        title: "Monthly Class Logs",
+        href: "/class-logs",
+        icon: CalendarDays,
+        roles: ["student", "parent", "teacher", "hr", "super_admin", "operations", "admin", "sales"],
     },
 ];

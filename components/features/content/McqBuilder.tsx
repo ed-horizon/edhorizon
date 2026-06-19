@@ -16,6 +16,8 @@ interface Question {
     text: string;
     options: Option[];
     correctOptionId: string;
+    explanation?: string;
+    imageUrl?: string;
 }
 
 interface McqBuilderProps {
@@ -33,7 +35,9 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
                     { id: '1', text: '' },
                     { id: '2', text: '' }
                 ],
-                correctOptionId: '1'
+                correctOptionId: '1',
+                explanation: '',
+                imageUrl: ''
             }
         ]
     )
@@ -51,7 +55,9 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
                 { id: '1', text: '' },
                 { id: '2', text: '' }
             ],
-            correctOptionId: '1'
+            correctOptionId: '1',
+            explanation: '',
+            imageUrl: ''
         };
         updateQuestions([...questions, newQuestion]);
     }
@@ -60,8 +66,8 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
         updateQuestions(questions.filter(q => q.id !== id));
     }
 
-    const updateQuestionText = (id: string, text: string) => {
-        updateQuestions(questions.map(q => q.id === id ? { ...q, text } : q));
+    const updateQuestionField = (id: string, field: keyof Question, value: any) => {
+        updateQuestions(questions.map(q => q.id === id ? { ...q, [field]: value } : q));
     }
 
     const addOption = (questionId: string) => {
@@ -100,14 +106,36 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
 
                     <Card className="rounded-[2.5rem] p-8 border-border/40 shadow-xl bg-card transition-all hover:shadow-2xl">
                         <div className="flex justify-between items-start gap-4 mb-8">
-                            <div className="flex-1 space-y-2">
-                                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground italic ml-1">Question Prompt</Label>
-                                <Input
-                                    placeholder="Enter your question here..."
-                                    value={q.text}
-                                    onChange={(e) => updateQuestionText(q.id, e.target.value)}
-                                    className="h-12 border-none bg-muted/30 rounded-xl px-6 font-bold"
-                                />
+                            <div className="flex-1 space-y-4">
+                                <div className="space-y-2">
+                                    <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground italic ml-1">Question Prompt</Label>
+                                    <Input
+                                        placeholder="Enter your question here..."
+                                        value={q.text}
+                                        onChange={(e) => updateQuestionField(q.id, 'text', e.target.value)}
+                                        className="h-12 border-none bg-muted/30 rounded-xl px-6 font-bold"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground italic ml-1">Image URL (Optional)</Label>
+                                        <Input
+                                            placeholder="https://example.com/image.jpg"
+                                            value={q.imageUrl}
+                                            onChange={(e) => updateQuestionField(q.id, 'imageUrl', e.target.value)}
+                                            className="h-10 border-none bg-muted/20 rounded-xl px-4 text-xs"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground italic ml-1">Explanation / Notes</Label>
+                                        <Input
+                                            placeholder="Explain the answer..."
+                                            value={q.explanation}
+                                            onChange={(e) => updateQuestionField(q.id, 'explanation', e.target.value)}
+                                            className="h-10 border-none bg-muted/20 rounded-xl px-4 text-xs"
+                                        />
+                                    </div>
+                                </div>
                             </div>
                             <Button
                                 variant="ghost"

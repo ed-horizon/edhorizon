@@ -9,13 +9,18 @@ import { notFound } from "next/navigation";
 export default async function LessonPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        notFound();
+    }
+
     const { data: capsule, error } = await supabase
         .from('capsules')
         .select('*')
         .eq('id', id)
         .single();
 
-    if (error || !capsule) {
+    if (error || !capsule || (capsule.content?.student_id && capsule.content.student_id !== user.id)) {
         notFound();
     }
 

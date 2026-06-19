@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { login, signup } from './actions'
+import { useFormStatus } from 'react-dom'
+import { login } from './actions'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Eye, EyeOff } from 'lucide-react'
 import {
     Card,
     CardContent,
@@ -14,99 +16,104 @@ import {
     CardTitle,
 } from "@/components/ui/card"
 import Image from 'next/image'
+import { motion } from 'framer-motion'
 
-export default function AuthForm({ message, error }: { message?: string, error?: string }) {
-    const [isSignup, setIsSignup] = useState(false)
-    const [isLoading, setIsLoading] = useState(false)
+function SubmitButton() {
+    const { pending } = useFormStatus()
 
     return (
-        <Card className="w-full max-w-md border-white/20 bg-white/40 shadow-2xl backdrop-blur-xl transition-all duration-300 hover:shadow-indigo-500/10 dark:bg-slate-950/40">
-            <CardHeader className="space-y-4 pt-8">
-                <div className="flex flex-col items-center gap-2">
-                    <div className="relative h-16 w-16 overflow-hidden rounded-xl shadow-lg ring-4 ring-white/50">
-                        <Image
-                            src="/logo.jpg"
-                            alt="EdHorizon Logo"
-                            fill
-                            className="object-cover"
-                        />
-                    </div>
-                    <CardTitle className="text-3xl font-serif font-bold text-indigo-900 dark:text-indigo-100">
-                        {isSignup ? "Create Account" : "Welcome Back"}
-                    </CardTitle>
-                </div>
-                <CardDescription className="text-slate-600 dark:text-slate-400">
-                    {message ? (
-                        <span className="text-emerald-600 font-semibold">{message}</span>
-                    ) : error ? (
-                        <span className="text-rose-600 font-semibold">{error}</span>
-                    ) : (
-                        isSignup ? "Start your educational journey with EdHorizon" : "Manage your academy and learning modules"
-                    )}
-                </CardDescription>
-            </CardHeader>
-            <form onSubmit={() => setIsLoading(true)}>
-                <CardContent className="grid gap-5">
-                    {isSignup && (
-                        <div className="grid gap-2">
-                            <Label htmlFor="full_name" className="text-indigo-900/70 dark:text-indigo-100/70">Full Name</Label>
-                            <Input
-                                id="full_name"
-                                name="full_name"
-                                required
-                                placeholder="John Doe"
-                                className="border-indigo-100 bg-white/50 focus:border-indigo-500 focus:ring-indigo-500"
+        <Button
+            type="submit"
+            className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold h-11 rounded-xl shadow-md border-0 transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(249,115,22,0.35)] disabled:opacity-50"
+            disabled={pending}
+        >
+            {pending ? "Please wait..." : "Login"}
+        </Button>
+    )
+}
+
+export default function AuthForm({ message, error }: { message?: string, error?: string }) {
+    const [showPassword, setShowPassword] = useState(false)
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.65, ease: "easeOut" }}
+            className="w-full flex justify-center"
+        >
+            <Card className="w-full max-w-md border border-white/20 bg-white/45 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.06)] rounded-[20px] transition-all duration-300 hover:shadow-indigo-500/5 dark:bg-slate-900/45 dark:border-white/10 dark:shadow-[0_20px_50px_rgba(0,0,0,0.4)]">
+                <CardHeader className="space-y-4 pt-8">
+                    <div className="flex flex-col items-center gap-3">
+                        {/* ED HORIZON Logo */}
+                        <div className="relative h-14 w-14 overflow-hidden rounded-2xl shadow-md ring-2 ring-white/20">
+                            <Image
+                                src="/logo.jpg"
+                                alt="EdHorizon Logo"
+                                fill
+                                className="object-cover"
                             />
                         </div>
-                    )}
-                    <div className="grid gap-2">
-                        <Label htmlFor="email" className="text-indigo-900/70 dark:text-indigo-100/70">Email Address</Label>
-                        <Input
-                            id="email"
-                            name="email"
-                            type="email"
-                            placeholder="m@example.com"
-                            required
-                            className="border-indigo-100 bg-white/50 focus:border-indigo-500 focus:ring-indigo-500"
-                        />
+                        {/* Welcome Heading */}
+                        <CardTitle className="text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100 font-sans text-center">
+                            Welcome Back
+                        </CardTitle>
                     </div>
-                    <div className="grid gap-2">
-                        <div className="flex items-center justify-between">
-                            <Label htmlFor="password" className="text-indigo-900/70 dark:text-indigo-100/70">Password</Label>
+                    <CardDescription className="text-slate-500 text-center text-xs dark:text-slate-400">
+                        {message ? (
+                            <span className="text-emerald-600 font-semibold dark:text-emerald-400">{message}</span>
+                        ) : error ? (
+                            <span className="text-rose-600 font-semibold dark:text-rose-400">{error}</span>
+                        ) : (
+                            "Manage your academy and learning modules"
+                        )}
+                    </CardDescription>
+                </CardHeader>
+                <form action={login}>
+                    <CardContent className="grid gap-5">
+                        <div className="grid gap-2">
+                            <Label htmlFor="email" className="text-slate-600 font-semibold text-xs tracking-wider uppercase dark:text-slate-300">Email Address</Label>
+                            <Input
+                                id="email"
+                                name="email"
+                                type="email"
+                                autoComplete="username"
+                                placeholder="email@example.com"
+                                required
+                                className="border-slate-200 bg-white/50 focus:border-indigo-500 focus:ring-indigo-500/20 rounded-xl h-11 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                            />
                         </div>
-                        <Input
-                            id="password"
-                            name="password"
-                            type="password"
-                            required
-                            className="border-indigo-100 bg-white/50 focus:border-indigo-500 focus:ring-indigo-500"
-                        />
-                    </div>
-                </CardContent>
-                <CardFooter className="mt-4 flex flex-col gap-4">
-                    <Button
-                        className="w-full bg-indigo-600 font-semibold text-white shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 hover:shadow-indigo-300 dark:bg-indigo-500 dark:shadow-none dark:hover:bg-indigo-600"
-                        formAction={isSignup ? signup : login}
-                        disabled={isLoading}
-                    >
-                        {isLoading ? "Preparing Horizon..." : (isSignup ? "Create Account" : "Enter Dashboard")}
-                    </Button>
-                    <div className="flex w-full items-center gap-2 text-sm text-slate-500">
-                        <div className="h-px w-full bg-slate-200" />
-                        <span className="whitespace-nowrap">or</span>
-                        <div className="h-px w-full bg-slate-200" />
-                    </div>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        className="w-full text-indigo-600 dark:text-indigo-400 font-medium hover:bg-indigo-50"
-                        onClick={() => setIsSignup(!isSignup)}
-                        disabled={isLoading}
-                    >
-                        {isSignup ? "Already have an account? Sign in" : "New to EdHorizon? Create account"}
-                    </Button>
-                </CardFooter>
-            </form>
-        </Card>
+                        <div className="grid gap-2">
+                            <Label htmlFor="password" className="text-slate-600 font-semibold text-xs tracking-wider uppercase dark:text-slate-300">Password</Label>
+                            <div className="relative">
+                                <Input
+                                    id="password"
+                                    name="password"
+                                    type={showPassword ? "text" : "password"}
+                                    autoComplete="current-password"
+                                    placeholder="••••••••"
+                                    required
+                                    className="border-slate-200 bg-white/50 focus:border-indigo-500 focus:ring-indigo-500/20 rounded-xl h-11 pr-10 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white focus:outline-none"
+                                >
+                                    {showPassword ? (
+                                        <EyeOff className="h-4 w-4" />
+                                    ) : (
+                                        <Eye className="h-4 w-4" />
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </CardContent>
+                    <CardFooter className="mt-4 pb-8 flex flex-col gap-4">
+                        <SubmitButton />
+                    </CardFooter>
+                </form>
+            </Card>
+        </motion.div>
     )
 }

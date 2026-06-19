@@ -36,6 +36,57 @@ export async function updateSession(request: NextRequest) {
         data: { user },
     } = await supabase.auth.getUser();
 
+    if (user && !request.nextUrl.pathname.startsWith("/login") && !request.nextUrl.pathname.startsWith("/auth")) {
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        const role = profile?.role || 'student';
+        let isInactive = false;
+
+        if (role === 'student' || role === 'parent') {
+            const { data: details } = await supabase
+                .from('student_details')
+                .select('status')
+                .eq('id', user.id)
+                .maybeSingle();
+            if (details?.status === 'inactive') {
+                isInactive = true;
+            }
+        } else {
+            const { data: details } = await supabase
+                .from('staff_details')
+                .select('status')
+                .eq('id', user.id)
+                .maybeSingle();
+            if (details?.status === 'inactive') {
+                isInactive = true;
+            }
+        }
+
+        if (isInactive) {
+            await supabase.auth.signOut();
+            const url = request.nextUrl.clone();
+            url.pathname = "/login";
+            url.searchParams.set("error", "Your account has been deactivated. Please contact administration.");
+            
+            const redirectResponse = NextResponse.redirect(url);
+            response.cookies.getAll().forEach(cookie => {
+                redirectResponse.cookies.set(cookie.name, cookie.value, {
+                    path: cookie.path,
+                    domain: cookie.domain,
+                    maxAge: cookie.maxAge,
+                    secure: cookie.secure,
+                    sameSite: cookie.sameSite,
+                    expires: cookie.expires
+                });
+            });
+            return redirectResponse;
+        }
+    }
+
     // If no user and trying to access protected routes, redirect to login
     if (!user && !request.nextUrl.pathname.startsWith("/login") && !request.nextUrl.pathname.startsWith("/auth")) {
         const url = request.nextUrl.clone();

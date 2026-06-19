@@ -1,12 +1,20 @@
-
 "use client";
 
 import { useState } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, MoreHorizontal, Mail, Calendar, Users, GraduationCap, X } from "lucide-react";
+import { Search, MoreHorizontal, Mail, Calendar, Users, GraduationCap, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSearchParams } from "next/navigation";
+import { 
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { assignTutorToStudent } from "@/app/(dashboard)/attendance/actions";
 
 interface Student {
     id: string;
@@ -16,108 +24,234 @@ interface Student {
         status: string;
         enrollment_date: string;
         grade_level: string | null;
+        monthly_fee: number;
+        classes_per_month: number;
+        tutor_hourly_rate?: number | null;
         assigned_teacher?: { full_name: string | null } | null;
+        assigned_teacher_id?: string | null;
+        custom_student_id?: string | null;
     } | null;
 }
 
-import { createStudentMember } from "@/app/(dashboard)/hr/staff/actions";
-import { cn } from "@/lib/utils";
+import { createStudentMember, updateStudentMember, updateStudentStatus } from "@/app/(dashboard)/hr/staff/actions";
+import { cn, parseStudentIdAndMobile } from "@/lib/utils";
+import { toast } from "sonner";
 
-export default function StudentDirectoryClient({ initialStudents }: { initialStudents: Student[] }) {
-    const [searchQuery, setSearchQuery] = useState("");
-    const [selectedStatus, setSelectedStatus] = useState<string>("all");
-    const [isFilterOpen, setIsFilterOpen] = useState(false);
+export default function StudentDirectoryClient({ 
+    initialStudents,
+    teachers = [],
+    currentUserRole = "student"
+}: { 
+    initialStudents: Student[];
+    teachers?: { id: string; full_name: string | null; email: string }[];
+    currentUserRole?: string;
+}) {
+    const isFeesVisible = ["super_admin", "operations"].includes(currentUserRole || "");
+    const searchParams = useSearchParams();
+    const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "");
+    const [selectedStatus, setSelectedStatus] = useState<string>("active");
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+    const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+    const [updatingTutorId, setUpdatingTutorId] = useState<string | null>(null);
 
-    // Form state
+    // Enroll Form state
     const [formData, setFormData] = useState({
         full_name: "",
         email: "",
-        grade_level: "9th Grade"
+        grade_level: "9th Grade",
+        monthly_fee: 4500,
+        classes_per_month: 12,
+        tutor_hourly_rate: "",
+        custom_student_id: "",
+        mobile_number: ""
     });
+
+    // Edit Form state
+    const [editFormData, setEditFormData] = useState({
+        full_name: "",
+        email: "",
+        grade_level: "",
+        monthly_fee: 4500,
+        classes_per_month: 12,
+        tutor_hourly_rate: "",
+        custom_student_id: "",
+        mobile_number: ""
+    });
+
+    const activeCount = initialStudents.filter(s => (s.student_details?.status || 'active') === 'active').length;
+    const inactiveCount = initialStudents.filter(s => s.student_details?.status === 'inactive').length;
 
     const filteredStudents = initialStudents.filter(student => {
         const searchLower = searchQuery.toLowerCase();
         const matchesSearch = (
             (student.full_name?.toLowerCase().includes(searchLower)) ||
-            (student.email?.toLowerCase().includes(searchLower))
+            (student.email?.toLowerCase().includes(searchLower)) ||
+            (student.student_details?.assigned_teacher?.full_name?.toLowerCase().includes(searchLower))
         );
-        const matchesStatus = selectedStatus === "all" || student.student_details?.status === selectedStatus;
+        const matchesStatus = (student.student_details?.status || 'active') === selectedStatus;
         return matchesSearch && matchesStatus;
     });
 
+    const handleAssignTutor = async (studentId: string, teacherId: string) => {
+        setUpdatingTutorId(studentId);
+        try {
+            const actualTeacherId = teacherId === "unassigned" ? null : teacherId;
+            const result = await assignTutorToStudent(studentId, actualTeacherId);
+            
+            if (result.success) {
+                toast.success("Tutor assigned successfully");
+            } else {
+                toast.error(result.error || "Failed to assign tutor");
+            }
+        } catch (error) {
+            console.error("Assign tutor error:", error);
+            toast.error("An unexpected error occurred");
+        } finally {
+            setUpdatingTutorId(null);
+        }
+    };
+
     const handleEnrollStudent = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!formData.mobile_number.trim()) {
+            toast.error("Mobile number is required");
+            return;
+        }
         setIsSubmitting(true);
-        const result = await createStudentMember(formData);
+        const result = await createStudentMember({
+            ...formData,
+            tutor_hourly_rate: formData.tutor_hourly_rate ? Number(formData.tutor_hourly_rate) : null,
+            custom_student_id: formData.custom_student_id || undefined,
+            mobile_number: formData.mobile_number
+        });
         setIsSubmitting(false);
         if (result.success) {
             setIsAddModalOpen(false);
-            setFormData({ full_name: "", email: "", grade_level: "9th Grade" });
+            setFormData({ full_name: "", email: "", grade_level: "9th Grade", monthly_fee: 4500, classes_per_month: 12, tutor_hourly_rate: "", custom_student_id: "", mobile_number: "" });
+            toast.success("Student enrolled successfully");
         } else {
-            alert(result.error);
+            toast.error(result.error);
+        }
+    };
+
+    const handleStartEdit = (student: Student) => {
+        const { studentId, mobileNumber } = parseStudentIdAndMobile(student.student_details?.custom_student_id);
+        setEditFormData({
+            full_name: student.full_name || "",
+            email: student.email || "",
+            grade_level: student.student_details?.grade_level || "9th Grade",
+            monthly_fee: student.student_details?.monthly_fee ?? 4500,
+            classes_per_month: student.student_details?.classes_per_month ?? 12,
+            tutor_hourly_rate: student.student_details?.tutor_hourly_rate !== null && student.student_details?.tutor_hourly_rate !== undefined 
+                ? String(student.student_details.tutor_hourly_rate) 
+                : "",
+            custom_student_id: studentId,
+            mobile_number: mobileNumber
+        });
+        setEditingStudent(student);
+        setOpenMenuId(null);
+    };
+
+    const handleUpdateStudent = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingStudent) return;
+        if (!editFormData.mobile_number.trim()) {
+            toast.error("Mobile number is required");
+            return;
+        }
+        setIsSubmitting(true);
+        const result = await updateStudentMember(editingStudent.id, {
+            full_name: editFormData.full_name,
+            email: editFormData.email,
+            grade_level: editFormData.grade_level,
+            monthly_fee: editFormData.monthly_fee,
+            classes_per_month: editFormData.classes_per_month,
+            tutor_hourly_rate: editFormData.tutor_hourly_rate ? Number(editFormData.tutor_hourly_rate) : null,
+            custom_student_id: editFormData.custom_student_id || undefined,
+            mobile_number: editFormData.mobile_number
+        });
+        setIsSubmitting(false);
+        if (result.success) {
+            setEditingStudent(null);
+            toast.success("Student profile updated");
+        } else {
+            toast.error(result.error);
+        }
+    };
+
+    const handleStatusToggle = async (id: string, currentStatus: string) => {
+        const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+        const result = await updateStudentStatus(id, newStatus);
+        if (result.success) {
+            toast.success(`Student status updated to ${newStatus}`);
+        } else {
+            toast.error(result.error);
         }
     };
 
     return (
         <div className="space-y-10">
             {/* Filter Bar */}
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-card p-4 rounded-[2rem] shadow-sm border border-border/40">
-                <div className="relative w-full md:w-96">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                    <Input
-                        placeholder="Search by name or email..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-12 bg-muted/20 border-none rounded-full h-12 outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                    />
-                </div>
-                <div className="flex items-center gap-2 w-full md:w-auto relative">
-                    <div className="relative">
-                        <Button
-                            variant="outline"
-                            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            <div className="flex flex-col lg:flex-row gap-4 items-center justify-between bg-card p-4 rounded-[2rem] shadow-sm border border-border/40">
+                <div className="flex flex-col sm:flex-row gap-4 items-center w-full lg:w-auto">
+                    {/* Search Input */}
+                    <div className="relative w-full sm:w-80">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                        <Input
+                            placeholder="Search by name or email..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-12 bg-muted/20 border-none rounded-full h-12 outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                        />
+                    </div>
+                    
+                    {/* Sliding Segmented Tab */}
+                    <div className="flex p-1 bg-muted/40 rounded-full w-full sm:w-fit border border-border/20">
+                        <button
+                            onClick={() => setSelectedStatus("active")}
                             className={cn(
-                                "rounded-full gap-2 text-xs font-bold uppercase tracking-widest h-12 px-6 transition-all",
-                                selectedStatus !== "all" && "border-indigo-500 text-indigo-600 bg-indigo-50"
+                                "flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-2",
+                                selectedStatus === "active" 
+                                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
+                                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                             )}
                         >
-                            <Filter className="h-4 w-4" />
-                            {selectedStatus === "all" ? "Filters" : selectedStatus}
-                        </Button>
-
-                        {isFilterOpen && (
-                            <div className="absolute top-14 right-0 z-50 w-48 bg-card border border-border/40 rounded-2xl shadow-xl p-2 animate-in fade-in zoom-in duration-200">
-                                <button
-                                    onClick={() => { setSelectedStatus("all"); setIsFilterOpen(false); }}
-                                    className={cn("w-full text-left px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-tighter hover:bg-muted/30", selectedStatus === "all" && "text-indigo-600 bg-indigo-50")}
-                                >
-                                    All Statuses
-                                </button>
-                                <button
-                                    onClick={() => { setSelectedStatus("active"); setIsFilterOpen(false); }}
-                                    className={cn("w-full text-left px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-tighter hover:bg-muted/30", selectedStatus === "active" && "text-indigo-600 bg-indigo-50")}
-                                >
-                                    Active
-                                </button>
-                                <button
-                                    onClick={() => { setSelectedStatus("inactive"); setIsFilterOpen(false); }}
-                                    className={cn("w-full text-left px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-tighter hover:bg-muted/30", selectedStatus === "inactive" && "text-indigo-600 bg-indigo-50")}
-                                >
-                                    Inactive
-                                </button>
-                            </div>
-                        )}
+                            <span>Active</span>
+                            <span className={cn(
+                                "text-[10px] px-2 py-0.5 rounded-full font-extrabold",
+                                selectedStatus === "active" ? "bg-indigo-500 text-white" : "bg-muted text-muted-foreground"
+                            )}>
+                                {activeCount}
+                            </span>
+                        </button>
+                        <button
+                            onClick={() => setSelectedStatus("inactive")}
+                            className={cn(
+                                "flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-2",
+                                selectedStatus === "inactive" 
+                                    ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20" 
+                                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                            )}
+                        >
+                            <span>Inactive</span>
+                            <span className={cn(
+                                "text-[10px] px-2 py-0.5 rounded-full font-extrabold",
+                                selectedStatus === "inactive" ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground"
+                            )}>
+                                {inactiveCount}
+                            </span>
+                        </button>
                     </div>
-
-                    <Button
-                        onClick={() => setIsAddModalOpen(true)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full h-12 px-8 font-bold text-xs uppercase tracking-widest ml-auto md:ml-0"
-                    >
-                        Enroll New Student
-                    </Button>
                 </div>
+
+                <Button
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full h-12 px-8 font-bold text-xs uppercase tracking-widest w-full lg:w-auto"
+                >
+                    Enroll New Student
+                </Button>
             </div>
 
             {/* Enroll Student Modal */}
@@ -130,7 +264,7 @@ export default function StudentDirectoryClient({ initialStudents }: { initialStu
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
-                        <form onSubmit={handleEnrollStudent} className="p-8 space-y-4">
+                        <form onSubmit={handleEnrollStudent} className="p-8 space-y-4 max-h-[80vh] overflow-y-auto">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Full Name</label>
                                 <Input
@@ -139,6 +273,26 @@ export default function StudentDirectoryClient({ initialStudents }: { initialStu
                                     onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                                     className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
                                     placeholder="Jane Doe"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Student ID (Optional)</label>
+                                <Input
+                                    value={formData.custom_student_id}
+                                    onChange={(e) => setFormData({ ...formData, custom_student_id: e.target.value })}
+                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                    placeholder="e.g. EH-ST-1001"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
+                                <Input
+                                    required
+                                    type="tel"
+                                    value={formData.mobile_number}
+                                    onChange={(e) => setFormData({ ...formData, mobile_number: e.target.value })}
+                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                    placeholder="e.g. +91 9876543210"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -162,6 +316,56 @@ export default function StudentDirectoryClient({ initialStudents }: { initialStu
                                     placeholder="e.g. 10th Grade"
                                 />
                             </div>
+                            {isFeesVisible ? (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Monthly Fee (₹)</label>
+                                        <Input
+                                            required
+                                            type="number"
+                                            value={formData.monthly_fee}
+                                            onChange={(e) => setFormData({ ...formData, monthly_fee: Number(e.target.value) })}
+                                            className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                            placeholder="4500"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes / Month</label>
+                                        <Input
+                                            required
+                                            type="number"
+                                            value={formData.classes_per_month}
+                                            onChange={(e) => setFormData({ ...formData, classes_per_month: Number(e.target.value) })}
+                                            className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                            placeholder="12"
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes / Month</label>
+                                    <Input
+                                        required
+                                        type="number"
+                                        value={formData.classes_per_month}
+                                        onChange={(e) => setFormData({ ...formData, classes_per_month: Number(e.target.value) })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                        placeholder="12"
+                                    />
+                                </div>
+                            )}
+                            {currentUserRole !== 'operations' && (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Tutor Hourly Rate (₹/hr - optional)</label>
+                                    <Input
+                                        type="number"
+                                        value={formData.tutor_hourly_rate}
+                                        onChange={(e) => setFormData({ ...formData, tutor_hourly_rate: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                        placeholder="e.g. 100 (Default uses tutor's hourly rate)"
+                                    />
+                                </div>
+                            )}
                             <div className="pt-4 flex gap-3">
                                 <Button
                                     type="button"
@@ -191,6 +395,10 @@ export default function StudentDirectoryClient({ initialStudents }: { initialStu
                         <TableRow className="border-b-border/30">
                             <TableHead className="py-6 pl-8 font-bold uppercase tracking-widest text-[10px] text-muted-foreground italic">Student Name</TableHead>
                             <TableHead className="font-bold uppercase tracking-widest text-[10px] text-muted-foreground italic text-center">Grade Level</TableHead>
+                            {isFeesVisible && (
+                                <TableHead className="font-bold uppercase tracking-widest text-[10px] text-muted-foreground italic text-center">Fee / Mo</TableHead>
+                            )}
+                            <TableHead className="font-bold uppercase tracking-widest text-[10px] text-muted-foreground italic text-center">Classes Limit</TableHead>
                             <TableHead className="font-bold uppercase tracking-widest text-[10px] text-muted-foreground italic text-center">Contact</TableHead>
                             <TableHead className="font-bold uppercase tracking-widest text-[10px] text-muted-foreground italic text-center">Status</TableHead>
                             <TableHead className="font-bold uppercase tracking-widest text-[10px] text-muted-foreground italic text-center">Assigned Tutor</TableHead>
@@ -199,62 +407,185 @@ export default function StudentDirectoryClient({ initialStudents }: { initialStu
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {filteredStudents.map((student) => (
-                            <TableRow key={student.id} className="hover:bg-muted/20 transition-colors border-b-border/20">
-                                <TableCell className="py-5 pl-8">
-                                    <div className="flex items-center gap-4">
-                                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500/20 to-indigo-500/10 flex items-center justify-center text-indigo-600 font-bold">
-                                            {student.full_name?.charAt(0) || student.email.charAt(0).toUpperCase()}
+                        {filteredStudents.map((student, index) => {
+                            const isLastItem = index >= filteredStudents.length - 2;
+                            const { studentId, mobileNumber } = parseStudentIdAndMobile(student.student_details?.custom_student_id);
+                            return (
+                                <TableRow key={student.id} className="hover:bg-muted/20 transition-colors border-b-border/20">
+                                    <TableCell className="py-5 pl-8">
+                                        <div className="flex items-center gap-4">
+                                            <div className={cn(
+                                                "h-10 w-10 rounded-full flex items-center justify-center font-bold",
+                                                selectedStatus === 'active' 
+                                                    ? "bg-gradient-to-br from-indigo-500/20 to-indigo-500/10 text-indigo-600" 
+                                                    : "bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-600"
+                                            )}>
+                                                {student.full_name?.charAt(0) || student.email.charAt(0).toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-foreground flex items-center gap-2 flex-wrap">
+                                                    <span>{student.full_name || 'No Name Set'}</span>
+                                                    {studentId && (
+                                                        <span className="font-mono text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded border border-border/40">
+                                                            {studentId}
+                                                        </span>
+                                                    )}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="font-bold text-foreground">{student.full_name || 'No Name Set'}</p>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <div className={cn(
+                                            "flex items-center justify-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full w-fit mx-auto uppercase tracking-tighter",
+                                            selectedStatus === 'active' 
+                                                ? "text-indigo-600 bg-indigo-50" 
+                                                : "text-amber-600 bg-amber-50"
+                                        )}>
+                                            <GraduationCap size={12} />
+                                            {student.student_details?.grade_level || 'Not Set'}
                                         </div>
-                                    </div>
-                                </TableCell>
-                                <TableCell className="text-center">
-                                    <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full w-fit mx-auto uppercase tracking-tighter">
-                                        <GraduationCap size={12} />
-                                        {student.student_details?.grade_level || 'Not Set'}
-                                    </div>
-                                </TableCell>
-                                <TableCell className="text-center">
-                                    <div className="flex flex-col items-center gap-1">
-                                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
-                                            <Mail size={12} className="text-indigo-500" />
-                                            {student.email}
+                                    </TableCell>
+                                    {isFeesVisible && (
+                                        <TableCell className="text-center font-bold text-foreground text-xs">
+                                            ₹{student.student_details?.monthly_fee !== undefined ? student.student_details.monthly_fee : '0'}
+                                        </TableCell>
+                                    )}
+                                    <TableCell className="text-center font-bold text-foreground text-xs">
+                                        {student.student_details?.classes_per_month !== undefined ? student.student_details.classes_per_month : '12'} classes
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <div className="flex flex-col items-center gap-1">
+                                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                                                <Mail size={12} className={cn(selectedStatus === 'active' ? "text-indigo-500" : "text-amber-500")} />
+                                                {student.email}
+                                            </div>
+                                            {mobileNumber && (() => {
+                                                const cleanMobile = mobileNumber.replace(/\D/g, "");
+                                                const formattedMobile = cleanMobile.length === 10 ? `91${cleanMobile}` : cleanMobile;
+                                                return (
+                                                    <div className="flex flex-col items-center gap-1 mt-1.5">
+                                                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                                                            <span className={cn(
+                                                                "text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider",
+                                                                selectedStatus === 'active' ? "bg-indigo-50 text-indigo-600" : "bg-amber-50 text-amber-600"
+                                                            )}>Cell</span>
+                                                            <span>{mobileNumber}</span>
+                                                        </div>
+                                                        <a
+                                                            href={`https://wa.me/${formattedMobile}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-950/40 transition-all hover:scale-105"
+                                                        >
+                                                            <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
+                                                                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008 0c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-.002 0-.003 0-.005 0-2.002-.001-3.972-.513-5.717-1.488L0 24zm6.59-4.846c1.6.95 2.534 1.483 3.96 1.486 5.315 0 9.64-4.321 9.643-9.637.002-2.576-1.002-5.001-2.827-6.829-1.824-1.826-4.249-2.827-6.828-2.828-5.32 0-9.647 4.322-9.65 9.639-.001 1.516.4 2.99 1.159 4.3l.255.44-1.02 3.722 3.818-1.002.433.256zM17.17 14.39c-.28-.14-1.65-.81-1.91-.9-.26-.1-.45-.14-.64.14-.19.28-.73.9-.9 1.09-.17.19-.34.21-.62.07-1.37-.68-2.31-1.2-3.23-2.78-.24-.41.24-.38.69-1.28.08-.17.04-.31-.02-.45-.06-.14-.54-1.31-.74-1.8-.19-.47-.39-.4-.54-.41-.14-.01-.31-.01-.48-.01-.17 0-.45.06-.69.31-.24.25-.92.9-.92 2.2 0 1.3.95 2.56 1.08 2.74.13.18 1.87 2.85 4.54 4 .64.27 1.13.44 1.52.56.64.2 1.22.17 1.68.1.51-.08 1.57-.64 1.79-1.26.22-.61.22-1.14.15-1.25-.07-.11-.26-.18-.54-.32z"/>
+                                                            </svg>
+                                                            <span>Chat on WhatsApp</span>
+                                                        </a>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
-                                    </div>
-                                </TableCell>
-                                <TableCell className="text-center">
-                                    <Badge
-                                        variant="secondary"
-                                        className={`rounded-full border-none font-bold text-[10px] uppercase tracking-wider px-3 py-1 ${student.student_details?.status === 'active'
-                                            ? 'bg-emerald-500/10 text-emerald-600'
-                                            : 'bg-amber-500/10 text-amber-600'
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Badge
+                                            variant="secondary"
+                                            className={`rounded-full border-none font-bold text-[10px] uppercase tracking-wider px-3 py-1 ${
+                                                (student.student_details?.status || 'active') === 'active'
+                                                    ? 'bg-emerald-500/10 text-emerald-600'
+                                                    : 'bg-rose-500/10 text-rose-600'
                                             }`}
-                                    >
-                                        {student.student_details?.status || 'Active'}
-                                    </Badge>
-                                </TableCell>
-                                <TableCell className="text-center">
-                                    <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-500">
-                                        <Users size={12} className="text-indigo-500" />
-                                        {student.student_details?.assigned_teacher?.full_name || 'Unassigned'}
-                                    </div>
-                                </TableCell>
-                                <TableCell className="text-center">
-                                    <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-500">
-                                        <Calendar size={12} />
-                                        {student.student_details?.enrollment_date ? new Date(student.student_details.enrollment_date).toLocaleDateString() : 'N/A'}
-                                    </div>
-                                </TableCell>
-                                <TableCell className="text-right pr-8">
-                                    <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full">
-                                        <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
-                        ))}
+                                        >
+                                            {student.student_details?.status || 'Active'}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <div className="flex flex-col items-center gap-1">
+                                            {["hr", "super_admin", "admin", "operations"].includes(currentUserRole || "") ? (
+                                                <div className="w-40 mx-auto">
+                                                    <Select 
+                                                        onValueChange={(val) => handleAssignTutor(student.id, val)}
+                                                        value={student.student_details?.assigned_teacher_id || "unassigned"}
+                                                        disabled={updatingTutorId === student.id}
+                                                    >
+                                                        <SelectTrigger className="h-9 rounded-xl border border-muted/50 bg-background text-[11px] font-bold gap-2">
+                                                            {updatingTutorId === student.id ? (
+                                                                <Loader2 size={12} className="animate-spin text-indigo-500 mr-1" />
+                                                            ) : (
+                                                                <Users size={12} className="text-indigo-500 mr-1" />
+                                                            )}
+                                                            <SelectValue placeholder="Assign Tutor..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-xl border border-border/40">
+                                                            <SelectItem value="unassigned" className="rounded-lg">Unassigned</SelectItem>
+                                                            {teachers.map(t => (
+                                                                <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                                    {t.full_name || t.email}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-500">
+                                                    <Users size={12} className="text-indigo-500" />
+                                                    {student.student_details?.assigned_teacher?.full_name || 'Unassigned'}
+                                                </div>
+                                            )}
+                                            {currentUserRole !== 'operations' && student.student_details?.tutor_hourly_rate && (
+                                                <div className="text-[10px] text-emerald-600 font-bold bg-emerald-50 dark:bg-emerald-950/20 px-2.5 py-0.5 rounded-md mt-1">
+                                                    Rate: ₹{student.student_details.tutor_hourly_rate}/hr
+                                                </div>
+                                            )}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-500">
+                                            <Calendar size={12} />
+                                            {student.student_details?.enrollment_date ? new Date(student.student_details.enrollment_date).toLocaleDateString() : 'N/A'}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-right pr-8">
+                                        <div className="relative">
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="h-10 w-10 rounded-full"
+                                                onClick={() => setOpenMenuId(openMenuId === student.id ? null : student.id)}
+                                            >
+                                                <MoreHorizontal className="h-4 w-4" />
+                                            </Button>
+    
+                                            {openMenuId === student.id && (
+                                                <>
+                                                    <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />
+                                                    <div className={cn(
+                                                        "absolute z-50 w-40 bg-card border border-border/40 rounded-2xl shadow-xl p-2 animate-in fade-in duration-200",
+                                                        isLastItem ? "bottom-full mb-1 right-0 origin-bottom-right" : "top-10 right-0 origin-top-right"
+                                                    )}>
+                                                        <button
+                                                            onClick={() => handleStartEdit(student)}
+                                                            className="w-full text-left px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-tighter hover:bg-muted/30 flex items-center gap-2"
+                                                        >
+                                                            Edit Profile
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { handleStatusToggle(student.id, student.student_details?.status || 'active'); setOpenMenuId(null); }}
+                                                            className={cn(
+                                                                "w-full text-left px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-tighter hover:bg-muted/30 flex items-center gap-2",
+                                                                (student.student_details?.status || 'active') === 'active' ? "text-rose-500" : "text-emerald-500"
+                                                            )}
+                                                        >
+                                                            {(student.student_details?.status || 'active') === 'active' ? "Deactivate" : "Activate"}
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            )
+                        })}
                     </TableBody>
                 </Table>
                 {filteredStudents.length === 0 && (
@@ -264,6 +595,140 @@ export default function StudentDirectoryClient({ initialStudents }: { initialStu
                     </div>
                 )}
             </div>
+
+            {/* Edit Student Modal */}
+            {editingStudent && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-md bg-card rounded-[2rem] shadow-2xl overflow-hidden border border-border/40 animate-in zoom-in-95 duration-200">
+                        <div className="bg-muted/30 p-6 flex items-center justify-between border-b border-border/20">
+                            <h2 className="text-xl font-serif font-bold tracking-tight">Edit Student Profile</h2>
+                            <button onClick={() => setEditingStudent(null)} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-muted transition-colors">
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleUpdateStudent} className="p-8 space-y-4 max-h-[80vh] overflow-y-auto">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Full Name</label>
+                                <Input
+                                    required
+                                    value={editFormData.full_name}
+                                    onChange={(e) => setEditFormData({ ...editFormData, full_name: e.target.value })}
+                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                    placeholder="Full Name"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Student ID (Optional)</label>
+                                <Input
+                                    value={editFormData.custom_student_id}
+                                    onChange={(e) => setEditFormData({ ...editFormData, custom_student_id: e.target.value })}
+                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                    placeholder="e.g. EH-ST-1001"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
+                                <Input
+                                    required
+                                    type="tel"
+                                    value={editFormData.mobile_number}
+                                    onChange={(e) => setEditFormData({ ...editFormData, mobile_number: e.target.value })}
+                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                    placeholder="e.g. +91 9876543210"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Email Address</label>
+                                <Input
+                                    required
+                                    type="email"
+                                    value={editFormData.email}
+                                    onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                    placeholder="Email"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Grade Level</label>
+                                <Input
+                                    required
+                                    value={editFormData.grade_level}
+                                    onChange={(e) => setEditFormData({ ...editFormData, grade_level: e.target.value })}
+                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                    placeholder="e.g. 10th Grade"
+                                />
+                            </div>
+                            {isFeesVisible ? (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Monthly Fee (₹)</label>
+                                        <Input
+                                            required
+                                            type="number"
+                                            value={editFormData.monthly_fee}
+                                            onChange={(e) => setEditFormData({ ...editFormData, monthly_fee: Number(e.target.value) })}
+                                            className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                            placeholder="4500"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes / Month</label>
+                                        <Input
+                                            required
+                                            type="number"
+                                            value={editFormData.classes_per_month}
+                                            onChange={(e) => setEditFormData({ ...editFormData, classes_per_month: Number(e.target.value) })}
+                                            className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                            placeholder="12"
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes / Month</label>
+                                    <Input
+                                        required
+                                        type="number"
+                                        value={editFormData.classes_per_month}
+                                        onChange={(e) => setEditFormData({ ...editFormData, classes_per_month: Number(e.target.value) })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                        placeholder="12"
+                                    />
+                                </div>
+                            )}
+                            {currentUserRole !== 'operations' && (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Tutor Hourly Rate (₹/hr - optional)</label>
+                                    <Input
+                                        type="number"
+                                        value={editFormData.tutor_hourly_rate}
+                                        onChange={(e) => setEditFormData({ ...editFormData, tutor_hourly_rate: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                        placeholder="e.g. 100 (Default uses tutor's hourly rate)"
+                                    />
+                                </div>
+                            )}
+                            <div className="pt-4 flex gap-3">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => setEditingStudent(null)}
+                                    className="flex-1 rounded-2xl h-12 uppercase text-[10px] font-bold tracking-widest"
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-12 uppercase text-[10px] font-bold tracking-widest"
+                                >
+                                    {isSubmitting ? "Saving..." : "Save Changes"}
+                                </Button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

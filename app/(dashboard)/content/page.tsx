@@ -31,9 +31,11 @@ export default async function ContentStudio() {
                         <h3 className="text-xl font-bold">New Module</h3>
                         <p className="text-xs opacity-70 mt-1 italic text-indigo-100">Create a high-level subject area.</p>
                     </div>
-                    <Button className="mt-8 bg-white text-indigo-600 hover:bg-white/90 rounded-2xl h-12 font-black uppercase tracking-widest text-xs">
-                        Get Started
-                    </Button>
+                    <Link href="/content/modules/create">
+                        <Button className="mt-8 bg-white text-indigo-600 hover:bg-white/90 rounded-2xl h-12 font-black uppercase tracking-widest text-xs w-full">
+                            Get Started
+                        </Button>
+                    </Link>
                 </Card>
 
                 <Card className="rounded-[2.5rem] bg-card border border-border/40 shadow-xl p-8 flex flex-col justify-between group overflow-hidden relative">
@@ -76,7 +78,7 @@ export default async function ContentStudio() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {modules.map((mod) => (
+                    {modules.map((mod: any) => (
                         <Card key={mod.id} className="rounded-[2.5rem] border border-border/30 shadow-xl overflow-hidden hover:shadow-2xl transition-all">
                             <div className="h-40 bg-gradient-to-br from-indigo-500 to-violet-600 p-8 text-white relative">
                                 <div className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md">
@@ -88,6 +90,11 @@ export default async function ContentStudio() {
                                 <h3 className="text-2xl font-bold tracking-tight">{mod.title}</h3>
                             </div>
                             <CardContent className="p-8">
+                                {mod.student?.full_name && (
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full w-fit mb-4 italic">
+                                        Assigned to: {mod.student.full_name}
+                                    </div>
+                                )}
                                 <p className="text-sm text-muted-foreground line-clamp-2 italic mb-6">
                                     {mod.description || "No description provided."}
                                 </p>

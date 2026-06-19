@@ -4,13 +4,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export async function updateStudentAssignment(studentId: string, teacherId: string | null) {
+export async function runPayrollMock() {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) return { error: "Not authenticated" };
 
-    // Security check
+    // Check if HR or Admin
     const { data: profile } = await supabase
         .from("profiles")
         .select("role")
@@ -21,17 +21,8 @@ export async function updateStudentAssignment(studentId: string, teacherId: stri
         return { error: "Unauthorized" };
     }
 
-    const { error } = await supabase
-        .from("student_details")
-        .update({ assigned_teacher_id: teacherId })
-        .eq("id", studentId);
+    // Mock processing delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    if (error) {
-        console.error("Error updating assignment:", error);
-        return { error: error.message };
-    }
-
-    revalidatePath("/tutoring");
-    revalidatePath("/hr/students");
-    return { success: true };
+    return { success: true, message: "Payroll processing initiated for Feb 2026 cycle." };
 }

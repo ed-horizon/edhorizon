@@ -3,23 +3,24 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export async function getLeads() {
+export async function getLeads(showAll = false) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) return [];
 
-    // Fetch leads based on role
+    // Fetch user's role to determine default access
     const { data: profile } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", user.id)
         .single();
 
-    let query = supabase.from("leads").select("*, assigned_to(full_name, email)");
+    let query = supabase.from("leads").select("*, assigned_to(id, full_name, email)");
 
-    // If not super_admin or admin, only show assigned leads
-    if (profile?.role !== "super_admin" && profile?.role !== "admin") {
+    // If NOT showAll and role is salesperson/sales, only show assigned leads
+    const isAdmin = profile?.role === "super_admin" || profile?.role === "admin";
+    if (!showAll && !isAdmin) {
         query = query.eq("assigned_to", user.id);
     }
 
@@ -106,9 +107,25 @@ export async function updateLead(leadId: string, data: any) {
 
     if (!user) return { error: "Not authenticated" };
 
+    const updateData = { ...data };
+    if (updateData.assigned_to === "") {
+        updateData.assigned_to = null;
+    }
+    if (updateData.next_follow_up === "") {
+        updateData.next_follow_up = null;
+    } else if (updateData.next_follow_up) {
+        updateData.next_follow_up = new Date(updateData.next_follow_up).toISOString();
+    }
+
+    // If required_course is "custom", use the required_course_custom field
+    if (updateData.required_course === "custom") {
+        updateData.required_course = updateData.required_course_custom || null;
+    }
+    delete updateData.required_course_custom;
+
     const { error } = await supabase
         .from("leads")
-        .update(data)
+        .update(updateData)
         .eq("id", leadId);
 
     if (error) {
@@ -132,6 +149,19 @@ export async function addLead(formData: FormData) {
     const valueInput = formData.get("value") as string;
     const value = valueInput ? parseFloat(valueInput) : 0;
     const notes = formData.get("notes") as string;
+    const studentClass = formData.get("class") as string;
+    const feedback = formData.get("feedback") as string;
+    
+    // Detailed CRM fields
+    const parentName = formData.get("parent_name") as string;
+    const leadSource = formData.get("lead_source") as string;
+    let requiredCourse = formData.get("required_course") as string;
+    if (requiredCourse === "custom") {
+        requiredCourse = (formData.get("required_course_custom") as string) || "";
+    }
+    const callStatus = formData.get("call_status") as string;
+    const lostReason = formData.get("lost_reason") as string;
+    const nextFollowUp = formData.get("next_follow_up") as string;
 
     const { error } = await supabase.from("leads").insert({
         name,
@@ -139,8 +169,16 @@ export async function addLead(formData: FormData) {
         phone,
         value,
         notes,
+        class: studentClass,
+        feedback,
         assigned_to: user.id, // Assign to creator by default
         status: "new",
+        parent_name: parentName || null,
+        lead_source: leadSource || null,
+        required_course: requiredCourse || null,
+        call_status: callStatus || null,
+        lost_reason: lostReason || null,
+        next_follow_up: nextFollowUp ? new Date(nextFollowUp).toISOString() : null
     });
 
     if (error) {
@@ -150,4 +188,91 @@ export async function addLead(formData: FormData) {
 
     revalidatePath("/sales", "page");
     return { success: true };
+}
+
+export async function getUniqueCourses() {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const defaultCourses = ["Spoken Hindi", "School Hindi", "Spoken English", "AI for kids", "Math / Science"];
+    if (!user) return defaultCourses;
+
+    const { data, error } = await supabase
+        .from("leads")
+        .select("required_course");
+
+    if (error) {
+        console.error("Error fetching unique courses:", error);
+        return defaultCourses;
+    }
+
+    const dbCourses = data
+        .map(l => l.required_course)
+        .filter((c): c is string => !!c && c.trim() !== "");
+
+    // Merge and get unique courses
+    const allCourses = Array.from(new Set([...defaultCourses, ...dbCourses]));
+    return allCourses;
+}
+
+export async function getLeadNotes(leadId: string) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return [];
+
+    const { data: notes, error } = await supabase
+        .from("sales_notes")
+        .select("*, created_by:profiles!created_by(full_name, email)")
+        .eq("lead_id", leadId)
+        .order("created_at", { ascending: false });
+
+    if (error) {
+        console.error("Error fetching lead notes:", error);
+        return [];
+    }
+
+    return notes;
+}
+
+export async function addLeadNote(leadId: string, content: string) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return { error: "Not authenticated" };
+    if (!content.trim()) return { error: "Content cannot be empty" };
+
+    const { error } = await supabase.from("sales_notes").insert({
+        lead_id: leadId,
+        content,
+        created_by: user.id
+    });
+
+    if (error) {
+        console.error("Error adding lead note:", error);
+        return { error: error.message };
+    }
+
+    revalidatePath("/sales", "page");
+    return { success: true };
+}
+
+export async function getSalesAgents() {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return [];
+
+    const { data: agents, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("role", ["sales", "admin", "super_admin"])
+        .order("full_name", { ascending: true });
+
+    if (error) {
+        console.error("Error fetching sales agents:", error);
+        return [];
+    }
+
+    return agents;
 }

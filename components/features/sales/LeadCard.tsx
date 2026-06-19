@@ -17,6 +17,7 @@ export default function LeadCard({ lead }: { lead: any }) {
         email: lead.email || "",
         phone: lead.phone || "",
         value: lead.value || 0,
+        class: lead.class || "",
     });
 
     const handleDragStart = (e: React.DragEvent) => {
@@ -67,6 +68,12 @@ export default function LeadCard({ lead }: { lead: any }) {
                         className="h-8 text-xs rounded-md"
                     />
                     <Input
+                        value={editData.class}
+                        onChange={(e) => setEditData({ ...editData, class: e.target.value })}
+                        placeholder="Class/Grade"
+                        className="h-8 text-xs rounded-md"
+                    />
+                    <Input
                         type="number"
                         value={editData.value}
                         onChange={(e) => setEditData({ ...editData, value: parseFloat(e.target.value) || 0 })}
@@ -95,9 +102,16 @@ export default function LeadCard({ lead }: { lead: any }) {
         >
             <CardContent className="p-3 space-y-1.5">
                 <div className="flex justify-between items-start gap-2">
-                    <p className="font-bold text-xs text-foreground truncate flex-1 leading-tight uppercase tracking-tight">
-                        {lead.name}
-                    </p>
+                    <div className="flex-1 min-w-0">
+                        <p className="font-bold text-xs text-foreground truncate leading-tight uppercase tracking-tight">
+                            {lead.name}
+                        </p>
+                        {lead.class && (
+                            <span className="text-[9px] text-muted-foreground/80 font-bold block mt-0.5 uppercase tracking-wider">
+                                {lead.class}
+                            </span>
+                        )}
+                    </div>
                     <button
                         onClick={() => setIsEditing(true)}
                         className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-muted rounded text-muted-foreground hover:text-indigo-600"
