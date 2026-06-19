@@ -97,7 +97,6 @@ export async function getTopics() {
             *,
             courses (
                 title,
-                grade,
                 modules (
                     id,
                     title,
@@ -208,7 +207,7 @@ export async function getTutorStudents() {
             id,
             full_name,
             email,
-            student_details!inner (
+            student_details!student_details_id_fkey!inner (
                 assigned_teacher_id
             )
         `)
@@ -242,7 +241,7 @@ export async function saveModule(payload: { title: string; description: string; 
     return data;
 }
 
-export async function saveCourse(payload: { module_id: string; title: string; grade: string }) {
+export async function saveCourse(payload: { module_id: string; title: string; grade?: string }) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
@@ -260,7 +259,6 @@ export async function saveCourse(payload: { module_id: string; title: string; gr
         .insert({
             module_id: payload.module_id,
             title: payload.title,
-            grade: payload.grade || '',
             order: nextOrder
         })
         .select()

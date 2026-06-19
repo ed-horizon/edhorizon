@@ -31,7 +31,7 @@ export default async function CourseDetail({ params: paramsPromise }: { params: 
                     </Link>
                     <div>
                         <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">Course • Level {course.grade}</span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">Course</span>
                             <h1 className="text-4xl font-serif font-bold tracking-tight text-foreground">{course.title}</h1>
                         </div>
                         <p className="text-muted-foreground italic text-sm">{course.description || 'Curriculum management for this grade level.'}</p>

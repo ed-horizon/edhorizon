@@ -37,7 +37,7 @@ interface Topic {
 interface Course {
     id: string;
     title: string;
-    grade: string;
+    grade?: string;
     topics: Topic[];
 }
 
@@ -72,7 +72,9 @@ export function StudentLearnClient({ courses }: { courses: Course[] }) {
                                 </div>
                                 <div>
                                     <h2 className="text-3xl font-serif font-bold italic">{course.title}</h2>
-                                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground italic mt-1">Grade {course.grade} Curriculum</p>
+                                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground italic mt-1">
+                                        {course.grade ? `Grade ${course.grade} Curriculum` : 'Course Curriculum'}
+                                    </p>
                                 </div>
                             </div>
 

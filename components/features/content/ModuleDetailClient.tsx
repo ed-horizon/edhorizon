@@ -14,7 +14,6 @@ export function ModuleDetailClient({ mod, initialCourses }: { mod: any, initialC
     const [courses, setCourses] = useState(initialCourses)
     const [showModal, setShowModal] = useState(false)
     const [title, setTitle] = useState('')
-    const [grade, setGrade] = useState('')
     const [loading, setLoading] = useState(false)
     const router = useRouter()
 
@@ -25,13 +24,11 @@ export function ModuleDetailClient({ mod, initialCourses }: { mod: any, initialC
         try {
             const newCourse = await saveCourse({
                 module_id: mod.id,
-                title,
-                grade
+                title
             })
             setCourses(prev => [...prev, newCourse])
             setShowModal(false)
             setTitle('')
-            setGrade('')
             router.refresh()
         } catch (error) {
             console.error("Failed to add course:", error)
@@ -83,7 +80,7 @@ export function ModuleDetailClient({ mod, initialCourses }: { mod: any, initialC
                                 <div className="flex-1">
                                     <h3 className="text-xl font-bold text-foreground mb-1 group-hover:text-indigo-600 transition-colors">{course.title}</h3>
                                     <p className="text-sm text-muted-foreground line-clamp-1 italic">
-                                        Level: {course.grade || 'N/A'} • {course.description || 'No description yet'}
+                                        Curriculum course structure.
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-8">
@@ -121,15 +118,7 @@ export function ModuleDetailClient({ mod, initialCourses }: { mod: any, initialC
                                     required
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Grade Level / Class</Label>
-                                <Input 
-                                    placeholder="e.g. 1" 
-                                    value={grade} 
-                                    onChange={(e) => setGrade(e.target.value)}
-                                    className="rounded-xl h-12"
-                                />
-                            </div>
+
                             <div className="flex justify-end gap-4 pt-4">
                                 <Button 
                                     type="button" 

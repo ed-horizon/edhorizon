@@ -141,7 +141,7 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
                                 </option>
                                 {studentTopics.map((t) => (
                                     <option key={t.id} value={t.id}>
-                                        {t.courses?.title} (G{t.courses?.grade}) • {t.title}
+                                        {t.courses?.title} • {t.title}
                                     </option>
                                 ))}
                             </select>
