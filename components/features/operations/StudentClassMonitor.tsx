@@ -15,13 +15,16 @@ import {
 } from "@/components/ui/select";
 import { 
     Users, Video, Clock, Share2, Plus, ChevronDown, ChevronUp, 
-    Search, GraduationCap, DollarSign, UserCheck, Loader2, ExternalLink, Check, X
+    Search, GraduationCap, DollarSign, UserCheck, Loader2, ExternalLink, Check, X,
+    BookOpen, Upload, FileText
 } from "lucide-react";
 import { cn, formatClassTitle } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { assignTutorToStudent, cancelLiveClass } from "@/app/(dashboard)/attendance/actions";
 import { CreateLiveClassDialog } from "@/components/features/teacher/CreateLiveClassDialog";
+import { PostClassLogModal } from "@/components/features/teacher/PostClassLogModal";
+import { AssignHomeworkDialog, UploadMaterialDialog } from "@/components/features/teacher/StudentActionDialogs";
 
 
 interface LiveClass {
@@ -181,9 +184,9 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                 )}
                             >
                                 {/* Student Summary Row */}
-                                <div className="flex flex-col md:flex-row md:items-center justify-between p-6 gap-4">
-                                    <div className="flex items-center gap-4 text-left">
-                                        <div className="h-12 w-12 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:bg-indigo-950/20 dark:text-indigo-400 flex items-center justify-center font-bold text-lg">
+                                <div className="flex flex-col md:grid md:grid-cols-12 md:items-center p-6 gap-4">
+                                    <div className="flex items-center gap-4 text-left md:col-span-5">
+                                        <div className="h-12 w-12 rounded-2xl bg-indigo-50/10 text-indigo-600 dark:bg-indigo-950/20 dark:text-indigo-400 flex items-center justify-center font-bold text-lg shrink-0">
                                             {student.full_name?.charAt(0) || student.email.charAt(0).toUpperCase()}
                                         </div>
                                         <div>
@@ -218,15 +221,15 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                     </div>
 
                                     {/* Interactive Tutor Assignment */}
-                                    <div className="flex flex-col gap-1 items-start md:items-center md:flex-row text-left">
-                                        <div className="flex items-center gap-2 min-w-[200px]">
-                                            <span className="text-[9px] font-black uppercase text-muted-foreground shrink-0 md:hidden">Tutor:</span>
+                                    <div className="flex items-center gap-2 md:col-span-3 w-full">
+                                        <span className="text-[9px] font-black uppercase text-muted-foreground shrink-0 md:hidden">Tutor:</span>
+                                        <div className="w-full max-w-[220px]">
                                             <Select 
                                                 onValueChange={(val) => handleAssignTutor(student.id, val)}
                                                 value={student.assigned_teacher_id || "unassigned"}
                                                 disabled={updatingTutorId === student.id}
                                             >
-                                                <SelectTrigger className="h-9 rounded-xl border border-muted/50 bg-background text-[11px] font-bold gap-2">
+                                                <SelectTrigger className="h-9 w-full rounded-xl border border-muted/50 bg-background text-[11px] font-bold gap-2">
                                                     {updatingTutorId === student.id ? (
                                                         <Loader2 size={12} className="animate-spin text-indigo-500 mr-1" />
                                                     ) : (
@@ -247,7 +250,7 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                     </div>
 
                                     {/* Class Counts and Schedule Button */}
-                                    <div className="flex items-center justify-between md:justify-end gap-3 flex-wrap">
+                                    <div className="flex items-center justify-between md:justify-end gap-3 flex-wrap md:col-span-4">
                                         <div className="flex gap-2">
                                             <Badge variant="outline" className="text-[8px] font-black uppercase tracking-wider rounded-full px-2 py-0.5">
                                                 {activeClasses.length} Scheduled
@@ -357,7 +360,53 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                                                 </div>
                                                             </td>
                                                             <td className="p-4 text-right pr-6">
-                                                                <div className="flex items-center justify-end gap-2">
+                                                                <div className="flex items-center justify-end gap-2 flex-wrap">
+                                                                    <PostClassLogModal 
+                                                                        classId={c.id} 
+                                                                        studentId={student.id} 
+                                                                        studentName={student.full_name} 
+                                                                        onSuccess={() => window.location.reload()}
+                                                                        trigger={
+                                                                            <Button 
+                                                                                size="sm" 
+                                                                                variant="ghost" 
+                                                                                className="h-8 text-[9px] font-bold uppercase tracking-wider rounded-lg border-2 border-indigo-500/20 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 gap-1"
+                                                                            >
+                                                                                <FileText size={10} />
+                                                                                <span>{c.status === 'completed' ? 'Edit Log' : 'Log Class'}</span>
+                                                                            </Button>
+                                                                        }
+                                                                    />
+                                                                    <AssignHomeworkDialog 
+                                                                        studentId={student.id} 
+                                                                        studentName={student.full_name} 
+                                                                        onSuccess={() => {}} 
+                                                                        trigger={
+                                                                            <Button 
+                                                                                size="sm" 
+                                                                                variant="ghost" 
+                                                                                className="h-8 text-[9px] font-bold uppercase tracking-wider rounded-lg border-2 border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 gap-1"
+                                                                            >
+                                                                                <BookOpen size={10} />
+                                                                                <span>Homework</span>
+                                                                            </Button>
+                                                                        }
+                                                                    />
+                                                                    <UploadMaterialDialog 
+                                                                        studentId={student.id} 
+                                                                        studentName={student.full_name} 
+                                                                        onSuccess={() => {}} 
+                                                                        trigger={
+                                                                            <Button 
+                                                                                size="sm" 
+                                                                                variant="ghost" 
+                                                                                className="h-8 text-[9px] font-bold uppercase tracking-wider rounded-lg border-2 border-amber-500/20 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/20 gap-1"
+                                                                            >
+                                                                                <Upload size={10} />
+                                                                                <span>Worksheet</span>
+                                                                            </Button>
+                                                                        }
+                                                                    />
                                                                     <Button 
                                                                         size="sm" 
                                                                         variant="ghost" 

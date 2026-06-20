@@ -345,3 +345,107 @@ export async function createPrivateStudent(data: {
     revalidatePath("/super-admin/my-students");
     return { success: true };
 }
+
+// 9. Get Private Students With Classes (Flattened for StudentClassMonitor)
+export async function getPrivateStudentsWithClasses() {
+    const { isSuperAdmin } = await checkSuperAdmin();
+    if (!isSuperAdmin) throw new Error("Unauthorized");
+
+    const supabase = await createClient();
+
+    // Fetch students with their profiles and details
+    const { data: students, error: studentsError } = await supabase
+        .from('profiles')
+        .select(`
+            id,
+            full_name,
+            email,
+            student_details!student_details_id_fkey (
+                grade_level,
+                monthly_fee,
+                status,
+                assigned_teacher_id,
+                preferred_meeting_link,
+                preferred_time,
+                classes_per_month,
+                custom_student_id,
+                assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (
+                    staff_details (status)
+                )
+            )
+        `)
+        .eq('role', 'student')
+        .order('full_name', { ascending: true });
+
+    if (studentsError) {
+        console.error("getPrivateStudentsWithClasses error:", studentsError);
+        return [];
+    }
+
+    const filteredStudents = (students || []).filter((s: any) => {
+        const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
+        const assignedTeacher = details?.assigned_teacher;
+        const teacherDetails = Array.isArray(assignedTeacher?.staff_details) ? assignedTeacher?.staff_details[0] : assignedTeacher?.staff_details;
+        return teacherDetails?.status === 'locked';
+    });
+
+    // Fetch all live classes
+    const { data: classes, error: classesError } = await supabase
+        .from('live_classes')
+        .select(`
+            *,
+            teacher:profiles!teacher_id(
+                full_name,
+                staff_details (status)
+            )
+        `)
+        .order('scheduled_at', { ascending: true });
+
+    if (classesError) {
+        console.error("getPrivateStudentsWithClasses classes error:", classesError);
+        return [];
+    }
+
+    const filteredClasses = (classes || []).filter((c: any) => {
+        const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
+        return teacherDetails?.status === 'locked';
+    });
+
+    // Fetch all teachers for mapping/reference
+    const { data: teachers } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('role', 'teacher');
+
+    const teacherMap = Object.fromEntries(teachers?.map(t => [t.id, t.full_name]) || []);
+
+    // Group classes by student_id
+    const classesByStudent: Record<string, any[]> = {};
+    filteredClasses.forEach(c => {
+        if (c.student_id) {
+            if (!classesByStudent[c.student_id]) {
+                classesByStudent[c.student_id] = [];
+            }
+            classesByStudent[c.student_id].push(c);
+        }
+    });
+
+    return filteredStudents.map((s: any) => {
+        const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
+        return {
+            id: s.id,
+            full_name: s.full_name,
+            email: s.email,
+            grade_level: details?.grade_level || 'N/A',
+            monthly_fee: details?.monthly_fee || 0,
+            status: details?.status || 'active',
+            assigned_teacher_id: details?.assigned_teacher_id || null,
+            assigned_teacher_name: details?.assigned_teacher_id ? (teacherMap[details.assigned_teacher_id] || 'Unknown Tutor') : 'None Assigned',
+            preferred_meeting_link: details?.preferred_meeting_link || '',
+            preferred_time: details?.preferred_time || '',
+            classes_per_month: details?.classes_per_month || 12,
+            custom_student_id: details?.custom_student_id || null,
+            classes: classesByStudent[s.id] || []
+        };
+    });
+}

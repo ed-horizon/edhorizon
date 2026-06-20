@@ -13,7 +13,7 @@ import {
     ShieldAlert, Video, Key, Plus, Lock, Unlock, Mail, Edit, Trash2, Search, Filter,
     ArrowLeft, Loader2, ClipboardList, MessageSquare, AlertTriangle, ShieldCheck
 } from "lucide-react";
-import { cn, formatTime12Hour, ensureAbsoluteUrl } from "@/lib/utils";
+import { cn, formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import Link from "next/link";
@@ -22,7 +22,7 @@ import Link from "next/link";
 import { 
     getPrivateTutors, getPrivateStudents, getPrivateSchedules, 
     getPrivateClassLogs, getPrivateRequests, getPrivatePayments,
-    createPrivateTutor, createPrivateStudent
+    createPrivateTutor, createPrivateStudent, getPrivateStudentsWithClasses
 } from "./actions";
 
 import { updateStaffStatus, updateStaffMember } from "@/app/(dashboard)/hr/staff/actions";
@@ -32,15 +32,17 @@ import { processPaymentApproval, recordManualPayment } from "@/app/(dashboard)/p
 
 import { StudentClassMonitor } from "@/components/features/operations/StudentClassMonitor";
 import { SessionLogsHistory } from "@/components/features/hr/SessionLogsHistory";
-import { AttendanceVerificationList } from "@/components/features/admin/AttendanceVerificationList";
+import { PostClassLogModal } from "@/components/features/teacher/PostClassLogModal";
+import { AssignHomeworkDialog, UploadMaterialDialog } from "@/components/features/teacher/StudentActionDialogs";
 
 export default function PrivateStudentsDashboard() {
-    const [activeTab, setActiveTab] = useState<'tutors' | 'students' | 'schedules' | 'logs' | 'billing'>('tutors');
+    const [activeTab, setActiveTab] = useState<'today' | 'tutors' | 'students' | 'schedules' | 'logs' | 'billing'>('today');
     const [isLoading, setIsLoading] = useState(true);
 
     // Lists
     const [tutors, setTutors] = useState<any[]>([]);
     const [students, setStudents] = useState<any[]>([]);
+    const [studentsWithClasses, setStudentsWithClasses] = useState<any[]>([]);
     const [schedules, setSchedules] = useState<any[]>([]);
     const [classLogs, setClassLogs] = useState<any[]>([]);
     const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
@@ -74,9 +76,10 @@ export default function PrivateStudentsDashboard() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [fetchedTutors, fetchedStudents, fetchedSchedules, fetchedLogs, fetchedRequests, fetchedPayments] = await Promise.all([
+            const [fetchedTutors, fetchedStudents, fetchedStudentsWithClasses, fetchedSchedules, fetchedLogs, fetchedRequests, fetchedPayments] = await Promise.all([
                 getPrivateTutors(),
                 getPrivateStudents(),
+                getPrivateStudentsWithClasses(),
                 getPrivateSchedules(),
                 getPrivateClassLogs(),
                 getPrivateRequests(),
@@ -84,6 +87,7 @@ export default function PrivateStudentsDashboard() {
             ]);
             setTutors(fetchedTutors || []);
             setStudents(fetchedStudents || []);
+            setStudentsWithClasses(fetchedStudentsWithClasses || []);
             setSchedules(fetchedSchedules || []);
             setClassLogs(fetchedLogs || []);
             setRescheduleRequests(fetchedRequests.rescheduleRequests || []);
@@ -329,7 +333,7 @@ export default function PrivateStudentsDashboard() {
 
             {/* TAB SELECTOR */}
             <div className="flex p-1 bg-muted/40 rounded-full w-fit border border-border/20">
-                {(['tutors', 'students', 'schedules', 'logs', 'billing'] as const).map(tab => (
+                {(['today', 'tutors', 'students', 'schedules', 'logs', 'billing'] as const).map(tab => (
                     <button
                         key={tab}
                         onClick={() => { setActiveTab(tab); setSearchQuery(""); }}
@@ -340,12 +344,15 @@ export default function PrivateStudentsDashboard() {
                                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                         )}
                     >
+                        {tab === 'today' && <Activity size={14} />}
                         {tab === 'tutors' && <Users size={14} />}
                         {tab === 'students' && <GraduationCap size={14} />}
                         {tab === 'schedules' && <Calendar size={14} />}
                         {tab === 'logs' && <Clock size={14} />}
                         {tab === 'billing' && <CreditCard size={14} />}
-                        <span className="capitalize">{tab === 'logs' ? 'Class Logs' : tab}</span>
+                        <span className="capitalize">
+                            {tab === 'logs' ? 'Class Logs' : tab === 'today' ? "Today's Classes" : tab}
+                        </span>
                     </button>
                 ))}
             </div>
@@ -560,20 +567,171 @@ export default function PrivateStudentsDashboard() {
                         </div>
                     )}
 
+                    {/* TODAY'S CLASSES TAB */}
+                    {activeTab === 'today' && (
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3 text-left">
+                                    <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    <h2 className="text-xl font-serif font-bold italic tracking-tight text-indigo-950 dark:text-indigo-50">Today's Class Sessions</h2>
+                                </div>
+                                <Badge variant="secondary" className="bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border-none font-black uppercase tracking-widest text-[9px] px-3 py-1">
+                                    {(() => {
+                                        const todayStr = new Date().toDateString();
+                                        return classLogs.filter(c => new Date(c.scheduled_at).toDateString() === todayStr).length;
+                                    })()} Sessions
+                                </Badge>
+                            </div>
+
+                            {(() => {
+                                const todayStr = new Date().toDateString();
+                                const todayClasses = classLogs.filter(c => new Date(c.scheduled_at).toDateString() === todayStr);
+
+                                if (todayClasses.length === 0) {
+                                    return (
+                                        <Card className="rounded-[2rem] border-2 border-dashed border-muted bg-muted/5 p-12 text-center">
+                                            <Video size={40} className="mx-auto mb-3 text-muted-foreground opacity-30" />
+                                            <p className="text-sm text-muted-foreground italic font-semibold">No live classes scheduled for today.</p>
+                                            <p className="text-xs text-muted-foreground/60 italic mt-1">Check the student profiles to schedule new sessions.</p>
+                                        </Card>
+                                    );
+                                }
+
+                                return (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
+                                        {todayClasses.map((c) => (
+                                            <Card key={c.id} className="rounded-[2rem] border border-border/40 shadow-lg bg-card hover:border-indigo-500/20 hover:shadow-xl transition-all overflow-hidden flex flex-col justify-between">
+                                                <div className="p-6 space-y-4">
+                                                    <div className="flex items-start justify-between gap-4">
+                                                        <div>
+                                                            {(() => {
+                                                                const { title: displayTitle, isCompensation } = formatClassTitle(c.title);
+                                                                return (
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <h3 className="font-serif font-bold text-base text-indigo-950 dark:text-indigo-50 leading-tight">{displayTitle}</h3>
+                                                                        {isCompensation && (
+                                                                            <Badge className="bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 border border-amber-500/30 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full shadow-sm">
+                                                                                Comp
+                                                                            </Badge>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                            <p className="text-xs text-muted-foreground italic mt-2">
+                                                                Student: <span className="font-bold text-foreground">{c.student?.full_name || 'Unassigned'}</span>
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground italic mt-0.5">
+                                                                Tutor: <span className="font-bold text-foreground">{c.teacher?.full_name || 'N/A'}</span>
+                                                            </p>
+                                                        </div>
+                                                        <Badge className={cn("font-black uppercase tracking-wider text-[9px] px-2.5 py-1 border-none rounded-full",
+                                                            c.status === 'completed' 
+                                                                ? 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' 
+                                                                : c.status === 'cancelled'
+                                                                ? 'bg-rose-500/10 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400'
+                                                                : 'bg-indigo-500/10 text-indigo-600 dark:bg-indigo-950/20'
+                                                        )}>
+                                                            {c.status}
+                                                        </Badge>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground italic bg-muted/30 p-2.5 rounded-xl w-fit">
+                                                        <div className="flex items-center gap-1">
+                                                            <Clock size={12} className="text-indigo-500" />
+                                                            <span>{format(new Date(c.scheduled_at), 'hh:mm a')}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="p-6 pt-0 border-t border-border/10 bg-muted/5 mt-auto">
+                                                    <div className="flex items-center gap-2 pt-4 flex-wrap">
+                                                        {c.status === 'completed' ? (
+                                                            <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-500/20 rounded-xl px-4 py-2.5 text-xs font-bold w-full justify-center">
+                                                                <CheckCircle2 size={16} />
+                                                                <span>Session Logged</span>
+                                                            </div>
+                                                        ) : c.status === 'cancelled' ? (
+                                                            <div className="flex items-center gap-2 text-rose-600 bg-rose-50 dark:bg-rose-900/10 border border-rose-500/20 rounded-xl px-4 py-2.5 text-xs font-bold w-full justify-center">
+                                                                <AlertTriangle size={16} />
+                                                                <span>Session Cancelled</span>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex flex-col gap-2 w-full">
+                                                                <div className="flex items-center gap-2 w-full flex-wrap">
+                                                                    <a href={ensureAbsoluteUrl(c.meeting_link)} target="_blank" rel="noopener noreferrer" className="flex-1 min-w-[80px]">
+                                                                        <Button className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest text-[9px] h-9 gap-1 shadow-lg shadow-indigo-600/10">
+                                                                             <span>Join</span>
+                                                                        </Button>
+                                                                    </a>
+                                                                    
+                                                                    <PostClassLogModal
+                                                                        classId={c.id}
+                                                                        studentId={c.student?.id || ""}
+                                                                        studentName={c.student?.full_name || ""}
+                                                                        onSuccess={async () => {
+                                                                            await loadData();
+                                                                        }}
+                                                                        trigger={
+                                                                            <Button variant="outline" className="rounded-xl font-black uppercase tracking-widest text-[9px] h-9 border-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50/50 flex-1 min-w-[80px]">
+                                                                                Log Class
+                                                                            </Button>
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                                {c.student && (
+                                                                    <div className="flex items-center gap-2 w-full">
+                                                                        <AssignHomeworkDialog 
+                                                                            studentId={c.student.id} 
+                                                                            studentName={c.student.full_name} 
+                                                                            onSuccess={() => {}} 
+                                                                            trigger={
+                                                                                <Button 
+                                                                                    size="sm" 
+                                                                                    variant="outline" 
+                                                                                    className="h-9 text-[9px] font-bold uppercase tracking-wider rounded-xl border-2 border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 flex-1"
+                                                                                >
+                                                                                    Homework
+                                                                                </Button>
+                                                                            }
+                                                                        />
+                                                                        <UploadMaterialDialog 
+                                                                            studentId={c.student.id} 
+                                                                            studentName={c.student.full_name} 
+                                                                            onSuccess={() => {}} 
+                                                                            trigger={
+                                                                                <Button 
+                                                                                    size="sm" 
+                                                                                    variant="outline" 
+                                                                                    className="h-9 text-[9px] font-bold uppercase tracking-wider rounded-xl border-2 border-amber-500/20 text-amber-600 hover:bg-amber-50 flex-1"
+                                                                                >
+                                                                                    Worksheet
+                                                                                </Button>
+                                                                            }
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </Card>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    )}
+
                     {/* SCHEDULES TAB */}
                     {activeTab === 'schedules' && (
                         <div className="space-y-6">
-                            <StudentClassMonitor students={students} teachers={tutors} />
+                            <StudentClassMonitor students={studentsWithClasses} teachers={tutors} />
                         </div>
                     )}
 
                     {/* CLASS LOGS TAB */}
                     {activeTab === 'logs' && (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            <AttendanceVerificationList 
-                                pendingClasses={classLogs.filter(c => c.verification_status === 'pending')} 
-                            />
-                            
+                        <div className="grid grid-cols-1 gap-8">
                             <SessionLogsHistory completedClasses={classLogs.filter(c => c.status === 'completed')} />
                         </div>
                     )}
@@ -609,7 +767,7 @@ export default function PrivateStudentsDashboard() {
                                                     <td className="py-4 pl-8 font-bold">{p.student?.full_name || 'No Student'}</td>
                                                     <td className="py-4 text-center font-bold text-xs">₹{p.amount}</td>
                                                     <td className="py-4 text-center text-xs text-muted-foreground font-semibold">
-                                                        {format(new Date(p.year, p.month - 1, 1), 'MMMM yyyy')}
+                                                        {format(new Date(p.billing_year || new Date().getFullYear(), (p.billing_month || 1) - 1, 1), 'MMMM yyyy')}
                                                     </td>
                                                     <td className="py-4 text-center">
                                                         <Badge variant="secondary" className={cn("rounded-full font-bold text-[9px] uppercase px-2.5 py-0.5",

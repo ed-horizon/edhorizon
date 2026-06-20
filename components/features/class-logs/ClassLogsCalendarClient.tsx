@@ -10,11 +10,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Edit3, X,
-    Video, Clock, User, BookOpen, AlertCircle, FileText, CheckCircle2, Award
+    Video, Clock, User, BookOpen, AlertCircle, FileText, CheckCircle2, Award, Upload
 } from "lucide-react"
 import { formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
 import { getClassLogsForMonth, modifyClassLog } from "@/app/(dashboard)/attendance/actions"
 import { toast } from "sonner"
+import { AssignHomeworkDialog, UploadMaterialDialog } from "@/components/features/teacher/StudentActionDialogs"
 
 interface Profile {
     id: string;
@@ -462,7 +463,7 @@ export function ClassLogsCalendarClient({
 
                                             {/* HR & Admin Controls */}
                                             {canModify && (
-                                                <div className="flex justify-end pt-2">
+                                                <div className="flex justify-end gap-2 pt-2 flex-wrap">
                                                     <Button 
                                                         size="sm"
                                                         onClick={() => handleOpenEdit(c)}
@@ -471,6 +472,40 @@ export function ClassLogsCalendarClient({
                                                         <Edit3 size={10} />
                                                         <span>Edit Log</span>
                                                     </Button>
+                                                    {c.student && (
+                                                        <>
+                                                            <AssignHomeworkDialog 
+                                                                studentId={c.student.id} 
+                                                                studentName={c.student.full_name} 
+                                                                onSuccess={() => {}} 
+                                                                trigger={
+                                                                    <Button 
+                                                                        size="sm" 
+                                                                        variant="outline" 
+                                                                        className="h-8 text-[9px] font-bold uppercase tracking-wider rounded-lg border-2 border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-indigo-950/20 gap-1"
+                                                                    >
+                                                                        <BookOpen size={10} />
+                                                                        <span>Homework</span>
+                                                                    </Button>
+                                                                }
+                                                            />
+                                                            <UploadMaterialDialog 
+                                                                studentId={c.student.id} 
+                                                                studentName={c.student.full_name} 
+                                                                onSuccess={() => {}} 
+                                                                trigger={
+                                                                    <Button 
+                                                                        size="sm" 
+                                                                        variant="outline" 
+                                                                        className="h-8 text-[9px] font-bold uppercase tracking-wider rounded-lg border-2 border-amber-500/20 text-amber-600 hover:bg-amber-50 dark:hover:bg-indigo-950/20 gap-1"
+                                                                    >
+                                                                        <Upload size={10} />
+                                                                        <span>Worksheet</span>
+                                                                    </Button>
+                                                                }
+                                                            />
+                                                        </>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>

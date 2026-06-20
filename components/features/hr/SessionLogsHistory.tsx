@@ -6,12 +6,13 @@ import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Search, Calendar, User, Clock, Star, MessageSquare, Edit3, Sparkles, Check, X } from "lucide-react"
+import { Search, Calendar, User, Clock, Star, MessageSquare, Edit3, Sparkles, Check, X, BookOpen, Upload } from "lucide-react"
 import { format } from "date-fns"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
 import { adminEditAttendance } from "@/app/(dashboard)/attendance/actions"
 import { toast } from "sonner"
 import { cn, formatClassTitle } from "@/lib/utils"
+import { AssignHomeworkDialog, UploadMaterialDialog } from "@/components/features/teacher/StudentActionDialogs"
 
 interface CompletedClass {
     id: string
@@ -498,7 +499,43 @@ export function SessionLogsHistory({ completedClasses }: SessionLogsHistoryProps
                                                 </div>
                                             </TableCell>
                                             <TableCell className="py-4 text-center">
-                                                <ViewLogDetailsDialog classItem={item} />
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <ViewLogDetailsDialog classItem={item} />
+                                                    {item.student && (
+                                                        <>
+                                                            <AssignHomeworkDialog 
+                                                                studentId={item.student.id} 
+                                                                studentName={item.student.full_name} 
+                                                                onSuccess={() => {}} 
+                                                                trigger={
+                                                                    <Button 
+                                                                        size="sm" 
+                                                                        variant="ghost" 
+                                                                        className="h-8 text-[9px] font-bold uppercase tracking-wider rounded-lg border-2 border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-indigo-950/20 gap-1"
+                                                                    >
+                                                                        <BookOpen size={10} />
+                                                                        <span>Homework</span>
+                                                                    </Button>
+                                                                }
+                                                            />
+                                                            <UploadMaterialDialog 
+                                                                studentId={item.student.id} 
+                                                                studentName={item.student.full_name} 
+                                                                onSuccess={() => {}} 
+                                                                trigger={
+                                                                    <Button 
+                                                                        size="sm" 
+                                                                        variant="ghost" 
+                                                                        className="h-8 text-[9px] font-bold uppercase tracking-wider rounded-lg border-2 border-amber-500/20 text-amber-600 hover:bg-amber-50 dark:hover:bg-indigo-950/20 gap-1"
+                                                                    >
+                                                                        <Upload size={10} />
+                                                                        <span>Worksheet</span>
+                                                                    </Button>
+                                                                }
+                                                            />
+                                                        </>
+                                                    )}
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))}
