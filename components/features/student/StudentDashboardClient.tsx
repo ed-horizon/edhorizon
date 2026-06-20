@@ -1506,10 +1506,10 @@ export function StudentDashboardClient({
 
             {/* TUITION PAYMENT DIALOG */}
             <Dialog open={paymentModalOpen} onOpenChange={setPaymentModalOpen}>
-                <DialogContent className="sm:max-w-[500px] rounded-[2rem] p-8 bg-white dark:bg-[#0a0a0a] border border-border/40 overflow-hidden shadow-2xl">
+                <DialogContent className="sm:max-w-[500px] w-[92vw] max-h-[90vh] overflow-y-auto rounded-[2rem] p-6 md:p-8 bg-white dark:bg-[#0a0a0a] border border-border/40 shadow-2xl">
                     <div className="absolute -right-20 -top-20 w-48 h-48 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
                     
-                    <DialogHeader className="mb-6 relative z-10 text-left">
+                    <DialogHeader className="mb-4 relative z-10 text-left">
                         <DialogTitle className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
                             <CreditCard className="text-indigo-500" size={20} />
                             <span>Pay Tuition Fees</span>
@@ -1519,7 +1519,7 @@ export function StudentDashboardClient({
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-5 relative z-10 text-left">
+                    <div className="space-y-4 relative z-10 text-left">
                         {/* Month and Year Select */}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1.5">
@@ -1561,12 +1561,12 @@ export function StudentDashboardClient({
                         </div>
 
                         {/* QR Code details */}
-                        <div className="space-y-4 pt-2">
-                            <div className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-border/30 shadow-sm max-w-[240px] mx-auto">
+                        <div className="space-y-3 pt-1">
+                            <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-border/30 shadow-sm max-w-[200px] mx-auto">
                                 <img 
                                     src="/images/payment-qr.jpg"
                                     alt="UPI QR Code"
-                                    className="h-56 w-auto object-contain rounded-lg"
+                                    className="h-40 w-auto object-contain rounded-lg"
                                 />
                                 <span className="text-[9px] font-bold text-zinc-500 mt-2 uppercase tracking-wider">UPI ID: 7907026187@pthdfc</span>
                             </div>
