@@ -39,6 +39,22 @@ export default async function StaffDirectory() {
         }
     }
 
+    // Fetch current user role
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user?.id || '')
+        .single();
+    const currentUserRole = profile?.role || 'student';
+
+    let filteredStaff = staff || [];
+    if (currentUserRole !== 'super_admin') {
+        filteredStaff = (staff || []).filter((member: any) => {
+            return member.staff_details?.status !== 'locked';
+        });
+    }
+
     if (error) {
         console.error("Error fetching staff:", error);
     }
@@ -56,7 +72,7 @@ export default async function StaffDirectory() {
                 </div>
             </div>
 
-            <StaffDirectoryClient initialStaff={staff || []} />
+            <StaffDirectoryClient initialStaff={filteredStaff || []} currentUserRole={currentUserRole} />
         </div>
     );
 }

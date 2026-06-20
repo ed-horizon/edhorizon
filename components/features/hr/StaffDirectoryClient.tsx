@@ -27,7 +27,13 @@ interface StaffMember {
 import { createStaffMember, updateStaffMember, updateStaffStatus } from "@/app/(dashboard)/hr/staff/actions";
 import { toast } from "sonner";
 
-export default function StaffDirectoryClient({ initialStaff }: { initialStaff: StaffMember[] }) {
+export default function StaffDirectoryClient({ 
+    initialStaff,
+    currentUserRole = "hr"
+}: { 
+    initialStaff: StaffMember[];
+    currentUserRole?: string;
+}) {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedRole, setSelectedRole] = useState<string>("all");
     const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -280,6 +286,8 @@ export default function StaffDirectoryClient({ initialStaff }: { initialStaff: S
                                             variant="secondary"
                                             className={`rounded-full border-none font-bold text-[10px] uppercase tracking-wider px-3 py-1 ${person.staff_details?.status === 'active'
                                                 ? 'bg-emerald-500/10 text-emerald-600'
+                                                : person.staff_details?.status === 'locked'
+                                                ? 'bg-purple-500/10 text-purple-600'
                                                 : 'bg-amber-500/10 text-amber-600'
                                                 }`}
                                         >
@@ -358,6 +366,23 @@ export default function StaffDirectoryClient({ initialStaff }: { initialStaff: S
                                                         >
                                                             {person.staff_details?.status === 'active' ? "Deactivate" : "Activate"}
                                                         </button>
+                                                        {currentUserRole === 'super_admin' && person.role === 'teacher' && (
+                                                            <button
+                                                                onClick={async () => {
+                                                                    const nextStatus = person.staff_details?.status === 'locked' ? 'active' : 'locked';
+                                                                    const result = await updateStaffStatus(person.id, nextStatus);
+                                                                    setOpenMenuId(null);
+                                                                    if (result.success) {
+                                                                        toast.success(`Tutor status updated to ${nextStatus}`);
+                                                                    } else {
+                                                                        toast.error(result.error);
+                                                                    }
+                                                                }}
+                                                                className="w-full text-left px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-tighter hover:bg-muted/30 flex items-center gap-2 text-indigo-600"
+                                                            >
+                                                                {person.staff_details?.status === 'locked' ? "Unlock Tutor" : "Lock Tutor"}
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </>
                                             )}

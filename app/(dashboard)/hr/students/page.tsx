@@ -13,7 +13,10 @@ export default async function StudentDirectory() {
             *,
             student_details!student_details_id_fkey (
                 *,
-                assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (full_name)
+                assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (
+                    full_name,
+                    staff_details (status)
+                )
             )
         `)
         .eq('role', 'student')
@@ -32,7 +35,12 @@ export default async function StudentDirectory() {
     // Fetch teachers/tutors list for assignment selection
     const { data: teachers } = await supabase
         .from('profiles')
-        .select('id, full_name, email')
+        .select(`
+            id, 
+            full_name, 
+            email,
+            staff_details (status)
+        `)
         .eq('role', 'teacher')
         .order('full_name', { ascending: true });
 
@@ -41,9 +49,34 @@ export default async function StudentDirectory() {
     const { data: profile } = await supabase
         .from('profiles')
         .select('role')
-        .eq('id', user?.id)
+        .eq('id', user?.id || '')
         .single();
     const currentUserRole = profile?.role || 'student';
+
+    // Filter out locked tutors and students of locked tutors for non-super-admins
+    let filteredStudents = processedStudents;
+    let filteredTeachers = teachers || [];
+
+    if (currentUserRole !== 'super_admin') {
+        filteredStudents = processedStudents.filter((s: any) => {
+            const assignedTeacher = s.student_details?.assigned_teacher;
+            const teacherDetails = Array.isArray(assignedTeacher?.staff_details)
+                ? assignedTeacher?.staff_details[0]
+                : assignedTeacher?.staff_details;
+            return teacherDetails?.status !== 'locked';
+        });
+
+        filteredTeachers = (teachers || []).filter((t: any) => {
+            const details = Array.isArray(t.staff_details) ? t.staff_details[0] : t.staff_details;
+            return details?.status !== 'locked';
+        });
+    }
+
+    const cleanTeachers = filteredTeachers.map((t: any) => ({
+        id: t.id,
+        full_name: t.full_name,
+        email: t.email
+    }));
 
     return (
         <div className="space-y-10">
@@ -59,8 +92,8 @@ export default async function StudentDirectory() {
             </div>
 
             <StudentDirectoryClient 
-                initialStudents={processedStudents} 
-                teachers={teachers || []}
+                initialStudents={filteredStudents} 
+                teachers={cleanTeachers}
                 currentUserRole={currentUserRole}
             />
         </div>

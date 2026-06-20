@@ -78,6 +78,16 @@ export async function updateStaffMember(id: string, data: { full_name: string; e
         return { error: "Unauthorized" };
     }
 
+    const { data: targetStaff } = await adminClient
+        .from("staff_details")
+        .select("status")
+        .eq("id", id)
+        .single();
+
+    if (targetStaff?.status === 'locked' && requesterProfile?.role !== 'super_admin') {
+        return { error: "Unauthorized: Only Super Admin can modify locked staff profiles." };
+    }
+
     const { error: profileError } = await adminClient
         .from("profiles")
         .update({
@@ -126,6 +136,17 @@ export async function updateStaffStatus(id: string, status: string) {
 
     if (!["super_admin", "admin", "hr"].includes(requesterProfile?.role || "")) {
         return { error: "Unauthorized" };
+    }
+
+    const { data: targetStaff } = await adminClient
+        .from("staff_details")
+        .select("status")
+        .eq("id", id)
+        .single();
+
+    const isLockedAction = targetStaff?.status === 'locked' || status === 'locked';
+    if (isLockedAction && requesterProfile?.role !== 'super_admin') {
+        return { error: "Unauthorized: Only Super Admin can manage locked status." };
     }
 
     const { error: statusError } = await adminClient
@@ -232,6 +253,26 @@ export async function updateStudentMember(id: string, data: {
         return { error: "Unauthorized" };
     }
 
+    const { data: targetStudent } = await adminClient
+        .from("student_details")
+        .select(`
+            assigned_teacher_id,
+            assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
+                staff_details(status)
+            )
+        `)
+        .eq("id", id)
+        .single();
+
+    const teacherData = targetStudent?.assigned_teacher as any;
+    const teacher = Array.isArray(teacherData) ? teacherData[0] : teacherData;
+    const staffDetails = Array.isArray(teacher?.staff_details) ? teacher.staff_details[0] : teacher?.staff_details;
+    const isAssignedToLocked = staffDetails?.status === 'locked';
+
+    if (isAssignedToLocked && requesterProfile?.role !== 'super_admin') {
+        return { error: "Unauthorized: Only Super Admin can modify private students." };
+    }
+
     const { error: profileError } = await adminClient
         .from("profiles")
         .update({
@@ -278,6 +319,26 @@ export async function updateStudentStatus(id: string, status: string) {
 
     if (!["super_admin", "admin", "hr", "operations"].includes(requesterProfile?.role || "")) {
         return { error: "Unauthorized" };
+    }
+
+    const { data: targetStudent } = await adminClient
+        .from("student_details")
+        .select(`
+            assigned_teacher_id,
+            assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
+                staff_details(status)
+            )
+        `)
+        .eq("id", id)
+        .single();
+
+    const teacherData = targetStudent?.assigned_teacher as any;
+    const teacher = Array.isArray(teacherData) ? teacherData[0] : teacherData;
+    const staffDetails = Array.isArray(teacher?.staff_details) ? teacher.staff_details[0] : teacher?.staff_details;
+    const isAssignedToLocked = staffDetails?.status === 'locked';
+
+    if (isAssignedToLocked && requesterProfile?.role !== 'super_admin') {
+        return { error: "Unauthorized: Only Super Admin can modify private student status." };
     }
 
     const { error: statusError } = await adminClient

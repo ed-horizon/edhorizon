@@ -26,7 +26,16 @@ export async function getUsers() {
     // Fetch all profiles with details
     const { data: profiles, error } = await supabase
         .from("profiles")
-        .select("*, staff_details(*), student_details!student_details_id_fkey(*)")
+        .select(`
+            *, 
+            staff_details(*), 
+            student_details!student_details_id_fkey(
+                *, 
+                assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
+                    staff_details(status)
+                )
+            )
+        `)
         .order("created_at", { ascending: false });
 
     if (error) {
@@ -34,7 +43,25 @@ export async function getUsers() {
         return [];
     }
 
-    return profiles;
+    const filtered = (profiles || []).filter((p: any) => {
+        if (requesterProfile?.role === 'super_admin') return true;
+
+        if (p.role === 'teacher') {
+            const details = Array.isArray(p.staff_details) ? p.staff_details[0] : p.staff_details;
+            return details?.status !== 'locked';
+        }
+
+        if (p.role === 'student') {
+            const details = Array.isArray(p.student_details) ? p.student_details[0] : p.student_details;
+            const assignedTeacher = details?.assigned_teacher;
+            const teacherDetails = Array.isArray(assignedTeacher?.staff_details) ? assignedTeacher?.staff_details[0] : assignedTeacher?.staff_details;
+            return teacherDetails?.status !== 'locked';
+        }
+
+        return true;
+    });
+
+    return filtered;
 }
 
 export async function deleteUser(userId: string) {

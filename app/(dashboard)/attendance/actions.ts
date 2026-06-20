@@ -235,9 +235,26 @@ export async function cancelLiveClass(classId: string) {
 
 export async function getAllTeachers() {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+    const currentUserRole = profile?.role || 'student';
+
     const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, email')
+        .select(`
+            id, 
+            full_name, 
+            email,
+            staff_details (
+                status
+            )
+        `)
         .eq('role', 'teacher')
         .order('full_name', { ascending: true });
 
@@ -245,14 +262,44 @@ export async function getAllTeachers() {
         console.error("getAllTeachers error:", error);
         return [];
     }
-    return data || [];
+
+    const filtered = (data || []).filter((t: any) => {
+        if (currentUserRole === 'super_admin') return true;
+        const details = Array.isArray(t.staff_details) ? t.staff_details[0] : t.staff_details;
+        return details?.status !== 'locked';
+    });
+
+    return filtered.map((t: any) => ({
+        id: t.id,
+        full_name: t.full_name,
+        email: t.email
+    }));
 }
 
 export async function getAllStudentsAdmin() {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+    const currentUserRole = profile?.role || 'student';
+
     const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, email')
+        .select(`
+            id, 
+            full_name, 
+            email,
+            student_details!student_details_id_fkey (
+                assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (
+                    staff_details (status)
+                )
+            )
+        `)
         .eq('role', 'student')
         .order('full_name', { ascending: true });
 
@@ -260,7 +307,20 @@ export async function getAllStudentsAdmin() {
         console.error("getAllStudentsAdmin error:", error);
         return [];
     }
-    return data || [];
+
+    const filtered = (data || []).filter((s: any) => {
+        if (currentUserRole === 'super_admin') return true;
+        const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
+        const assignedTeacher = details?.assigned_teacher;
+        const teacherDetails = Array.isArray(assignedTeacher?.staff_details) ? assignedTeacher?.staff_details[0] : assignedTeacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
+
+    return filtered.map((s: any) => ({
+        id: s.id,
+        full_name: s.full_name,
+        email: s.email
+    }));
 }
 
 export async function getCurrentProfile() {
@@ -603,13 +663,23 @@ export async function getAllRequestsData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { rescheduleRequests: [], leaveRequests: [] };
 
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+    const currentUserRole = profile?.role || 'student';
+
     const { data: rescheduleRequests, error: resError } = await supabase
         .from('reschedule_requests')
         .select(`
             *,
             class:live_classes(title, scheduled_at),
             student:profiles!student_id(full_name, email),
-            teacher:profiles!teacher_id(full_name)
+            teacher:profiles!teacher_id(
+                full_name,
+                staff_details (status)
+            )
         `)
         .order('created_at', { ascending: false });
 
@@ -620,15 +690,30 @@ export async function getAllRequestsData() {
         .select(`
             *,
             student:profiles!student_id(full_name, email, role),
-            teacher:profiles!teacher_id(full_name)
+            teacher:profiles!teacher_id(
+                full_name,
+                staff_details (status)
+            )
         `)
         .order('created_at', { ascending: false });
 
     if (leaveError) console.error("Error fetching all leave requests:", leaveError);
 
+    const filteredRescheduleRequests = (rescheduleRequests || []).filter((r: any) => {
+        if (currentUserRole === 'super_admin') return true;
+        const teacherDetails = Array.isArray(r.teacher?.staff_details) ? r.teacher?.staff_details[0] : r.teacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
+
+    const filteredLeaveRequests = (leaveRequests || []).filter((l: any) => {
+        if (currentUserRole === 'super_admin') return true;
+        const teacherDetails = Array.isArray(l.teacher?.staff_details) ? l.teacher?.staff_details[0] : l.teacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
+
     return {
-        rescheduleRequests: rescheduleRequests || [],
-        leaveRequests: leaveRequests || []
+        rescheduleRequests: filteredRescheduleRequests,
+        leaveRequests: filteredLeaveRequests
     };
 }
 
@@ -844,11 +929,25 @@ export async function verifyClassAttendance(classId: string, verificationStatus:
 
 export async function getPendingClassVerifications() {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+    const currentUserRole = profile?.role || 'student';
+
     const { data, error } = await supabase
         .from('live_classes')
         .select(`
             *,
-            teacher:profiles!teacher_id(full_name, email),
+            teacher:profiles!teacher_id(
+                full_name, 
+                email,
+                staff_details (status)
+            ),
             course:courses(title)
         `)
         .eq('status', 'completed')
@@ -857,8 +956,14 @@ export async function getPendingClassVerifications() {
 
     if (error) throw error;
 
+    const filtered = (data || []).filter((c: any) => {
+        if (currentUserRole === 'super_admin') return true;
+        const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
+
     // Fetch students manually
-    const studentIds = data.map(c => c.student_id).filter(Boolean);
+    const studentIds = filtered.map(c => c.student_id).filter(Boolean);
     if (studentIds.length > 0) {
         const { data: students } = await supabase
             .from('profiles')
@@ -866,13 +971,13 @@ export async function getPendingClassVerifications() {
             .in('id', studentIds);
         
         const studentMap = Object.fromEntries(students?.map(s => [s.id, s]) || []);
-        return data.map(c => ({
+        return filtered.map(c => ({
             ...c,
             student: studentMap[c.student_id] || null
         }));
     }
 
-    return data;
+    return filtered;
 }
 
 export async function getTeacherCompletedClasses(teacherId?: string) {
@@ -917,11 +1022,22 @@ export async function getAllCompletedClassLogs() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
 
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+    const currentUserRole = profile?.role || 'student';
+
     const { data, error } = await supabase
         .from('live_classes')
         .select(`
             *,
-            teacher:profiles!teacher_id(full_name, email),
+            teacher:profiles!teacher_id(
+                full_name, 
+                email,
+                staff_details (status)
+            ),
             course:courses(title),
             student_attendance(status, student_id)
         `)
@@ -933,8 +1049,14 @@ export async function getAllCompletedClassLogs() {
         return [];
     }
 
+    const filtered = (data || []).filter((c: any) => {
+        if (currentUserRole === 'super_admin') return true;
+        const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
+
     // Fetch students manually
-    const studentIds = data.map(c => c.student_id).filter(Boolean);
+    const studentIds = filtered.map(c => c.student_id).filter(Boolean);
     if (studentIds.length > 0) {
         const { data: students } = await supabase
             .from('profiles')
@@ -942,13 +1064,13 @@ export async function getAllCompletedClassLogs() {
             .in('id', studentIds);
         
         const studentMap = Object.fromEntries(students?.map(s => [s.id, s]) || []);
-        return data.map(c => ({
+        return filtered.map(c => ({
             ...c,
             student: studentMap[c.student_id] || null
         }));
     }
 
-    return data;
+    return filtered;
 }
 
 export async function updateTeacherAttendance(
@@ -1281,6 +1403,13 @@ export async function getStudentsWithClasses() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
 
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+    const currentUserRole = profile?.role || 'student';
+
     // Fetch students with their profiles and details
     const { data: students, error: studentsError } = await supabase
         .from('profiles')
@@ -1296,7 +1425,10 @@ export async function getStudentsWithClasses() {
                 preferred_meeting_link,
                 preferred_time,
                 classes_per_month,
-                custom_student_id
+                custom_student_id,
+                assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (
+                    staff_details (status)
+                )
             )
         `)
         .eq('role', 'student')
@@ -1307,12 +1439,23 @@ export async function getStudentsWithClasses() {
         return [];
     }
 
+    const filteredStudents = (students || []).filter((s: any) => {
+        if (currentUserRole === 'super_admin') return true;
+        const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
+        const assignedTeacher = details?.assigned_teacher;
+        const teacherDetails = Array.isArray(assignedTeacher?.staff_details) ? assignedTeacher?.staff_details[0] : assignedTeacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
+
     // Fetch all live classes
     const { data: classes, error: classesError } = await supabase
         .from('live_classes')
         .select(`
             *,
-            teacher:profiles!teacher_id(full_name)
+            teacher:profiles!teacher_id(
+                full_name,
+                staff_details (status)
+            )
         `)
         .order('scheduled_at', { ascending: true });
 
@@ -1320,6 +1463,12 @@ export async function getStudentsWithClasses() {
         console.error("getStudentsWithClasses classes error:", classesError);
         return [];
     }
+
+    const filteredClasses = (classes || []).filter((c: any) => {
+        if (currentUserRole === 'super_admin') return true;
+        const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
 
     // Fetch all teachers for mapping/reference
     const { data: teachers } = await supabase
@@ -1331,7 +1480,7 @@ export async function getStudentsWithClasses() {
 
     // Group classes by student_id
     const classesByStudent: Record<string, any[]> = {};
-    classes.forEach(c => {
+    filteredClasses.forEach(c => {
         if (c.student_id) {
             if (!classesByStudent[c.student_id]) {
                 classesByStudent[c.student_id] = [];
@@ -1340,7 +1489,7 @@ export async function getStudentsWithClasses() {
         }
     });
 
-    return (students || []).map((s: any) => {
+    return filteredStudents.map((s: any) => {
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
         return {
             id: s.id,
@@ -1376,6 +1525,39 @@ export async function assignTutorToStudent(studentId: string, teacherId: string 
     const isAuthorized = ['admin', 'super_admin', 'hr', 'operations'].includes(profile?.role || '');
     if (!isAuthorized) {
         return { success: false, error: "Unauthorized" };
+    }
+
+    if (profile?.role !== 'super_admin') {
+        if (teacherId) {
+            const { data: teacherDetails } = await adminClient
+                .from('staff_details')
+                .select('status')
+                .eq('id', teacherId)
+                .maybeSingle();
+
+            if (teacherDetails?.status === 'locked') {
+                return { success: false, error: "Unauthorized: Cannot assign a locked tutor." };
+            }
+        }
+
+        const { data: currentStudent } = await adminClient
+            .from('student_details')
+            .select(`
+                assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
+                    staff_details(status)
+                )
+            `)
+            .eq('id', studentId)
+            .maybeSingle();
+
+        const teacherData = currentStudent?.assigned_teacher as any;
+        const teacher = Array.isArray(teacherData) ? teacherData[0] : teacherData;
+        const staffDetails = Array.isArray(teacher?.staff_details) ? teacher.staff_details[0] : teacher?.staff_details;
+        const isAssignedToLocked = staffDetails?.status === 'locked';
+
+        if (isAssignedToLocked) {
+            return { success: false, error: "Unauthorized: Only Super Admin can change assignments of private students." };
+        }
     }
 
     const { error } = await supabase

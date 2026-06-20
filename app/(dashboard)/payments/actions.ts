@@ -128,17 +128,32 @@ export async function getStudentPayments() {
 
 // 3. Fetch pending payments for Operations / Super Admin
 export async function getPendingPayments() {
-    const { isManager } = await checkManagerRole();
+    const { isManager, userId } = await checkManagerRole();
     if (!isManager) {
         throw new Error("Unauthorized: Only Operations and Super Admin can view pending payments.");
     }
 
     const supabase = await createClient();
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId || '')
+        .single();
+    const currentUserRole = profile?.role || 'student';
+
     const { data, error } = await supabase
         .from('payments')
         .select(`
             *,
-            student:profiles!student_id(full_name, email)
+            student:profiles!student_id(
+                full_name, 
+                email,
+                student_details!student_details_id_fkey(
+                    assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
+                        staff_details (status)
+                    )
+                )
+            )
         `)
         .eq('status', 'pending')
         .order('created_at', { ascending: true });
@@ -148,22 +163,46 @@ export async function getPendingPayments() {
         return [];
     }
 
-    return data || [];
+    const filtered = (data || []).filter((p: any) => {
+        if (currentUserRole === 'super_admin') return true;
+        const details = Array.isArray(p.student?.student_details) ? p.student?.student_details[0] : p.student?.student_details;
+        const teacherDetails = Array.isArray(details?.assigned_teacher?.staff_details)
+            ? details?.assigned_teacher?.staff_details[0]
+            : details?.assigned_teacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
+
+    return filtered;
 }
 
 // 3b. Fetch all payments (completed, pending, failed) for Operations / Super Admin
 export async function getAllPayments() {
-    const { isManager } = await checkManagerRole();
+    const { isManager, userId } = await checkManagerRole();
     if (!isManager) {
         throw new Error("Unauthorized: Only Operations and Super Admin can view all payments.");
     }
 
     const supabase = await createClient();
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId || '')
+        .single();
+    const currentUserRole = profile?.role || 'student';
+
     const { data, error } = await supabase
         .from('payments')
         .select(`
             *,
-            student:profiles!student_id(full_name, email)
+            student:profiles!student_id(
+                full_name, 
+                email,
+                student_details!student_details_id_fkey(
+                    assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
+                        staff_details (status)
+                    )
+                )
+            )
         `)
         .order('created_at', { ascending: false });
 
@@ -172,7 +211,16 @@ export async function getAllPayments() {
         return [];
     }
 
-    return data || [];
+    const filtered = (data || []).filter((p: any) => {
+        if (currentUserRole === 'super_admin') return true;
+        const details = Array.isArray(p.student?.student_details) ? p.student?.student_details[0] : p.student?.student_details;
+        const teacherDetails = Array.isArray(details?.assigned_teacher?.staff_details)
+            ? details?.assigned_teacher?.staff_details[0]
+            : details?.assigned_teacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
+
+    return filtered;
 }
 
 // 4. Process Payment Approval (Operations / Super Admin only)
@@ -184,15 +232,46 @@ export async function processPaymentApproval(paymentId: string, status: 'complet
 
     const supabase = await createClient();
 
-    // Fetch the payment record to get the student_id
+    // Fetch the payment record to get the student_id and teacher lock status
     const { data: payment, error: fetchError } = await supabase
         .from('payments')
-        .select('*')
+        .select(`
+            *,
+            student:profiles!student_id(
+                student_details!student_details_id_fkey(
+                    assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
+                        staff_details (status)
+                    )
+                )
+            )
+        `)
         .eq('id', paymentId)
         .single();
 
     if (fetchError || !payment) {
         return { success: false, error: "Payment record not found." };
+    }
+
+    // Check teacher lock status
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user?.id || '')
+        .single();
+    const currentUserRole = profile?.role || 'student';
+
+    const details = Array.isArray(payment.student?.student_details)
+        ? payment.student?.student_details[0]
+        : payment.student?.student_details;
+    
+    const assignedTeacher = details?.assigned_teacher;
+    const teacherDetails = Array.isArray(assignedTeacher?.staff_details)
+        ? assignedTeacher?.staff_details[0]
+        : assignedTeacher?.staff_details;
+
+    if (teacherDetails?.status === 'locked' && currentUserRole !== 'super_admin') {
+        return { success: false, error: "Unauthorized: Only Super Admin can approve payments for private students." };
     }
 
     // Generate unique receipt number if approved

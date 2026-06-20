@@ -24,22 +24,34 @@ export default async function HRDashboard() {
     const { data: { user } } = await supabase.auth.getUser();
     const { data: profile } = await supabase
         .from('profiles')
-        .select('full_name')
+        .select('full_name, role')
         .eq('id', user?.id || '')
         .single();
     const hrName = profile?.full_name || user?.email?.split('@')[0] || "HR";
+    const currentUserRole = profile?.role || 'student';
 
     // 1. Fetch live staff stats
-    const { count: totalStaff } = await supabase
+    const { data: staffDetailsList } = await supabase
         .from('staff_details')
-        .select('*', { count: 'exact', head: true });
+        .select('status');
+    
+    const filteredStaffDetails = (staffDetailsList || []).filter((s: any) => {
+        return currentUserRole === 'super_admin' || s.status !== 'locked';
+    });
+    const totalStaff = filteredStaffDetails.length;
 
-    const { data: recentStaff } = await supabase
+    const { data: rawRecentStaff } = await supabase
         .from('profiles')
         .select('*, staff_details(*)')
         .neq('role', 'student')
-        .order('created_at', { ascending: false })
-        .limit(4);
+        .order('created_at', { ascending: false });
+
+    const recentStaff = (rawRecentStaff || [])
+        .filter((s: any) => {
+            const details = Array.isArray(s.staff_details) ? s.staff_details[0] : s.staff_details;
+            return currentUserRole === 'super_admin' || details?.status !== 'locked';
+        })
+        .slice(0, 4);
 
     // 2. Fetch total payroll for current month
     const now = new Date();
@@ -67,18 +79,27 @@ export default async function HRDashboard() {
 
     // 3. SCAN FOR MISSING ATTENDANCE (Attendance forgets warning)
     // Query scheduled classes that are in the past (scheduled_at < now) but status is still 'scheduled'
-    const { data: missingAttendanceClasses } = await supabase
+    const { data: rawMissingAttendanceClasses } = await supabase
         .from('live_classes')
         .select(`
             id,
             title,
             scheduled_at,
             student_id,
-            teacher:profiles!teacher_id(full_name),
+            teacher:profiles!teacher_id(
+                full_name,
+                staff_details (status)
+            ),
             student:profiles!student_id(full_name)
         `)
         .eq('status', 'scheduled')
         .lt('scheduled_at', now.toISOString());
+
+    const missingAttendanceClasses = (rawMissingAttendanceClasses || []).filter((c: any) => {
+        if (currentUserRole === 'super_admin') return true;
+        const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
 
     // 4. Fetch leave requests from student_leaves
     const { data: dbLeaveRequests } = await supabase
@@ -91,12 +112,20 @@ export default async function HRDashboard() {
             status,
             created_at,
             student:profiles!student_id(full_name, role),
-            teacher:profiles!teacher_id(full_name)
+            teacher:profiles!teacher_id(
+                full_name,
+                staff_details (status)
+            )
         `)
-        .order('created_at', { ascending: false })
-        .limit(10);
+        .order('created_at', { ascending: false });
 
-    const leaveRequests = (dbLeaveRequests || []).map((l: any) => {
+    const filteredDbLeaveRequests = (dbLeaveRequests || []).filter((l: any) => {
+        if (currentUserRole === 'super_admin') return true;
+        const teacherDetails = Array.isArray(l.teacher?.staff_details) ? l.teacher?.staff_details[0] : l.teacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
+
+    const leaveRequests = filteredDbLeaveRequests.slice(0, 10).map((l: any) => {
         const diffTime = Math.abs(new Date(l.end_date).getTime() - new Date(l.start_date).getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
         return {

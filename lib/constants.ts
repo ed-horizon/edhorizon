@@ -81,6 +81,12 @@ export const NAV_ITEMS = [
         roles: ["super_admin"],
     },
     {
+        title: "My Students",
+        href: "/super-admin/my-students",
+        icon: GraduationCap,
+        roles: ["super_admin"],
+    },
+    {
         title: "Users",
         href: "/super-admin/users",
         icon: Users,
