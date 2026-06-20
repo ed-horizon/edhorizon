@@ -192,7 +192,7 @@ export function StudentDashboardClient({
     const [paymentModalOpen, setPaymentModalOpen] = useState(false)
     const [billingMonth, setBillingMonth] = useState(new Date().getMonth() + 1)
     const [billingYear, setBillingYear] = useState(new Date().getFullYear())
-    const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'upi_qr'>('razorpay')
+    const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'upi_qr'>('upi_qr')
     const [utrNumber, setUtrNumber] = useState("")
     const [isProcessingPayment, setIsProcessingPayment] = useState(false)
 
@@ -297,10 +297,6 @@ export function StudentDashboardClient({
     };
 
     const handleUpiPaymentSubmit = async () => {
-        if (!utrNumber.trim()) {
-            toast.error("Please enter a valid Transaction Reference ID (UTR).");
-            return;
-        }
         setIsProcessingPayment(true);
         try {
             const res = await createPaymentRecord({
@@ -308,10 +304,10 @@ export function StudentDashboardClient({
                 month: billingMonth,
                 year: billingYear,
                 method: 'upi_qr',
-                transactionId: utrNumber.trim()
+                transactionId: 'Screenshot Shared'
             });
             if (res.success) {
-                toast.success("UPI Payment details submitted! Awaiting operations approval.");
+                toast.success("UPI Payment log created! Please share the screenshot on WhatsApp.");
                 setPayments(prev => [res.payment, ...prev]);
                 setUtrNumber("");
                 setPaymentModalOpen(false);
@@ -1564,72 +1560,27 @@ export function StudentDashboardClient({
                             <span className="text-2xl font-black text-indigo-950 dark:text-indigo-50">₹{(details?.monthly_fee || 4500).toLocaleString('en-IN')}</span>
                         </div>
 
-                        {/* Payment Method Tabs */}
-                        <div className="space-y-2">
-                            <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Payment Method</Label>
-                            <div className="grid grid-cols-2 gap-2 bg-muted/30 p-1 rounded-xl">
-                                <button
-                                    type="button"
-                                    onClick={() => setPaymentMethod('razorpay')}
-                                    className={cn("h-9 rounded-lg text-xs font-bold transition-all uppercase tracking-wider",
-                                        paymentMethod === 'razorpay'
-                                            ? "bg-indigo-600 text-white shadow-sm"
-                                            : "hover:bg-muted text-muted-foreground"
-                                    )}
-                                >
-                                    Online Checkout
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setPaymentMethod('upi_qr')}
-                                    className={cn("h-9 rounded-lg text-xs font-bold transition-all uppercase tracking-wider",
-                                        paymentMethod === 'upi_qr'
-                                            ? "bg-indigo-600 text-white shadow-sm"
-                                            : "hover:bg-muted text-muted-foreground"
-                                    )}
-                                >
-                                    UPI QR Code
-                                </button>
+                        {/* QR Code details */}
+                        <div className="space-y-4 pt-2">
+                            <div className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-border/30 shadow-sm max-w-[240px] mx-auto">
+                                <img 
+                                    src="/images/payment-qr.jpg"
+                                    alt="UPI QR Code"
+                                    className="h-56 w-auto object-contain rounded-lg"
+                                />
+                                <span className="text-[9px] font-bold text-zinc-500 mt-2 uppercase tracking-wider">UPI ID: 7907026187@pthdfc</span>
+                            </div>
+                            
+                            <div className="text-center space-y-1">
+                                <p className="text-xs font-bold text-foreground">Scan with GPay, PhonePe, or any UPI App</p>
+                            </div>
+
+                            <div className="p-4 rounded-2xl bg-amber-50/50 dark:bg-amber-950/10 border border-amber-500/10 text-center space-y-1">
+                                <p className="text-[11px] font-medium leading-relaxed text-amber-800 dark:text-amber-300">
+                                    After making the payment, kindly share the payment screenshot in the Whatsapp group for verification and fee confirmation. Thankyou.
+                                </p>
                             </div>
                         </div>
-
-                        {/* Payment Method UI */}
-                        {paymentMethod === 'razorpay' ? (
-                            <div className="space-y-3 pt-2 text-center py-4 bg-muted/5 rounded-2xl border border-border/30">
-                                <Sparkles className="mx-auto text-indigo-500 animate-pulse" size={24} />
-                                <div className="space-y-1">
-                                    <p className="text-xs font-bold text-foreground">Pay instantly via Cards, UPI, Netbanking</p>
-                                    <p className="text-[10px] text-muted-foreground">Secure payment verification via Razorpay Gateway</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-4 pt-2">
-                                <div className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-border/30 shadow-sm max-w-[240px] mx-auto">
-                                    <img 
-                                        src="/images/payment-qr.jpg"
-                                        alt="UPI QR Code"
-                                        className="h-56 w-auto object-contain rounded-lg"
-                                    />
-                                    <span className="text-[9px] font-bold text-zinc-500 mt-2 uppercase tracking-wider">UPI ID: 7907026187@pthdfc</span>
-                                </div>
-                                <div className="text-center space-y-1">
-                                    <p className="text-xs font-bold text-foreground">Scan with GPay, PhonePe, or any UPI App</p>
-                                    <p className="text-[10px] text-muted-foreground">After payment, enter your 12-digit UTR/Txn ID below for verification</p>
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="utr-number" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Transaction ID / UTR Number *</Label>
-                                    <input 
-                                        id="utr-number"
-                                        type="text"
-                                        required
-                                        placeholder="Enter 12-digit transaction ID"
-                                        value={utrNumber}
-                                        onChange={(e) => setUtrNumber(e.target.value)}
-                                        className="rounded-xl h-10 border border-muted/50 focus-visible:ring-indigo-500 text-xs px-3 w-full bg-background font-mono"
-                                    />
-                                </div>
-                            </div>
-                        )}
 
                         {/* Action buttons */}
                         <div className="flex items-center justify-end gap-3 pt-4 border-t border-border/40">
@@ -1642,43 +1593,23 @@ export function StudentDashboardClient({
                             >
                                 Cancel
                             </Button>
-                            {paymentMethod === 'razorpay' ? (
-                                <Button
-                                    onClick={handleRazorpayPayment}
-                                    disabled={isProcessingPayment}
-                                    className="h-11 px-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider text-xs shadow-lg shadow-indigo-600/20 flex items-center gap-2"
-                                >
-                                    {isProcessingPayment ? (
-                                        <>
-                                            <Loader2 className="animate-spin" size={14} />
-                                            <span>Processing...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <CreditCard size={14} />
-                                            <span>Pay via Razorpay</span>
-                                        </>
-                                    )}
-                                </Button>
-                            ) : (
-                                <Button
-                                    onClick={handleUpiPaymentSubmit}
-                                    disabled={isProcessingPayment || !utrNumber.trim()}
-                                    className="h-11 px-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider text-xs shadow-lg shadow-indigo-600/20 flex items-center gap-2"
-                                >
-                                    {isProcessingPayment ? (
-                                        <>
-                                            <Loader2 className="animate-spin" size={14} />
-                                            <span>Submitting...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Check size={14} />
-                                            <span>Submit UTR Details</span>
-                                        </>
-                                    )}
-                                </Button>
-                            )}
+                            <Button
+                                onClick={handleUpiPaymentSubmit}
+                                disabled={isProcessingPayment}
+                                className="h-11 px-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider text-xs shadow-lg shadow-indigo-600/20 flex items-center gap-2"
+                            >
+                                {isProcessingPayment ? (
+                                    <>
+                                        <Loader2 className="animate-spin" size={14} />
+                                        <span>Submitting...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Check size={14} />
+                                        <span>I Have Sent Screenshot</span>
+                                    </>
+                                )}
+                            </Button>
                         </div>
                     </div>
                 </DialogContent>
