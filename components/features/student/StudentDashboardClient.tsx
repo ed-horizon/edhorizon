@@ -1570,9 +1570,9 @@ export function StudentDashboardClient({
                                 />
                                 <span className="text-[9px] font-bold text-zinc-500 mt-2 uppercase tracking-wider">UPI ID: 7907026187@pthdfc</span>
                             </div>
-                            
                             <div className="text-center space-y-1">
                                 <p className="text-xs font-bold text-foreground">Scan with GPay, PhonePe, or any UPI App</p>
+                                <p className="text-[11px] text-muted-foreground font-semibold">or pay directly using the upi number 7907026187</p>
                             </div>
 
                             <div className="p-4 rounded-2xl bg-amber-50/50 dark:bg-amber-950/10 border border-amber-500/10 text-center space-y-1">
