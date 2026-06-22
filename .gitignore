@@ -19,6 +19,10 @@
 
 # production
 /build
+/dist
+
+# agent instructions
+AGENT_INSTRUCTIONS.md
 
 # misc
 .DS_Store
