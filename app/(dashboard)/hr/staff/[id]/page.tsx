@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Mail, Calendar, CreditCard, Users, Briefcase, IndianRupee, Clock } from "lucide-react";
+import { ArrowLeft, Mail, Calendar, CreditCard, Users, Briefcase, IndianRupee, Clock, Phone } from "lucide-react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { HRTeacherAttendanceSheet } from "@/components/features/hr/HRTeacherAttendanceSheet";
@@ -100,6 +100,18 @@ export default async function StaffProfilePage(props: { params: Promise<{ id: st
         }
     }
 
+    let currentMonthLateCount = 0;
+    if (profile.role === 'teacher') {
+        const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const { count } = await supabase
+            .from('live_classes')
+            .select('*', { count: 'exact', head: true })
+            .eq('teacher_id', id)
+            .eq('tutor_joined_late', true)
+            .gte('scheduled_at', startOfCurrentMonth);
+        currentMonthLateCount = count || 0;
+    }
+
     const completedClasses = await getTeacherCompletedClasses(id);
 
     const { full_name, email, role, created_at, staff_details } = profile;
@@ -158,6 +170,27 @@ export default async function StaffProfilePage(props: { params: Promise<{ id: st
                                     <span className="opacity-90 font-mono">{staff_details.employee_id}</span>
                                 </div>
                             )}
+                            {staff_details?.mobile_number && (
+                                <div className="space-y-2 pt-2 border-t border-white/10">
+                                    <div className="flex items-center gap-3 text-sm">
+                                        <Phone size={16} className="text-indigo-200" />
+                                        <span className="opacity-90">{staff_details.mobile_number}</span>
+                                    </div>
+                                    <div className="pt-1">
+                                        <a
+                                            href={`https://wa.me/${staff_details.mobile_number.replace(/\D/g, "").length === 10 ? `91${staff_details.mobile_number.replace(/\D/g, "")}` : staff_details.mobile_number.replace(/\D/g, "")}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex w-full items-center justify-center gap-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 rounded-xl transition-all"
+                                        >
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008 0c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-.002 0-.003 0-.005 0-2.002-.001-3.972-.513-5.717-1.488L0 24zm6.59-4.846c1.6.95 2.534 1.483 3.96 1.486 5.315 0 9.64-4.321 9.643-9.637.002-2.576-1.002-5.001-2.827-6.829-1.824-1.826-4.249-2.827-6.828-2.828-5.32 0-9.647 4.322-9.65 9.639-.001 1.516.4 2.99 1.159 4.3l.255.44-1.02 3.722 3.818-1.002.433.256zM17.17 14.39c-.28-.14-1.65-.81-1.91-.9-.26-.1-.45-.14-.64.14-.19.28-.73.9-.9 1.09-.17.19-.34.21-.62.07-1.37-.68-2.31-1.2-3.23-2.78-.24-.41.24-.38.69-1.28.08-.17.04-.31-.02-.45-.06-.14-.54-1.31-.74-1.8-.19-.47-.39-.4-.54-.41-.14-.01-.31-.01-.48-.01-.17 0-.45.06-.69.31-.24.25-.92.9-.92 2.2 0 1.3.95 2.56 1.08 2.74.13.18 1.87 2.85 4.54 4 .64.27 1.13.44 1.52.56.64.2 1.22.17 1.68.1.51-.08 1.57-.64 1.79-1.26.22-.61.22-1.14.15-1.25-.07-.11-.26-.18-.54-.32z"/>
+                                            </svg>
+                                            Message on WhatsApp
+                                        </a>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
@@ -173,7 +206,7 @@ export default async function StaffProfilePage(props: { params: Promise<{ id: st
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                 <div className="bg-muted/30 rounded-3xl p-6 border border-border/50 hover:border-indigo-500/30 transition-colors">
                                     <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
                                         <Clock size={14} className="text-indigo-500" /> Hourly Rate
@@ -201,6 +234,17 @@ export default async function StaffProfilePage(props: { params: Promise<{ id: st
                                     </div>
                                     <div className="text-xs text-muted-foreground font-medium mt-1 uppercase tracking-wider">
                                         {format(now, 'MMMM yyyy')} run
+                                    </div>
+                                </div>
+                                <div className="bg-muted/30 rounded-3xl p-6 border border-border/50 hover:border-rose-500/30 transition-colors">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
+                                        <Clock size={14} className="text-rose-500" /> Late Joinings
+                                    </div>
+                                    <div className="text-3xl font-bold tracking-tighter text-rose-600">
+                                        {currentMonthLateCount}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground font-medium mt-1 uppercase tracking-wider">
+                                        {format(now, 'MMMM yyyy')}
                                     </div>
                                 </div>
                             </div>

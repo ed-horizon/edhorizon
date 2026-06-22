@@ -45,7 +45,7 @@ export default async function PayrollManagement() {
             hourly_rate: Number(details?.hourly_rate || 0),
             status: details?.status || 'active'
         };
-    });
+    }).filter((t: any) => t.status !== 'locked');
 
     // Fetch verified live classes for this month
     const startOfMonth = new Date(currentYear, currentMonth - 1, 1).toISOString();

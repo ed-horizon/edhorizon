@@ -3,21 +3,20 @@ const fs = require('fs');
 const path = require('path');
 const dns = require('dns');
 
-const hostName = 'db.bgaepltxhycmripzovan.supabase.com';
+if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder('ipv4first');
+}
+
+const hostName = 'db.bgaepltxhycmripzovan.supabase.co';
 const port = 5432;
 const user = 'postgres';
 const database = 'postgres';
-const password = 'edhorizon123';
+const password = 'Sivavini@2024';
 
-dns.lookup(hostName, { family: 4 }, async (err, ipAddress) => {
-    if (err) {
-        console.error("Failed to resolve hostname to IPv4:", err);
-        process.exit(1);
-    }
-    console.log(`Resolved ${hostName} to IPv4: ${ipAddress}`);
-
+async function run() {
+    console.log(`Connecting to database at ${hostName}:${port}...`);
     const client = new Client({
-        host: ipAddress,
+        host: hostName,
         port,
         user,
         password,
@@ -27,8 +26,8 @@ dns.lookup(hostName, { family: 4 }, async (err, ipAddress) => {
 
     try {
         await client.connect();
-        console.log('Connected to Supabase database via resolved IPv4.');
-        const sqlPath = path.join(__dirname, '../supabase/migrations/20260615143000_staff_shifts.sql');
+        console.log('Connected to Supabase database.');
+        const sqlPath = path.join(__dirname, '../supabase/migrations/20260622130000_add_tutor_joined_late.sql');
         const sql = fs.readFileSync(sqlPath, 'utf8');
         console.log('Running SQL migration...');
         await client.query(sql);
@@ -36,8 +35,10 @@ dns.lookup(hostName, { family: 4 }, async (err, ipAddress) => {
         await client.query("NOTIFY pgrst, 'reload schema';");
         console.log('Migration executed successfully!');
     } catch (err) {
-        console.error('Error running migration:', err);
+        console.error('Error running migration:', err.message);
     } finally {
         await client.end();
     }
-});
+}
+
+run();

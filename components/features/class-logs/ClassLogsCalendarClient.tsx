@@ -13,6 +13,7 @@ import {
     Video, Clock, User, BookOpen, AlertCircle, FileText, CheckCircle2, Award, Upload
 } from "lucide-react"
 import { formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
+import { format } from "date-fns"
 import { getClassLogsForMonth, modifyClassLog } from "@/app/(dashboard)/attendance/actions"
 import { toast } from "sonner"
 import { AssignHomeworkDialog, UploadMaterialDialog } from "@/components/features/teacher/StudentActionDialogs"
@@ -44,6 +45,8 @@ export function ClassLogsCalendarClient({
     // Admin filters
     const [selectedTeacherId, setSelectedTeacherId] = useState<string>("all")
     const [selectedStudentId, setSelectedStudentId] = useState<string>("all")
+    const [searchQuery, setSearchQuery] = useState("")
+    const [showLateJoiningsOnly, setShowLateJoiningsOnly] = useState(false)
 
     // Selected Date Details
     const [selectedDate, setSelectedDate] = useState<Date | null>(now)
@@ -103,7 +106,19 @@ export function ClassLogsCalendarClient({
     const filteredClasses = classes.filter(c => {
         const matchesTeacher = selectedTeacherId === "all" || c.teacher_id === selectedTeacherId
         const matchesStudent = selectedStudentId === "all" || c.student_id === selectedStudentId
-        return matchesTeacher && matchesStudent
+        const matchesLate = !showLateJoiningsOnly || c.tutor_joined_late === true
+
+        const q = searchQuery.trim().toLowerCase();
+        let matchesQuery = true;
+        if (q) {
+            const studentName = c.student?.full_name?.toLowerCase() || '';
+            const teacherName = c.teacher?.full_name?.toLowerCase() || '';
+            const courseTitle = c.course?.title?.toLowerCase() || '';
+            const classTitle = c.title?.toLowerCase() || '';
+            matchesQuery = studentName.includes(q) || teacherName.includes(q) || courseTitle.includes(q) || classTitle.includes(q);
+        }
+
+        return matchesTeacher && matchesStudent && matchesLate && matchesQuery
     })
 
     // Calendar generation
@@ -248,40 +263,78 @@ export function ClassLogsCalendarClient({
                 </div>
             </div>
 
-            {/* Admin Filters Row */}
-            {canModify && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-muted/10 p-4 rounded-3xl border border-border/30">
-                    <div className="space-y-1 text-left">
-                        <Label htmlFor="tutor-filter" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Filter by Tutor</Label>
-                        <Select value={selectedTeacherId} onValueChange={setSelectedTeacherId}>
-                            <SelectTrigger id="tutor-filter" className="h-11 rounded-2xl bg-card border-none outline-none focus:ring-1 focus:ring-indigo-500 text-xs">
-                                <SelectValue placeholder="All Tutors" />
-                            </SelectTrigger>
-                            <SelectContent className="rounded-2xl border border-border/40">
-                                <SelectItem value="all" className="rounded-xl">All Tutors</SelectItem>
-                                {allTeachers.map(t => (
-                                    <SelectItem key={t.id} value={t.id} className="rounded-xl">{t.full_name || t.email}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+            {/* Filters Row */}
+            <div className="bg-muted/10 p-4 md:p-6 rounded-[2rem] border border-border/30 space-y-4">
+                {canModify && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1 text-left">
+                            <Label htmlFor="tutor-filter" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Filter by Tutor</Label>
+                            <Select value={selectedTeacherId} onValueChange={setSelectedTeacherId}>
+                                <SelectTrigger id="tutor-filter" className="h-11 rounded-2xl bg-card border-none outline-none focus:ring-1 focus:ring-indigo-500 text-xs">
+                                    <SelectValue placeholder="All Tutors" />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-2xl border border-border/40">
+                                    <SelectItem value="all" className="rounded-xl">All Tutors</SelectItem>
+                                    {allTeachers.map(t => (
+                                        <SelectItem key={t.id} value={t.id} className="rounded-xl">{t.full_name || t.email}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-1 text-left">
+                            <Label htmlFor="student-filter" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Filter by Student</Label>
+                            <Select value={selectedStudentId} onValueChange={setSelectedStudentId}>
+                                <SelectTrigger id="student-filter" className="h-11 rounded-2xl bg-card border-none outline-none focus:ring-1 focus:ring-indigo-500 text-xs">
+                                    <SelectValue placeholder="All Students" />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-2xl border border-border/40">
+                                    <SelectItem value="all" className="rounded-xl">All Students</SelectItem>
+                                    {allStudents.map(s => (
+                                        <SelectItem key={s.id} value={s.id} className="rounded-xl">{s.full_name || s.email}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pt-2">
+                    <div className="relative flex-1 text-left space-y-1">
+                        <Label htmlFor="search-logs" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Search Logs</Label>
+                        <div className="relative">
+                            <Input 
+                                id="search-logs"
+                                placeholder="Search Student, Tutor or Course..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="h-11 pl-4 pr-10 rounded-2xl bg-card border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs w-full"
+                            />
+                            {searchQuery && (
+                                <button 
+                                    onClick={() => setSearchQuery("")}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full flex items-center justify-center bg-muted/65 hover:bg-muted text-muted-foreground transition-colors"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
+                        </div>
                     </div>
 
-                    <div className="space-y-1 text-left">
-                        <Label htmlFor="student-filter" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Filter by Student</Label>
-                        <Select value={selectedStudentId} onValueChange={setSelectedStudentId}>
-                            <SelectTrigger id="student-filter" className="h-11 rounded-2xl bg-card border-none outline-none focus:ring-1 focus:ring-indigo-500 text-xs">
-                                <SelectValue placeholder="All Students" />
-                            </SelectTrigger>
-                            <SelectContent className="rounded-2xl border border-border/40">
-                                <SelectItem value="all" className="rounded-xl">All Students</SelectItem>
-                                {allStudents.map(s => (
-                                    <SelectItem key={s.id} value={s.id} className="rounded-xl">{s.full_name || s.email}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                    <div className="flex items-center gap-3 bg-card px-4 h-11 rounded-2xl border border-border/45 select-none hover:bg-muted/5 transition-colors shrink-0 w-full sm:w-auto mt-5 sm:mt-0">
+                        <input 
+                            type="checkbox" 
+                            id="late-joinings-filter" 
+                            checked={showLateJoiningsOnly}
+                            onChange={(e) => setShowLateJoiningsOnly(e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500 accent-rose-500 cursor-pointer"
+                        />
+                        <Label htmlFor="late-joinings-filter" className="text-xs font-bold text-foreground cursor-pointer flex-1 text-left sm:text-right">
+                            Late Joinings Only
+                        </Label>
                     </div>
                 </div>
-            )}
+            </div>
 
             {/* Main Content Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -321,13 +374,18 @@ export function ClassLogsCalendarClient({
                                             isToday && "ring-1 ring-emerald-500/50 border-emerald-500/50 shadow-md shadow-emerald-500/5"
                                         )}
                                     >
-                                        <div className="flex items-center justify-between">
-                                            <span className={cn(
-                                                "text-xs font-bold font-mono",
-                                                isToday && "bg-emerald-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]"
-                                            )}>
-                                                {dayItem.date.getDate()}
-                                            </span>
+                                        <div className="flex items-center justify-between w-full">
+                                            <div className="flex items-center gap-1">
+                                                <span className={cn(
+                                                    "text-xs font-bold font-mono",
+                                                    isToday && "bg-emerald-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]"
+                                                )}>
+                                                    {dayItem.date.getDate()}
+                                                </span>
+                                                {dateClasses.some(c => c.tutor_joined_late === true) && (
+                                                    <Clock size={12} className="text-rose-500 animate-pulse ml-0.5 shrink-0" />
+                                                )}
+                                            </div>
                                             {dateClasses.length > 0 && (
                                                 <Badge className="bg-muted text-muted-foreground text-[8px] font-black px-1.5 py-0.5 border-none">
                                                     {dateClasses.length}
@@ -380,7 +438,15 @@ export function ClassLogsCalendarClient({
                                 getClassesForDate(selectedDate).map(c => {
                                     const att = c.student_attendance?.[0]
                                     return (
-                                        <div key={c.id} className="p-4 bg-muted/20 border border-border/20 rounded-2xl text-xs space-y-3 relative overflow-hidden group">
+                                        <div 
+                                            key={c.id} 
+                                            className={cn(
+                                                "p-4 border rounded-2xl text-xs space-y-3 relative overflow-hidden group transition-all",
+                                                c.tutor_joined_late 
+                                                    ? "bg-rose-50/30 border-rose-500/30 dark:bg-rose-950/10 dark:border-rose-950/30" 
+                                                    : "bg-muted/20 border-border/20"
+                                            )}
+                                        >
                                             <div className="flex justify-between items-start gap-2">
                                                 <div>
                                                     {(() => {
@@ -396,9 +462,14 @@ export function ClassLogsCalendarClient({
                                                             </div>
                                                         );
                                                     })()}
-                                                    <div className="flex items-center gap-2 mt-1.5 text-muted-foreground text-[10px]">
+                                                    <div className="flex items-center gap-2 mt-1.5 text-muted-foreground text-[10px] flex-wrap">
                                                         <Clock size={12} className="text-indigo-500" />
-                                                        <span>{formatTime12Hour(c.scheduled_at.split('T')[1]?.substring(0, 5))}</span>
+                                                        <span>{format(new Date(c.scheduled_at), 'hh:mm a')}</span>
+                                                        {c.tutor_joined_late && (
+                                                            <Badge className="bg-rose-500/15 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 border border-rose-500/30 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-full">
+                                                                Tutor Joined Late
+                                                            </Badge>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <Badge className={cn("text-[8px] font-black uppercase border-none rounded-full px-2 py-0.5",
@@ -409,12 +480,19 @@ export function ClassLogsCalendarClient({
                                                     {c.status}
                                                 </Badge>
                                             </div>
-
+ 
                                             <div className="space-y-1.5 border-t border-border/10 pt-2.5">
                                                 <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
                                                     <User size={12} className="text-indigo-500" />
                                                     <span className="font-bold text-foreground">Tutor:</span>
-                                                    <span>{c.teacher?.full_name || 'N/A'}</span>
+                                                    <span>
+                                                        {c.teacher?.full_name || 'N/A'}
+                                                        {c.tutor_joined_at && (
+                                                            <span className="text-[9px] text-muted-foreground/60 italic ml-1">
+                                                                (In: {format(new Date(c.tutor_joined_at), 'hh:mm a')})
+                                                            </span>
+                                                        )}
+                                                    </span>
                                                 </div>
                                                 <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
                                                     <User size={12} className="text-indigo-500" />

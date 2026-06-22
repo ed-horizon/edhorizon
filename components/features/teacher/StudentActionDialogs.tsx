@@ -235,7 +235,7 @@ export function UploadMaterialDialog({ studentId, studentName, trigger, onSucces
                 {trigger || (
                     <Button variant="outline" className="flex items-center gap-2 h-10 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border-2">
                         <Upload size={14} className="text-indigo-600" />
-                        <span>Upload Worksheet</span>
+                        <span>Upload Study Material</span>
                     </Button>
                 )}
             </DialogTrigger>

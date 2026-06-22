@@ -117,10 +117,19 @@ export async function getTeacherStats() {
         return att?.status !== 'absent';
     }).length;
 
+    // 5. Late Joinings in current month
+    const { count: monthlyLateJoiningCount } = await supabase
+        .from('live_classes')
+        .select('*', { count: 'exact', head: true })
+        .eq('teacher_id', user.id)
+        .eq('tutor_joined_late', true)
+        .gte('scheduled_at', startOfCurrentMonth);
+
     return {
         students: studentCount || 0,
         capsules: capsuleCount || 0,
         hours: totalHours,
-        monthlyClassCount: monthlyClassCount || 0
+        monthlyClassCount: monthlyClassCount || 0,
+        monthlyLateJoiningCount: monthlyLateJoiningCount || 0
     };
 }

@@ -20,6 +20,7 @@ interface StaffMember {
         hourly_rate?: number;
         basic_salary?: number;
         employee_id?: string | null;
+        mobile_number?: string | null;
     } | null;
     student_count?: number;
 }
@@ -47,7 +48,8 @@ export default function StaffDirectoryClient({
         full_name: "",
         email: "",
         role: "teacher",
-        employee_id: ""
+        employee_id: "",
+        mobile_number: ""
     });
 
     const filteredStaff = initialStaff.filter(person => {
@@ -64,12 +66,16 @@ export default function StaffDirectoryClient({
 
     const handleAddStaff = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!formData.mobile_number.trim()) {
+            toast.error("Mobile number is mandatory");
+            return;
+        }
         setIsSubmitting(true);
         const result = await createStaffMember(formData);
         setIsSubmitting(false);
         if (result.success) {
             setIsAddModalOpen(false);
-            setFormData({ full_name: "", email: "", role: "teacher", employee_id: "" });
+            setFormData({ full_name: "", email: "", role: "teacher", employee_id: "", mobile_number: "" });
             toast.success("Staff member invited successfully");
         } else {
             toast.error(result.error);
@@ -79,13 +85,18 @@ export default function StaffDirectoryClient({
     const handleUpdateStaff = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!editingStaff) return;
+        if (!editingStaff.staff_details?.mobile_number?.trim()) {
+            toast.error("Mobile number is mandatory");
+            return;
+        }
         setIsSubmitting(true);
         const result = await updateStaffMember(editingStaff.id, {
             full_name: editingStaff.full_name || "",
             email: editingStaff.email,
             role: editingStaff.role,
             hourly_rate: editingStaff.staff_details?.hourly_rate || 0,
-            employee_id: editingStaff.staff_details?.employee_id || ""
+            employee_id: editingStaff.staff_details?.employee_id || "",
+            mobile_number: editingStaff.staff_details?.mobile_number || ""
         });
         setIsSubmitting(false);
         if (result.success) {
@@ -208,6 +219,17 @@ export default function StaffDirectoryClient({
                                 </select>
                             </div>
                             <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
+                                <Input
+                                    required
+                                    type="tel"
+                                    value={formData.mobile_number}
+                                    onChange={(e) => setFormData({ ...formData, mobile_number: e.target.value })}
+                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                    placeholder="e.g. +91 9876543210"
+                                />
+                            </div>
+                            <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Employee ID</label>
                                 <Input
                                     value={formData.employee_id}
@@ -279,6 +301,29 @@ export default function StaffDirectoryClient({
                                                 <Mail size={12} className="text-indigo-500" />
                                                 {person.email}
                                             </div>
+                                            {person.staff_details?.mobile_number && (() => {
+                                                const cleanMobile = person.staff_details.mobile_number.replace(/\D/g, "");
+                                                const formattedMobile = cleanMobile.length === 10 ? `91${cleanMobile}` : cleanMobile;
+                                                return (
+                                                    <div className="flex flex-col items-center gap-1 mt-1.5">
+                                                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                                                            <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider bg-indigo-50 text-indigo-600">Cell</span>
+                                                            <span>{person.staff_details.mobile_number}</span>
+                                                        </div>
+                                                        <a
+                                                            href={`https://wa.me/${formattedMobile}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-950/40 transition-all hover:scale-105"
+                                                        >
+                                                            <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
+                                                                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008 0c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-.002 0-.003 0-.005 0-2.002-.001-3.972-.513-5.717-1.488L0 24zm6.59-4.846c1.6.95 2.534 1.483 3.96 1.486 5.315 0 9.64-4.321 9.643-9.637.002-2.576-1.002-5.001-2.827-6.829-1.824-1.826-4.249-2.827-6.828-2.828-5.32 0-9.647 4.322-9.65 9.639-.001 1.516.4 2.99 1.159 4.3l.255.44-1.02 3.722 3.818-1.002.433.256zM17.17 14.39c-.28-.14-1.65-.81-1.91-.9-.26-.1-.45-.14-.64.14-.19.28-.73.9-.9 1.09-.17.19-.34.21-.62.07-1.37-.68-2.31-1.2-3.23-2.78-.24-.41.24-.38.69-1.28.08-.17.04-.31-.02-.45-.06-.14-.54-1.31-.74-1.8-.19-.47-.39-.4-.54-.41-.14-.01-.31-.01-.48-.01-.17 0-.45.06-.69.31-.24.25-.92.9-.92 2.2 0 1.3.95 2.56 1.08 2.74.13.18 1.87 2.85 4.54 4 .64.27 1.13.44 1.52.56.64.2 1.22.17 1.68.1.51-.08 1.57-.64 1.79-1.26.22-.61.22-1.14.15-1.25-.07-.11-.26-.18-.54-.32z"/>
+                                                            </svg>
+                                                            <span>Chat on WhatsApp</span>
+                                                        </a>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-center">
@@ -444,6 +489,25 @@ export default function StaffDirectoryClient({
                                                     <option value="operations">Operations</option>
                                                     <option value="hr">HR</option>
                                                 </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
+                                                <Input
+                                                    required
+                                                    type="tel"
+                                                    value={editingStaff.staff_details?.mobile_number || ""}
+                                                    onChange={(e) => {
+                                                        setEditingStaff({
+                                                            ...editingStaff,
+                                                            staff_details: {
+                                                                ...(editingStaff.staff_details || { status: 'active', joining_date: '' }),
+                                                                mobile_number: e.target.value
+                                                            }
+                                                        });
+                                                    }}
+                                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                                    placeholder="e.g. +91 9876543210"
+                                                />
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Employee ID</label>

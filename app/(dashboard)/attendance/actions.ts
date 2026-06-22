@@ -146,12 +146,22 @@ export async function createLiveClass(payload: {
 
         // Also update the student's preferred link/time if provided
         if (payload.meeting_link) {
-            const timeVal = payload.preferred_time || payload.scheduled_at.split('T')[1].substring(0, 5);
+            let timeVal = payload.preferred_time;
+            if (!timeVal && payload.scheduled_at) {
+                try {
+                    const dateObj = new Date(payload.scheduled_at);
+                    // Convert UTC date to Indian Standard Time (UTC + 5.5 hours) to get the local preferred time
+                    const istDate = new Date(dateObj.getTime() + (5.5 * 60 * 60 * 1000));
+                    timeVal = istDate.toISOString().split('T')[1].substring(0, 5);
+                } catch (e) {
+                    console.error("Failed to parse preferred_time from scheduled_at:", e);
+                }
+            }
             const { error: studentUpdateError } = await supabase
                 .from('student_details')
                 .update({ 
                     preferred_meeting_link: payload.meeting_link,
-                    preferred_time: timeVal
+                    preferred_time: timeVal || null
                 })
                 .eq('id', payload.student_id);
             
@@ -722,14 +732,56 @@ export async function updateRescheduleStatus(requestId: string, status: 'approve
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Unauthorized" };
 
-    const { error } = await supabase
+    // 1. Fetch reschedule request details before updating
+    const { data: request, error: fetchError } = await supabase
+        .from('reschedule_requests')
+        .select('*')
+        .eq('id', requestId)
+        .maybeSingle();
+
+    if (fetchError) {
+        console.error("updateRescheduleStatus fetch error:", fetchError);
+        return { success: false, error: fetchError.message };
+    }
+
+    if (!request) {
+        return { success: false, error: "Reschedule request not found" };
+    }
+
+    // 2. Update status of the reschedule request
+    const { error: updateError } = await supabase
         .from('reschedule_requests')
         .update({ status: status })
         .eq('id', requestId);
 
-    if (error) {
-        console.error("updateRescheduleStatus Error:", error);
-        return { success: false, error: error.message };
+    if (updateError) {
+        console.error("updateRescheduleStatus Error:", updateError);
+        return { success: false, error: updateError.message };
+    }
+
+    // 3. If approved and there is an associated class, update scheduled_at in live_classes
+    if (status === 'approved' && request.class_id) {
+        try {
+            const timePart = request.requested_time.substring(0, 5); // "HH:MM"
+            // Construct the local ISO date-time string in Indian Standard Time (+05:30)
+            // and parse it into a Date object so that toISOString() yields the correct UTC timestamp.
+            const localDateTime = new Date(`${request.requested_date}T${timePart}:00+05:30`);
+            
+            const { error: classUpdateError } = await supabase
+                .from('live_classes')
+                .update({
+                    scheduled_at: localDateTime.toISOString()
+                })
+                .eq('id', request.class_id);
+
+            if (classUpdateError) {
+                console.error("updateRescheduleStatus live_classes update error:", classUpdateError);
+                return { success: false, error: classUpdateError.message };
+            }
+        } catch (e: any) {
+            console.error("Error parsing date/time in updateRescheduleStatus:", e);
+            return { success: false, error: "Invalid date or time format in request." };
+        }
     }
 
     revalidatePath('/(dashboard)', 'layout');
@@ -1668,7 +1720,7 @@ export async function logTutorJoinClass(classId: string) {
     // Set tutor_joined_at to NOW() and change class status to 'ongoing' if it was 'scheduled'
     const { data: classData, error: fetchError } = await supabase
         .from('live_classes')
-        .select('status, tutor_joined_at')
+        .select('status, tutor_joined_at, scheduled_at')
         .eq('id', classId)
         .single();
 
@@ -1679,7 +1731,16 @@ export async function logTutorJoinClass(classId: string) {
 
     const updates: any = {};
     if (!classData.tutor_joined_at) {
-        updates.tutor_joined_at = new Date().toISOString();
+        const now = new Date();
+        updates.tutor_joined_at = now.toISOString();
+
+        if (classData.scheduled_at) {
+            const scheduledTime = new Date(classData.scheduled_at);
+            const diffMinutes = (now.getTime() - scheduledTime.getTime()) / (1000 * 60);
+            if (diffMinutes > 5) {
+                updates.tutor_joined_late = true;
+            }
+        }
     }
     if (classData.status === 'scheduled') {
         updates.status = 'ongoing';
@@ -1749,6 +1810,38 @@ export async function submitCompletedWorksheet(title: string, fileUrl: string) {
 
     if (error) {
         console.error("submitCompletedWorksheet error:", error);
+        return { success: false, error: error.message };
+    }
+
+    revalidatePath('/(dashboard)', 'layout');
+    return { success: true };
+}
+
+export async function uploadStudentStudyMaterial(title: string, fileUrl: string) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    // Find the student's assigned teacher
+    const { data: studentDetails } = await supabase
+        .from('student_details')
+        .select('assigned_teacher_id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+    const teacherId = studentDetails?.assigned_teacher_id || null;
+
+    const { error } = await supabase
+        .from('student_materials')
+        .insert({
+            student_id: user.id,
+            teacher_id: teacherId,
+            title: `[Study Material] ${title}`,
+            file_url: fileUrl
+        });
+
+    if (error) {
+        console.error("uploadStudentStudyMaterial Error:", error);
         return { success: false, error: error.message };
     }
 

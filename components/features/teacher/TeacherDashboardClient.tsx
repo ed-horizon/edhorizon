@@ -29,6 +29,7 @@ interface LiveClass {
     module?: { title: string };
     course?: { title: string };
     student: { id: string; full_name: string; email: string } | null;
+    tutor_joined_late?: boolean;
 }
 
 interface Student {
@@ -47,6 +48,7 @@ interface TeacherDashboardClientProps {
         capsules: number
         hours: number
         monthlyClassCount: number
+        monthlyLateJoiningCount?: number
     }
     liveClasses: LiveClass[]
     assignedStudents: Student[]
@@ -213,8 +215,12 @@ export function TeacherDashboardClient({
 
     // Filter today's classes vs other classes
     const todayStr = new Date().toDateString()
+    const now = new Date()
     const todayClasses = liveClasses.filter(c => new Date(c.scheduled_at).toDateString() === todayStr)
-    const otherClasses = liveClasses.filter(c => new Date(c.scheduled_at).toDateString() !== todayStr)
+    const otherClasses = liveClasses.filter(c => {
+        const classDate = new Date(c.scheduled_at);
+        return classDate > now && classDate.toDateString() !== todayStr;
+    })
 
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
@@ -380,9 +386,13 @@ export function TeacherDashboardClient({
                             <span className="block text-[10px] font-black uppercase tracking-wider text-indigo-300">My Students</span>
                             <span className="text-3xl font-bold tracking-tight">{assignedStudents.length}</span>
                         </div>
-                        <div className="text-center px-4">
+                        <div className="text-center px-4 border-r border-white/10">
                             <span className="block text-[10px] font-black uppercase tracking-wider text-indigo-300">Total Hours</span>
                             <span className="text-3xl font-bold tracking-tight">{initialStats.hours}h</span>
+                        </div>
+                        <div className="text-center px-4">
+                            <span className="block text-[10px] font-black uppercase tracking-wider text-rose-300">Late Joinings</span>
+                            <span className="text-3xl font-bold tracking-tight text-rose-400">{initialStats.monthlyLateJoiningCount || 0}</span>
                         </div>
                     </div>
                 </div>
@@ -432,15 +442,22 @@ export function TeacherDashboardClient({
                                                     Student: <span className="font-bold text-foreground">{c.student?.full_name || 'Unassigned'}</span>
                                                 </p>
                                             </div>
-                                            <Badge className={`font-black uppercase tracking-wider text-[9px] px-2.5 py-1 ${
-                                                c.status === 'completed' 
-                                                    ? 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' 
-                                                    : c.status === 'cancelled'
-                                                    ? 'bg-rose-500/10 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400'
-                                                    : 'bg-indigo-500/10 text-indigo-600 dark:bg-indigo-950/20'
-                                            }`}>
-                                                {c.status}
-                                            </Badge>
+                                            <div className="flex items-center gap-2">
+                                                {c.tutor_joined_late && (
+                                                    <Badge className="bg-rose-500/15 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 border border-rose-500/30 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full">
+                                                        LATE
+                                                    </Badge>
+                                                )}
+                                                <Badge className={`font-black uppercase tracking-wider text-[9px] px-2.5 py-1 ${
+                                                    c.status === 'completed' 
+                                                        ? 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' 
+                                                        : c.status === 'cancelled'
+                                                        ? 'bg-rose-500/10 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400'
+                                                        : 'bg-indigo-500/10 text-indigo-600 dark:bg-indigo-950/20'
+                                                }`}>
+                                                    {c.status}
+                                                </Badge>
+                                            </div>
                                         </div>
 
                                         <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground italic bg-muted/30 p-2.5 rounded-xl w-fit">
@@ -878,26 +895,42 @@ export function TeacherDashboardClient({
                                                             )}
 
                                                             {currentTab === 'materials' && (
-                                                                history.materials.length === 0 ? (
-                                                                    <p className="text-xs text-muted-foreground italic py-6 text-center">No worksheets or materials shared yet.</p>
-                                                                ) : (
-                                                                    <div className="space-y-2">
-                                                                        {history.materials.map((mat: any) => (
-                                                                            <div key={mat.id} className="p-3.5 rounded-xl border border-border/40 bg-card text-xs flex items-center justify-between gap-4 hover:border-indigo-500/10 transition-colors">
-                                                                                <div>
-                                                                                    <p className="font-bold text-foreground">{mat.title}</p>
-                                                                                    <p className="text-[10px] text-muted-foreground italic mt-0.5">Shared: {format(new Date(mat.created_at), 'MMM dd, yyyy')}</p>
-                                                                                </div>
-                                                                                <a href={mat.file_url} target="_blank" rel="noopener noreferrer">
-                                                                                    <Button size="sm" variant="ghost" className="h-8 rounded-lg text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 gap-1.5 border border-indigo-500/20">
-                                                                                        <Upload size={10} />
-                                                                                        <span>View</span>
-                                                                                    </Button>
-                                                                                </a>
-                                                                            </div>
-                                                                        ))}
+                                                                <div className="space-y-4">
+                                                                    <div className="flex justify-between items-center bg-muted/10 p-3 rounded-2xl border border-border/20">
+                                                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Study Materials / Worksheets</span>
+                                                                        <UploadMaterialDialog
+                                                                            studentId={student.id}
+                                                                            studentName={student.full_name}
+                                                                            onSuccess={() => handleRefreshHistory(student.id)}
+                                                                            trigger={
+                                                                                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-8 px-3 font-black uppercase tracking-widest text-[9px] gap-1.5 shadow-sm transition-all hover:scale-105">
+                                                                                    <Upload size={12} />
+                                                                                    <span>Upload Study Material</span>
+                                                                                </Button>
+                                                                            }
+                                                                        />
                                                                     </div>
-                                                                )
+                                                                    {history.materials.length === 0 ? (
+                                                                        <p className="text-xs text-muted-foreground italic py-6 text-center">No worksheets or materials shared yet.</p>
+                                                                    ) : (
+                                                                        <div className="space-y-2">
+                                                                            {history.materials.map((mat: any) => (
+                                                                                <div key={mat.id} className="p-3.5 rounded-xl border border-border/40 bg-card text-xs flex items-center justify-between gap-4 hover:border-indigo-500/10 transition-colors">
+                                                                                    <div>
+                                                                                        <p className="font-bold text-foreground">{mat.title}</p>
+                                                                                        <p className="text-[10px] text-muted-foreground italic mt-0.5">Shared: {format(new Date(mat.created_at), 'MMM dd, yyyy')}</p>
+                                                                                    </div>
+                                                                                    <a href={mat.file_url} target="_blank" rel="noopener noreferrer">
+                                                                                        <Button size="sm" variant="ghost" className="h-8 rounded-lg text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 gap-1.5 border border-indigo-500/20">
+                                                                                            <Upload size={10} />
+                                                                                            <span>View</span>
+                                                                                        </Button>
+                                                                                    </a>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             )}
                                                         </div>
                                                     )}

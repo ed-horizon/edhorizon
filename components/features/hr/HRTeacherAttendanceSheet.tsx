@@ -20,6 +20,8 @@ interface ClassLog {
     course: { title: string };
     student: { id: string; full_name: string } | null;
     student_attendance: { status: string; student_id: string }[];
+    tutor_joined_at?: string | null;
+    tutor_joined_late?: boolean | null;
 }
 
 interface HRTeacherAttendanceSheetProps {
@@ -145,6 +147,17 @@ export function HRTeacherAttendanceSheet({ classes: initialClasses }: HRTeacherA
                                             <div className="flex flex-col gap-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground italic">
                                                 <span className="flex items-center gap-1"><Calendar size={12} className="text-indigo-400" /> {format(new Date(c.scheduled_at), 'MMM dd, yyyy')}</span>
                                                 <span className="flex items-center gap-1"><Clock size={12} className="text-indigo-400" /> {c.duration_hours} h</span>
+                                                {c.tutor_joined_at && (
+                                                    <span className="flex items-center gap-1 text-slate-500 font-semibold lowercase">
+                                                        <Clock size={12} className="text-slate-400 shrink-0" />
+                                                        In: {format(new Date(c.tutor_joined_at), 'hh:mm a')}
+                                                        {c.tutor_joined_late && (
+                                                            <Badge className="bg-rose-500/10 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-500/20 text-[8px] font-black uppercase ml-1 px-1 py-0 rounded-full scale-90">
+                                                                LATE
+                                                            </Badge>
+                                                        )}
+                                                    </span>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">

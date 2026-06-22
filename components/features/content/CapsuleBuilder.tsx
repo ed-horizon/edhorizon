@@ -18,6 +18,7 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
     const [type, setType] = useState('video')
     const [title, setTitle] = useState('')
     const [topicId, setTopicId] = useState('')
+    const [customTopicTitle, setCustomTopicTitle] = useState('')
     const [studentId, setStudentId] = useState('')
     const [loading, setLoading] = useState(false)
     const [quizContent, setQuizContent] = useState<{ questions: any[] }>({ questions: [] })
@@ -25,12 +26,13 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
     const router = useRouter()
 
     const handleSave = async () => {
-        if (!title || !topicId || !studentId) return;
+        if (!title || !studentId) return;
         setLoading(true)
         try {
             await saveCapsule({
                 title,
-                topic_id: topicId,
+                topic_id: topicId || null,
+                custom_topic_title: customTopicTitle,
                 student_id: studentId,
                 type,
                 content: type === 'quiz'
@@ -129,15 +131,20 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
                         </div>
 
                         <div className="space-y-2">
-                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground italic ml-1">Parent Topic</Label>
+                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground italic ml-1">Parent Topic (Optional)</Label>
                             <select
                                 value={topicId}
-                                onChange={(e) => setTopicId(e.target.value)}
+                                onChange={(e) => {
+                                    setTopicId(e.target.value);
+                                    if (e.target.value) {
+                                        setCustomTopicTitle('');
+                                    }
+                                }}
                                 disabled={!studentId}
                                 className="w-full h-14 rounded-2xl bg-muted/30 border-none outline-none focus:ring-2 focus:ring-indigo-600 font-bold text-sm px-6 appearance-none cursor-pointer disabled:opacity-50"
                             >
                                 <option value="">
-                                    {!studentId ? "Please select a student first..." : "Select a Topic..."}
+                                    {!studentId ? "Please select a student first..." : "Select a Topic (Optional)..."}
                                 </option>
                                 {studentTopics.map((t) => (
                                     <option key={t.id} value={t.id}>
@@ -146,6 +153,18 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
                                 ))}
                             </select>
                         </div>
+
+                        {!topicId && studentId && (
+                            <div className="space-y-2 animate-in fade-in duration-200">
+                                <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground italic ml-1">Or Enter Custom Topic Name</Label>
+                                <Input
+                                    placeholder="e.g. Hindi Grammar Lessons"
+                                    value={customTopicTitle}
+                                    onChange={(e) => setCustomTopicTitle(e.target.value)}
+                                    className="h-14 rounded-2xl bg-muted/30 border-none outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 font-bold text-sm px-6"
+                                />
+                            </div>
+                        )}
                     </Card>
 
                     <div className="flex items-center justify-center gap-6 pt-8">
@@ -159,7 +178,7 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
                         </Button>
                         <Button
                             onClick={() => setStep(3)}
-                            disabled={!title || !topicId || !studentId}
+                            disabled={!title || !studentId}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-14 px-10 font-black uppercase tracking-widest text-xs gap-3 shadow-xl"
                         >
                             Next: Build Content

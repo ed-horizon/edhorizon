@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatStudentIdAndMobile } from "@/lib/utils";
 
-export async function createStaffMember(data: { full_name: string; email: string; role: string; employee_id?: string }) {
+export async function createStaffMember(data: { full_name: string; email: string; role: string; employee_id?: string; mobile_number: string }) {
     const supabase = await createClient();
     const adminClient = createAdminClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -48,6 +48,7 @@ export async function createStaffMember(data: { full_name: string; email: string
             .upsert({
                 id: inviteData.user.id,
                 employee_id: data.employee_id || null,
+                mobile_number: data.mobile_number || null,
                 status: 'active',
                 joining_date: new Date().toISOString().split('T')[0]
             });
@@ -61,7 +62,7 @@ export async function createStaffMember(data: { full_name: string; email: string
     return { success: true };
 }
 
-export async function updateStaffMember(id: string, data: { full_name: string; email: string; role: string; hourly_rate?: number; employee_id?: string }) {
+export async function updateStaffMember(id: string, data: { full_name: string; email: string; role: string; hourly_rate?: number; employee_id?: string; mobile_number?: string }) {
     const supabase = await createClient();
     const adminClient = createAdminClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -106,6 +107,9 @@ export async function updateStaffMember(id: string, data: { full_name: string; e
     }
     if (data.employee_id !== undefined) {
         detailsUpdate.employee_id = data.employee_id || null;
+    }
+    if (data.mobile_number !== undefined) {
+        detailsUpdate.mobile_number = data.mobile_number || null;
     }
 
     if (Object.keys(detailsUpdate).length > 0) {

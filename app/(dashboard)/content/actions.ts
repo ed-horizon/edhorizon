@@ -129,16 +129,76 @@ export async function getTopics() {
     return parsedTopics;
 }
 
+export async function getOrCreateTopicForStudent(studentId: string, topicTitle: string) {
+    const supabase = await createClient();
+    
+    // 1. Fetch all modules to check if student already has a default module
+    const { data: allModules, error: moduleFetchError } = await supabase
+        .from('modules')
+        .select('*');
+        
+    if (moduleFetchError) throw moduleFetchError;
+
+    let targetModule = (allModules || []).find(mod => {
+        const { studentId: parsedStudentId } = parseDescription(mod.description);
+        return parsedStudentId === studentId && mod.title === "General Syllabus";
+    });
+
+    if (!targetModule) {
+        // Create a default module
+        targetModule = await saveModule({
+            title: "General Syllabus",
+            description: "General learning syllabus module",
+            student_id: studentId,
+            icon: "BookOpen"
+        });
+    }
+
+    const moduleId = targetModule.id;
+
+    // 2. Find or create default course under this module
+    const { data: courses, error: courseFetchError } = await supabase
+        .from('courses')
+        .select('*')
+        .eq('module_id', moduleId);
+
+    if (courseFetchError) throw courseFetchError;
+
+    let targetCourse = (courses || []).find(c => c.title === "General Course");
+    if (!targetCourse) {
+        targetCourse = await saveCourse({
+            module_id: moduleId,
+            title: "General Course"
+        });
+    }
+
+    const courseId = targetCourse.id;
+
+    // 3. Create topic under this course
+    const newTopic = await saveTopic({
+        course_id: courseId,
+        title: topicTitle
+    });
+
+    return newTopic.id;
+}
+
 export async function saveCapsule(payload: any) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) throw new Error("Unauthorized");
 
+    let topicId = payload.topic_id;
+    if (!topicId && payload.student_id) {
+        const topicTitle = payload.custom_topic_title?.trim() || "General Study";
+        topicId = await getOrCreateTopicForStudent(payload.student_id, topicTitle);
+    }
+
     const { data, error } = await supabase
         .from('capsules')
         .insert({
-            topic_id: payload.topic_id,
+            topic_id: topicId,
             title: payload.title,
             type: payload.type,
             content: {

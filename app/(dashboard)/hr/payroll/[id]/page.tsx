@@ -34,6 +34,21 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         .gte('scheduled_at', startOfMonth)
         .lte('scheduled_at', endOfMonth);
 
+    // Fetch all late classes in this run's month/year to show warning badges
+    const { data: lateClasses } = await supabase
+        .from('live_classes')
+        .select('teacher_id')
+        .eq('tutor_joined_late', true)
+        .gte('scheduled_at', startOfMonth)
+        .lte('scheduled_at', endOfMonth);
+
+    const lateJoiningsCount: Record<string, number> = {};
+    lateClasses?.forEach((lc: any) => {
+        if (lc.teacher_id) {
+            lateJoiningsCount[lc.teacher_id] = (lateJoiningsCount[lc.teacher_id] || 0) + 1;
+        }
+    });
+
     // 3. Fetch custom tutor hourly rates from student details
     const { data: studentDetailsData } = await supabase
         .from('student_details')
@@ -66,7 +81,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
             hourly_rate: Number(details?.hourly_rate || 0),
             status: details?.status || 'active'
         };
-    });
+    }).filter((t: any) => t.status !== 'locked');
 
     // 5. Calculate accrued payouts dynamically from live_classes
     const calculatedPayouts: Record<string, number> = {};
@@ -148,12 +163,27 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
                 id,
                 full_name,
                 email,
-                role
+                role,
+                staff_details (
+                    status
+                )
             )
         `)
         .eq('run_id', id);
 
-    const safeItems = items || [];
+    const safeItems = (items || []).map((item: any) => {
+        const teacherId = item.profile?.id;
+        const lateCount = teacherId ? (lateJoiningsCount[teacherId] || 0) : 0;
+        return {
+            ...item,
+            lateJoinings: lateCount
+        };
+    }).filter((item: any) => {
+        const staffDetails = Array.isArray(item.profile?.staff_details)
+            ? item.profile.staff_details[0]
+            : item.profile?.staff_details;
+        return staffDetails?.status !== 'locked';
+    });
 
     return (
         <div className="p-8 space-y-10 animate-in fade-in duration-700 max-w-7xl mx-auto">

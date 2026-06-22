@@ -20,7 +20,7 @@ async function run() {
             let isTarget = false;
             if (step.tool_calls) {
                 step.tool_calls.forEach(tc => {
-                    if (tc.name === 'run_command' && tc.args && tc.args.CommandLine && tc.args.CommandLine.includes('fix_operations_policies.js')) {
+                    if (tc.name === 'run_command' && tc.args && tc.args.CommandLine && tc.args.CommandLine.includes('test_pooler_conn.js')) {
                         isTarget = true;
                     }
                 });

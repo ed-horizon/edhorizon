@@ -20,6 +20,7 @@ interface LiveClass {
     module?: { title: string } | null;
     course?: { title: string } | null;
     student?: { full_name: string } | null;
+    tutor_joined_late?: boolean;
 }
 
 interface TeacherLiveClassesProps {
@@ -80,7 +81,7 @@ export function TeacherLiveClasses({ classes }: TeacherLiveClassesProps) {
                                             {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                                         </div>
                                     </button>
-
+ 
                                     {isExpanded && (
                                         <div className="p-6 pt-2 grid gap-4 bg-muted/5 border-t-2 border-muted/20">
                                             {studentClasses.map((c) => (
@@ -99,6 +100,11 @@ export function TeacherLiveClasses({ classes }: TeacherLiveClassesProps) {
                                                                             {isCompensation && (
                                                                                 <Badge className="bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 border border-amber-500/30 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-full scale-90">
                                                                                     Comp
+                                                                                </Badge>
+                                                                            )}
+                                                                            {c.tutor_joined_late && (
+                                                                                <Badge className="bg-rose-500/15 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 border border-rose-500/30 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-full scale-90">
+                                                                                    LATE
                                                                                 </Badge>
                                                                             )}
                                                                         </div>

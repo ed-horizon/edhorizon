@@ -212,7 +212,14 @@ export function PayrollItemsManager({ initialItems, runId, runStatus }: PayrollI
                                                 </div>
                                                 <div>
                                                     <p className="font-bold text-foreground">{item.profile?.full_name || "Unknown Personnel"}</p>
-                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mt-0.5">{item.profile?.role}</p>
+                                                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                                                        <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{item.profile?.role}</span>
+                                                        {item.lateJoinings > 0 && (
+                                                            <Badge className="bg-rose-500/10 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-500/20 text-[8px] font-black px-1.5 py-0.2 rounded-full">
+                                                                Late Joinings: {item.lateJoinings}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </td>
 

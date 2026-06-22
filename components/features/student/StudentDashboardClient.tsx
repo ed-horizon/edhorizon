@@ -16,7 +16,7 @@ import {
 import { isSameDay, format, isAfter } from "date-fns"
 import { cn, formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { submitHomework, requestReschedule, applyForLeave, logStudentJoinClass, submitCompletedWorksheet } from "@/app/(dashboard)/attendance/actions"
+import { submitHomework, requestReschedule, applyForLeave, logStudentJoinClass, submitCompletedWorksheet, uploadStudentStudyMaterial } from "@/app/(dashboard)/attendance/actions"
 import { createPaymentRecord } from "@/app/(dashboard)/payments/actions"
 import { toast } from "sonner"
 import { ClassLogsCalendarClient } from "@/components/features/class-logs/ClassLogsCalendarClient"
@@ -134,6 +134,9 @@ export function StudentDashboardClient({
     leaveRequests,
     initialPayments
 }: StudentDashboardClientProps) {
+    const rawFee = details?.monthly_fee;
+    const feeAmount = (rawFee !== undefined && rawFee !== null && Number(rawFee) > 0) ? Number(rawFee) : 4500;
+
     const [currentMonthDate, setCurrentMonthDate] = useState(new Date())
     const [selectedDate, setSelectedDate] = useState<Date>(new Date())
     const [dismissedCancelledIds, setDismissedCancelledIds] = useState<string[]>([])
@@ -215,8 +218,6 @@ export function StudentDashboardClient({
     const handleRazorpayPayment = async () => {
         setIsProcessingPayment(true);
         const scriptLoaded = await loadRazorpayScript();
-        
-        const feeAmount = details?.monthly_fee || 4500;
         
         // Callback helper to handle server logging of the transaction
         const processCompletedPayment = async (razorpayPaymentId: string) => {
@@ -300,7 +301,7 @@ export function StudentDashboardClient({
         setIsProcessingPayment(true);
         try {
             const res = await createPaymentRecord({
-                amount: details?.monthly_fee || 4500,
+                amount: feeAmount,
                 month: billingMonth,
                 year: billingYear,
                 method: 'upi_qr',
@@ -336,6 +337,12 @@ export function StudentDashboardClient({
     const [worksheetTitle, setWorksheetTitle] = useState("")
     const [worksheetPreview, setWorksheetPreview] = useState<string | null>(null)
     const [isSubmittingWorksheet, setIsSubmittingWorksheet] = useState(false)
+
+    // Submit Study Material Modal state
+    const [studyMaterialModalOpen, setStudyMaterialModalOpen] = useState(false)
+    const [studyMaterialTitle, setStudyMaterialTitle] = useState("")
+    const [studyMaterialPreview, setStudyMaterialPreview] = useState<string | null>(null)
+    const [isSubmittingStudyMaterial, setIsSubmittingStudyMaterial] = useState(false)
 
     // Reschedule and Leave states
     const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false)
@@ -494,6 +501,43 @@ export function StudentDashboardClient({
             toast.error("An unexpected error occurred while submitting worksheet")
         } finally {
             setIsSubmittingWorksheet(false)
+        }
+    }
+
+    const handleStudyMaterialFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (file) {
+            const reader = new FileReader()
+            reader.onloadend = () => {
+                setStudyMaterialPreview(reader.result as string)
+            }
+            reader.readAsDataURL(file)
+        }
+    }
+
+    const handleStudyMaterialSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!studyMaterialTitle || !studyMaterialPreview) {
+            toast.error("Please provide a title and select a file.")
+            return
+        }
+        setIsSubmittingStudyMaterial(true)
+        try {
+            const mockUrl = `https://supabase.storage/materials/study_${Date.now()}.jpg`
+            const result = await uploadStudentStudyMaterial(studyMaterialTitle, mockUrl)
+            if (result.success) {
+                toast.success("Study material uploaded successfully!")
+                setStudyMaterialModalOpen(false)
+                setStudyMaterialTitle("")
+                setStudyMaterialPreview(null)
+                window.location.reload()
+            } else {
+                toast.error(result.error || "Failed to upload study material")
+            }
+        } catch (error) {
+            toast.error("An unexpected error occurred while uploading study material")
+        } finally {
+            setIsSubmittingStudyMaterial(false)
         }
     }
 
@@ -747,13 +791,22 @@ export function StudentDashboardClient({
                                 </CardTitle>
                                 <CardDescription className="text-xs">Download worksheet files or upload completed assignments.</CardDescription>
                             </div>
-                            <Button
-                                onClick={() => setWorksheetModalOpen(true)}
-                                className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider text-[10px] gap-1.5 shadow-md shadow-indigo-600/10 flex items-center justify-center shrink-0"
-                            >
-                                <Upload size={12} />
-                                <span>Upload Completed</span>
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button
+                                    onClick={() => setStudyMaterialModalOpen(true)}
+                                    className="h-9 px-4 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold uppercase tracking-wider text-[10px] gap-1.5 shadow-md shadow-violet-600/20 flex items-center justify-center shrink-0"
+                                >
+                                    <Upload size={12} />
+                                    <span>Upload Study Material</span>
+                                </Button>
+                                <Button
+                                    onClick={() => setWorksheetModalOpen(true)}
+                                    className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider text-[10px] gap-1.5 shadow-md shadow-indigo-600/20 flex items-center justify-center shrink-0"
+                                >
+                                    <Upload size={12} />
+                                    <span>Upload Completed</span>
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent className="p-6">
                             {materials.length === 0 ? (
@@ -840,7 +893,7 @@ export function StudentDashboardClient({
                             <div className="flex items-center justify-between">
                                 <div className="space-y-1">
                                     <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Monthly Fee</span>
-                                    <span className="text-3xl font-extrabold text-foreground">₹{(details?.monthly_fee || 4500).toLocaleString('en-IN')}</span>
+                                    <span className="text-3xl font-extrabold text-foreground">₹{feeAmount.toLocaleString('en-IN')}</span>
                                 </div>
                                 <div className="text-right">
                                     <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Payment Status</span>
@@ -1557,7 +1610,7 @@ export function StudentDashboardClient({
                                 <span className="block text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Total Fee Due</span>
                                 <span className="text-xs text-muted-foreground">Includes all classes for the cycle</span>
                             </div>
-                            <span className="text-2xl font-black text-indigo-950 dark:text-indigo-50">₹{(details?.monthly_fee || 4500).toLocaleString('en-IN')}</span>
+                             <span className="text-2xl font-black text-indigo-950 dark:text-indigo-50">₹{feeAmount.toLocaleString('en-IN')}</span>
                         </div>
 
                         {/* QR Code details */}
@@ -1612,6 +1665,96 @@ export function StudentDashboardClient({
                             </Button>
                         </div>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* UPLOAD STUDY MATERIAL DIALOG */}
+            <Dialog open={studyMaterialModalOpen} onOpenChange={setStudyMaterialModalOpen}>
+                <DialogContent className="sm:max-w-[500px] rounded-[2rem] p-8 bg-white dark:bg-[#0a0a0a] border border-border/40 overflow-hidden shadow-2xl">
+                    <div className="absolute -right-20 -top-20 w-48 h-48 bg-violet-500/5 rounded-full blur-3xl pointer-events-none" />
+                    
+                    <DialogHeader className="mb-6 relative z-10 text-left">
+                        <DialogTitle className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                            <Upload className="text-violet-500" size={20} />
+                            <span>Upload Study Material</span>
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                            Upload document/worksheet study materials to share with your tutor.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <form onSubmit={handleStudyMaterialSubmit} className="space-y-5 relative z-10 text-left">
+                        {/* Title of study material */}
+                        <div className="space-y-2">
+                            <Label htmlFor="study-material-title" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Study Material Name / Title *</Label>
+                            <input 
+                                id="study-material-title"
+                                type="text"
+                                required
+                                placeholder="E.g. Hindi Grammar Notes"
+                                value={studyMaterialTitle}
+                                onChange={(e) => setStudyMaterialTitle(e.target.value)}
+                                className="rounded-xl h-10 border border-muted/50 focus-visible:ring-indigo-500 text-sm px-3 w-full bg-background"
+                            />
+                        </div>
+
+                        {/* File upload selector */}
+                        <div className="space-y-2">
+                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Upload File *</Label>
+                            <div className="flex flex-col items-center justify-center border-2 border-dashed border-muted/50 rounded-xl p-6 bg-muted/5 hover:bg-muted/10 transition-colors relative group">
+                                <input 
+                                    type="file" 
+                                    accept="image/*,application/pdf" 
+                                    onChange={handleStudyMaterialFileChange} 
+                                    required={!studyMaterialPreview}
+                                    className="absolute inset-0 opacity-0 cursor-pointer"
+                                />
+                                
+                                {studyMaterialPreview ? (
+                                    <div className="space-y-3 text-center">
+                                        <div className="relative mx-auto h-28 w-28 rounded-xl overflow-hidden border-2 border-indigo-500/30">
+                                            {studyMaterialPreview.startsWith("data:application/pdf") ? (
+                                                <div className="h-full w-full flex items-center justify-center bg-rose-50 text-rose-500 font-bold text-xs">PDF Document</div>
+                                            ) : (
+                                                <img src={studyMaterialPreview} alt="Study material preview" className="h-full w-full object-cover" />
+                                            )}
+                                        </div>
+                                        <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider flex items-center justify-center gap-1">
+                                            <Check size={12} /> File selected
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="text-center space-y-2">
+                                        <div className="h-10 w-10 bg-violet-50 rounded-full flex items-center justify-center mx-auto text-violet-500">
+                                            <Upload size={20} />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-foreground">Click to upload document/image</p>
+                                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Supports PNG, JPG, JPEG, PDF files</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 pt-4 border-t border-border/40">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => { setStudyMaterialModalOpen(false); setStudyMaterialPreview(null); setStudyMaterialTitle(""); }}
+                                className="h-11 px-6 rounded-lg font-bold text-xs"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={isSubmittingStudyMaterial}
+                                className="h-11 px-8 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-bold uppercase tracking-wider text-xs shadow-lg shadow-violet-600/20 flex items-center gap-2"
+                            >
+                                {isSubmittingStudyMaterial ? "Uploading..." : "Upload Material"}
+                            </Button>
+                        </div>
+                    </form>
                 </DialogContent>
             </Dialog>
 

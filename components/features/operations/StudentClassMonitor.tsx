@@ -39,6 +39,7 @@ interface LiveClass {
     student_joined_at?: string | null;
     parent_verified?: boolean | null;
     parent_dispute_reason?: string | null;
+    tutor_joined_late?: boolean | null;
 }
 
 interface StudentWithClasses {
@@ -345,7 +346,14 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                                                 <div className="flex items-center gap-1">
                                                                     <span className="font-bold text-muted-foreground">Tutor:</span>
                                                                     {c.tutor_joined_at ? (
-                                                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{format(new Date(c.tutor_joined_at), 'hh:mm a')}</span>
+                                                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                                                            {format(new Date(c.tutor_joined_at), 'hh:mm a')}
+                                                                            {c.tutor_joined_late && (
+                                                                                <Badge className="bg-rose-500/10 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-500/20 text-[8px] font-black uppercase ml-1 px-1.5 py-0.2 rounded-full scale-90 inline-flex align-middle">
+                                                                                    LATE
+                                                                                </Badge>
+                                                                            )}
+                                                                        </span>
                                                                     ) : (
                                                                         <span className="text-rose-500 font-semibold italic">No Join Log</span>
                                                                     )}
