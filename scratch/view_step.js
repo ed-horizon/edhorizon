@@ -17,15 +17,8 @@ async function run() {
     let count = 0;
     for await (const line of rl) {
         count++;
-        // Check for run_command output
-        if (line.includes('"type":"RUN_COMMAND"') && line.includes('completed successfully') && !line.includes('failed')) {
-            const parsed = JSON.parse(line);
-            const content = parsed.content || '';
-            if (content.includes('node scratch/') && !content.includes('password authentication failed') && !content.includes('failed')) {
-                console.log(`Line ${count} - CMD result:`);
-                console.log(content.substring(0, 1000));
-                console.log("-----------------------------------------");
-            }
+        if (count >= 10130 && count <= 10160) {
+            console.log(`Line ${count}: ${line.substring(0, 1000)}`);
         }
     }
 }
