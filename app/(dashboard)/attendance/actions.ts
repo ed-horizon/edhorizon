@@ -5,6 +5,229 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { startOfMonth, endOfMonth, isAfter } from "date-fns";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getSignedUploadUrl, getSignedDownloadUrl, r2Client } from "@/lib/r2";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+
+/**
+ * Resolves an R2 object key into a signed download URL if it's a relative path/key.
+ * Returns the URL as-is if it's already an external HTTP/HTTPS link.
+ */
+export async function resolveR2Url(url: string | null | undefined): Promise<string | null | undefined> {
+    if (!url) return url;
+    
+    let key = url;
+    if (url.includes("supabase.storage/")) {
+        const parts = url.split("supabase.storage/");
+        key = parts[1];
+    } else if (url.includes("/storage/v1/object/public/")) {
+        const parts = url.split("/storage/v1/object/public/");
+        key = parts[1];
+    }
+    
+    if (key.startsWith("http://") || key.startsWith("https://")) {
+        return key;
+    }
+    
+    try {
+        return await getSignedDownloadUrl(key);
+    } catch (err) {
+        console.error("resolveR2Url Error:", err);
+        return url;
+    }
+}
+
+/**
+ * Generates a presigned Cloudflare R2 upload URL and stores the metadata in Supabase.
+ */
+export async function getSignedUploadUrlAction(
+    fileName: string,
+    mimeType: string,
+    fileSize: number,
+    purpose: 'teacher_material' | 'homework_submission' | 'student_material' | 'preview',
+    studentId?: string,
+    teacherId?: string,
+    homeworkId?: string
+) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    // Validate size (max 20MB)
+    if (fileSize > 20 * 1024 * 1024) {
+        return { success: false, error: "File size exceeds the 20MB limit." };
+    }
+
+    // Validate MIME type
+    const allowedMimeTypes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/heic',
+        'image/heif'
+    ];
+    if (!allowedMimeTypes.includes(mimeType)) {
+        return { success: false, error: "Unsupported file type." };
+    }
+
+    // Generate unique object key using Crypto UUID or fallback
+    const fileId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+    const cleanFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+    let key = `tmp/${user.id}/${fileId}-${cleanFileName}`;
+
+    if (purpose === 'homework_submission' && studentId && homeworkId) {
+        key = `students/${studentId}/homework/${homeworkId}/submissions/${fileId}-${cleanFileName}`;
+    } else if (purpose === 'student_material' && studentId) {
+        key = `students/${studentId}/materials/${fileId}-${cleanFileName}`;
+    } else if (purpose === 'teacher_material' && studentId) {
+        key = `teachers/${user.id}/students/${studentId}/materials/${fileId}-${cleanFileName}`;
+    }
+
+    try {
+        const uploadUrl = await getSignedUploadUrl(key, mimeType);
+
+        // Save metadata to Supabase
+        const { data: metadata, error: dbError } = await supabase
+            .from('file_metadata')
+            .insert({
+                r2_key: key,
+                original_filename: fileName,
+                mime_type: mimeType,
+                size_bytes: fileSize,
+                uploaded_by: user.id,
+                student_id: studentId || null,
+                teacher_id: teacherId || null,
+                homework_id: homeworkId || null,
+                purpose: purpose,
+                expiry_at: purpose === 'homework_submission' 
+                    ? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
+                    : purpose === 'teacher_material'
+                    ? new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString()
+                    : null
+            })
+            .select()
+            .single();
+
+        if (dbError) {
+            console.error("file_metadata insertion error:", dbError);
+            return { success: false, error: dbError.message };
+        }
+
+        return {
+            success: true,
+            uploadUrl,
+            fileKey: key,
+            metadataId: metadata.id
+        };
+    } catch (error: any) {
+        console.error("getSignedUploadUrlAction error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Uploads a file directly to Cloudflare R2 from the Next.js server-side,
+ * bypassing any client-side CORS issues, and stores the metadata in Supabase.
+ */
+export async function uploadFileToR2Action(
+    formData: FormData,
+    purpose: 'teacher_material' | 'homework_submission' | 'student_material' | 'preview',
+    studentId?: string,
+    teacherId?: string,
+    homeworkId?: string
+) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const file = formData.get('file') as File;
+    if (!file) return { success: false, error: "No file provided" };
+
+    // Validate size (max 20MB)
+    if (file.size > 20 * 1024 * 1024) {
+        return { success: false, error: "File size exceeds the 20MB limit." };
+    }
+
+    // Validate MIME type
+    const allowedMimeTypes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/heic',
+        'image/heif'
+    ];
+    if (!allowedMimeTypes.includes(file.type)) {
+        return { success: false, error: "Unsupported file type." };
+    }
+
+    // Generate unique object key using Crypto UUID or fallback
+    const fileId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+    const cleanFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    let key = `tmp/${user.id}/${fileId}-${cleanFileName}`;
+
+    if (purpose === 'homework_submission' && studentId && homeworkId) {
+        key = `students/${studentId}/homework/${homeworkId}/submissions/${fileId}-${cleanFileName}`;
+    } else if (purpose === 'student_material' && studentId) {
+        key = `students/${studentId}/materials/${fileId}-${cleanFileName}`;
+    } else if (purpose === 'teacher_material' && studentId) {
+        key = `teachers/${user.id}/students/${studentId}/materials/${fileId}-${cleanFileName}`;
+    }
+
+    try {
+        // Convert File to ArrayBuffer then Buffer for upload
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        // Upload to Cloudflare R2
+        await r2Client.send(new PutObjectCommand({
+            Bucket: process.env.R2_BUCKET_NAME || "edhorizon-homework",
+            Key: key,
+            Body: buffer,
+            ContentType: file.type
+        }));
+
+        // Save metadata to Supabase
+        const { data: metadata, error: dbError } = await supabase
+            .from('file_metadata')
+            .insert({
+                r2_key: key,
+                original_filename: file.name,
+                mime_type: file.type,
+                size_bytes: file.size,
+                uploaded_by: user.id,
+                student_id: studentId || null,
+                teacher_id: teacherId || null,
+                homework_id: homeworkId || null,
+                purpose: purpose,
+                expiry_at: purpose === 'homework_submission' 
+                    ? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
+                    : purpose === 'teacher_material'
+                    ? new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString()
+                    : null
+            })
+            .select()
+            .single();
+
+        if (dbError) {
+            console.error("file_metadata insertion error:", dbError);
+            return { success: false, error: dbError.message };
+        }
+
+        return {
+            success: true,
+            fileKey: key,
+            metadataId: metadata.id
+        };
+    } catch (error: any) {
+        console.error("uploadFileToR2Action error:", error);
+        return { success: false, error: error.message };
+    }
+}
 
 // --- Live Classes ---
 
@@ -502,7 +725,7 @@ export async function finalizeClassSession(
 
 // --- Teacher Action Loggers ---
 
-export async function assignHomework(studentId: string, title: string, description: string, dueDate: string) {
+export async function assignHomework(studentId: string, title: string, description: string, dueDate: string, worksheetUrl?: string) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Unauthorized" };
@@ -515,7 +738,8 @@ export async function assignHomework(studentId: string, title: string, descripti
             title,
             description,
             due_date: dueDate || null,
-            status: 'assigned'
+            status: 'assigned',
+            worksheet_url: worksheetUrl || null
         });
 
     if (error) {
@@ -835,6 +1059,22 @@ export async function getStudentHistory(studentId: string) {
 
     if (hwError) console.error("Error fetching student homework:", hwError);
 
+    // Resolve R2 URLs for homework submissions and worksheets
+    const resolvedHomework = homework ? await Promise.all(homework.map(async hw => {
+        let worksheetUrl = hw.worksheet_url;
+        if (!worksheetUrl && hw.description) {
+            const match = hw.description.match(/Attachment File:\s*(https?:\/\/[^\s\)\"\'\>]+)/i);
+            if (match) {
+                worksheetUrl = match[1];
+            }
+        }
+        return {
+            ...hw,
+            submission_url: await resolveR2Url(hw.submission_url),
+            worksheet_url: await resolveR2Url(worksheetUrl)
+        };
+    })) : [];
+
     // 3. Fetch uploaded materials
     const { data: materials, error: matError } = await supabase
         .from('student_materials')
@@ -843,6 +1083,12 @@ export async function getStudentHistory(studentId: string) {
         .order('created_at', { ascending: false });
 
     if (matError) console.error("Error fetching student materials:", matError);
+
+    // Resolve R2 URLs for uploaded materials
+    const resolvedMaterials = materials ? await Promise.all(materials.map(async mat => ({
+        ...mat,
+        file_url: await resolveR2Url(mat.file_url)
+    }))) : [];
 
     // 4. Fetch reschedule requests
     const { data: reschedule, error: resError } = await supabase
@@ -855,8 +1101,8 @@ export async function getStudentHistory(studentId: string) {
 
     return {
         classes: classes || [],
-        homework: homework || [],
-        materials: materials || [],
+        homework: resolvedHomework,
+        materials: resolvedMaterials,
         reschedule: reschedule || []
     };
 }
@@ -1266,6 +1512,22 @@ export async function getStudentDashboardData() {
         .eq('student_id', user.id)
         .order('due_date', { ascending: true });
 
+    // Resolve R2 URLs for homework submissions and worksheets
+    const resolvedHomeworkData = homeworkData ? await Promise.all(homeworkData.map(async hw => {
+        let worksheetUrl = hw.worksheet_url;
+        if (!worksheetUrl && hw.description) {
+            const match = hw.description.match(/Attachment File:\s*(https?:\/\/[^\s\)\"\'\>]+)/i);
+            if (match) {
+                worksheetUrl = match[1];
+            }
+        }
+        return {
+            ...hw,
+            submission_url: await resolveR2Url(hw.submission_url),
+            worksheet_url: await resolveR2Url(worksheetUrl)
+        };
+    })) : [];
+
     // 3. Fetch shared materials
     const { data: materialsData } = await supabase
         .from('student_materials')
@@ -1275,6 +1537,12 @@ export async function getStudentDashboardData() {
         `)
         .eq('student_id', user.id)
         .order('created_at', { ascending: false });
+
+    // Resolve R2 URLs for uploaded materials
+    const resolvedMaterialsData = materialsData ? await Promise.all(materialsData.map(async mat => ({
+        ...mat,
+        file_url: await resolveR2Url(mat.file_url)
+    }))) : [];
 
     // 4. Fetch student details (fees & billing info)
     const { data: detailsData } = await supabase
@@ -1333,8 +1601,8 @@ export async function getStudentDashboardData() {
         todayClasses,
         upcomingClass,
         allCalendarClasses: classesData || [],
-        homework: homeworkData || [],
-        materials: materialsData || [],
+        homework: resolvedHomeworkData,
+        materials: resolvedMaterialsData,
         details: detailsData || null,
         attendanceHistory: attendanceData || [],
         completedClasses,

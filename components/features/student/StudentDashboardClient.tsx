@@ -16,7 +16,7 @@ import {
 import { isSameDay, format, isAfter } from "date-fns"
 import { cn, formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { submitHomework, requestReschedule, applyForLeave, logStudentJoinClass, submitCompletedWorksheet, uploadStudentStudyMaterial } from "@/app/(dashboard)/attendance/actions"
+import { submitHomework, requestReschedule, applyForLeave, logStudentJoinClass, submitCompletedWorksheet, uploadStudentStudyMaterial, uploadFileToR2Action } from "@/app/(dashboard)/attendance/actions"
 import { createPaymentRecord } from "@/app/(dashboard)/payments/actions"
 import { toast } from "sonner"
 import { ClassLogsCalendarClient } from "@/components/features/class-logs/ClassLogsCalendarClient"
@@ -46,6 +46,7 @@ interface Homework {
     submission_url?: string | null;
     submission_notes?: string | null;
     teacher?: { full_name: string } | null;
+    worksheet_url?: string | null;
 }
 
 interface Material {
@@ -330,18 +331,21 @@ export function StudentDashboardClient({
     const [selectedHomework, setSelectedHomework] = useState<Homework | null>(null)
     const [submissionNotes, setSubmissionNotes] = useState("")
     const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+    const [selectedHomeworkFile, setSelectedHomeworkFile] = useState<File | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     // Submit Worksheet Modal state
     const [worksheetModalOpen, setWorksheetModalOpen] = useState(false)
     const [worksheetTitle, setWorksheetTitle] = useState("")
     const [worksheetPreview, setWorksheetPreview] = useState<string | null>(null)
+    const [selectedWorksheetFile, setSelectedWorksheetFile] = useState<File | null>(null)
     const [isSubmittingWorksheet, setIsSubmittingWorksheet] = useState(false)
 
     // Submit Study Material Modal state
     const [studyMaterialModalOpen, setStudyMaterialModalOpen] = useState(false)
     const [studyMaterialTitle, setStudyMaterialTitle] = useState("")
     const [studyMaterialPreview, setStudyMaterialPreview] = useState<string | null>(null)
+    const [selectedStudyMaterialFile, setSelectedStudyMaterialFile] = useState<File | null>(null)
     const [isSubmittingStudyMaterial, setIsSubmittingStudyMaterial] = useState(false)
 
     // Reschedule and Leave states
@@ -358,6 +362,39 @@ export function StudentDashboardClient({
     const [leaveEndDate, setLeaveEndDate] = useState("")
     const [leaveReason, setLeaveReason] = useState("")
     const [isSubmittingLeave, setIsSubmittingLeave] = useState(false)
+
+    // Parses legacy description for embedded URLs, and renders clickable R2 and legacy worksheets.
+    const renderHomeworkDescription = (hw: Homework) => {
+        const desc = hw.description || '';
+        const match = desc.match(/Attachment File:\s*(https?:\/\/[^\s\)\"\'\>]+)/i);
+        let cleanDesc = desc;
+        let attachmentUrl = hw.worksheet_url || null;
+
+        if (match) {
+            cleanDesc = desc.replace(/Attachment File:\s*https?:\/\/[^\s\)\"\'\>]+/i, '').trim();
+            if (!attachmentUrl) {
+                attachmentUrl = match[1];
+            }
+        }
+
+        return (
+            <div className="space-y-2">
+                {cleanDesc ? (
+                    <p className="text-xs text-muted-foreground leading-normal">{cleanDesc}</p>
+                ) : (
+                    <p className="text-xs text-muted-foreground italic leading-normal">No special instructions from teacher.</p>
+                )}
+                {attachmentUrl && (
+                    <div className="mt-1">
+                        <a href={attachmentUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50 dark:text-indigo-300 font-bold uppercase tracking-wider text-[9px] rounded-lg border border-indigo-200/40 transition-colors">
+                            <Download size={11} />
+                            <span>Download Assigned Worksheet</span>
+                        </a>
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     const handleRescheduleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -433,6 +470,7 @@ export function StudentDashboardClient({
     const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (file) {
+            setSelectedHomeworkFile(file)
             const reader = new FileReader()
             reader.onloadend = () => {
                 setPhotoPreview(reader.result as string)
@@ -447,21 +485,42 @@ export function StudentDashboardClient({
 
         setIsSubmitting(true)
         try {
-            // Mocks file upload to Supabase bucket by generating a mock URL.
-            const mockUrl = photoPreview ? `https://supabase.storage/submissions/${selectedHomework.id}_photo.jpg` : ""
-            const result = await submitHomework(selectedHomework.id, mockUrl, submissionNotes)
+            let finalUrl = ""
+
+            if (selectedHomeworkFile) {
+                const formData = new FormData()
+                formData.append('file', selectedHomeworkFile)
+
+                const uploadRes = await uploadFileToR2Action(
+                    formData,
+                    'homework_submission',
+                    currentUserProfile?.id,
+                    undefined,
+                    selectedHomework.id
+                )
+
+                if (!uploadRes.success || !uploadRes.fileKey) {
+                    throw new Error(uploadRes.error || "Failed to upload homework file")
+                }
+
+                finalUrl = uploadRes.fileKey
+            }
+
+            const result = await submitHomework(selectedHomework.id, finalUrl, submissionNotes)
             
             if (result.success) {
                 toast.success("Homework worksheet submitted successfully! Your teacher will review it.")
                 setSubmitModalOpen(false)
                 setPhotoPreview(null)
+                setSelectedHomeworkFile(null)
                 setSubmissionNotes("")
                 setSelectedHomework(null)
+                window.location.reload()
             } else {
                 toast.error(result.error || "Failed to submit work")
             }
-        } catch (error) {
-            toast.error("An unexpected error occurred while submitting homework")
+        } catch (error: any) {
+            toast.error(error.message || "An unexpected error occurred while submitting homework")
         } finally {
             setIsSubmitting(false)
         }
@@ -470,6 +529,7 @@ export function StudentDashboardClient({
     const handleWorksheetFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (file) {
+            setSelectedWorksheetFile(file)
             const reader = new FileReader()
             reader.onloadend = () => {
                 setWorksheetPreview(reader.result as string)
@@ -480,25 +540,37 @@ export function StudentDashboardClient({
 
     const handleWorksheetSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!worksheetTitle || !worksheetPreview) {
+        if (!worksheetTitle || !selectedWorksheetFile) {
             toast.error("Please provide a title and select a file.")
             return
         }
         setIsSubmittingWorksheet(true)
         try {
-            const mockUrl = `https://supabase.storage/materials/completed_${Date.now()}.jpg`
-            const result = await submitCompletedWorksheet(worksheetTitle, mockUrl)
+            const formData = new FormData()
+            formData.append('file', selectedWorksheetFile)
+
+            const uploadRes = await uploadFileToR2Action(
+                formData,
+                'student_material'
+            )
+
+            if (!uploadRes.success || !uploadRes.fileKey) {
+                throw new Error(uploadRes.error || "Failed to upload worksheet file")
+            }
+
+            const result = await submitCompletedWorksheet(worksheetTitle, uploadRes.fileKey)
             if (result.success) {
                 toast.success("Completed worksheet uploaded successfully!")
                 setWorksheetModalOpen(false)
                 setWorksheetTitle("")
                 setWorksheetPreview(null)
+                setSelectedWorksheetFile(null)
                 window.location.reload()
             } else {
                 toast.error(result.error || "Failed to upload worksheet")
             }
-        } catch (error) {
-            toast.error("An unexpected error occurred while submitting worksheet")
+        } catch (error: any) {
+            toast.error(error.message || "An unexpected error occurred while submitting worksheet")
         } finally {
             setIsSubmittingWorksheet(false)
         }
@@ -507,6 +579,7 @@ export function StudentDashboardClient({
     const handleStudyMaterialFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (file) {
+            setSelectedStudyMaterialFile(file)
             const reader = new FileReader()
             reader.onloadend = () => {
                 setStudyMaterialPreview(reader.result as string)
@@ -517,25 +590,37 @@ export function StudentDashboardClient({
 
     const handleStudyMaterialSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!studyMaterialTitle || !studyMaterialPreview) {
+        if (!studyMaterialTitle || !selectedStudyMaterialFile) {
             toast.error("Please provide a title and select a file.")
             return
         }
         setIsSubmittingStudyMaterial(true)
         try {
-            const mockUrl = `https://supabase.storage/materials/study_${Date.now()}.jpg`
-            const result = await uploadStudentStudyMaterial(studyMaterialTitle, mockUrl)
+            const formData = new FormData()
+            formData.append('file', selectedStudyMaterialFile)
+
+            const uploadRes = await uploadFileToR2Action(
+                formData,
+                'student_material'
+            )
+
+            if (!uploadRes.success || !uploadRes.fileKey) {
+                throw new Error(uploadRes.error || "Failed to upload study material file")
+            }
+
+            const result = await uploadStudentStudyMaterial(studyMaterialTitle, uploadRes.fileKey)
             if (result.success) {
                 toast.success("Study material uploaded successfully!")
                 setStudyMaterialModalOpen(false)
                 setStudyMaterialTitle("")
                 setStudyMaterialPreview(null)
+                setSelectedStudyMaterialFile(null)
                 window.location.reload()
             } else {
                 toast.error(result.error || "Failed to upload study material")
             }
-        } catch (error) {
-            toast.error("An unexpected error occurred while uploading study material")
+        } catch (error: any) {
+            toast.error(error.message || "An unexpected error occurred while uploading study material")
         } finally {
             setIsSubmittingStudyMaterial(false)
         }
@@ -743,7 +828,7 @@ export function StudentDashboardClient({
                                                     {hw.status}
                                                 </Badge>
                                             </div>
-                                            <p className="text-xs text-muted-foreground leading-normal">{hw.description || 'No special instructions from teacher.'}</p>
+                                            {renderHomeworkDescription(hw)}
                                             
                                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-2">
                                                 <span>Tutor: {hw.teacher?.full_name || 'Assigned Tutor'}</span>
@@ -1227,7 +1312,7 @@ export function StudentDashboardClient({
                             <div className="flex flex-col items-center justify-center border-2 border-dashed border-muted/50 rounded-xl p-6 bg-muted/5 hover:bg-muted/10 transition-colors relative group">
                                 <input 
                                     type="file" 
-                                    accept="image/*" 
+                                    accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
                                     onChange={handlePhotoChange} 
                                     required={!photoPreview}
                                     className="absolute inset-0 opacity-0 cursor-pointer"
@@ -1235,11 +1320,17 @@ export function StudentDashboardClient({
                                 
                                 {photoPreview ? (
                                     <div className="space-y-3 text-center">
-                                        <div className="relative mx-auto h-28 w-28 rounded-xl overflow-hidden border-2 border-indigo-500/30">
-                                            <img src={photoPreview} alt="Worksheet preview" className="h-full w-full object-cover" />
+                                        <div className="relative mx-auto h-28 w-28 rounded-xl overflow-hidden border-2 border-indigo-500/30 flex items-center justify-center bg-muted">
+                                            {selectedHomeworkFile?.type.includes("pdf") ? (
+                                                <div className="h-full w-full flex items-center justify-center bg-rose-50 text-rose-500 font-bold text-xs">PDF Document</div>
+                                            ) : selectedHomeworkFile?.type.includes("word") || selectedHomeworkFile?.name.endsWith(".doc") || selectedHomeworkFile?.name.endsWith(".docx") ? (
+                                                <div className="h-full w-full flex items-center justify-center bg-blue-50 text-blue-500 font-bold text-xs">Word Document</div>
+                                            ) : (
+                                                <img src={photoPreview} alt="Worksheet preview" className="h-full w-full object-cover" />
+                                            )}
                                         </div>
                                         <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider flex items-center justify-center gap-1">
-                                            <Check size={12} /> Photo selected
+                                            <Check size={12} /> File selected: {selectedHomeworkFile?.name}
                                         </p>
                                     </div>
                                 ) : (
@@ -1248,8 +1339,8 @@ export function StudentDashboardClient({
                                             <Camera size={20} />
                                         </div>
                                         <div>
-                                            <p className="text-xs font-bold text-foreground">Click to upload worksheet photo</p>
-                                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Supports PNG, JPG, JPEG files</p>
+                                            <p className="text-xs font-bold text-foreground">Click to upload worksheet</p>
+                                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Supports Images, PDFs, Word docs</p>
                                         </div>
                                     </div>
                                 )}
@@ -1273,7 +1364,7 @@ export function StudentDashboardClient({
                             <Button
                                 type="button"
                                 variant="ghost"
-                                onClick={() => { setSubmitModalOpen(false); setPhotoPreview(null); }}
+                                onClick={() => { setSubmitModalOpen(false); setPhotoPreview(null); setSelectedHomeworkFile(null); }}
                                 className="h-11 px-6 rounded-lg font-bold text-xs"
                             >
                                 Cancel
@@ -1511,15 +1602,17 @@ export function StudentDashboardClient({
                                 
                                 {worksheetPreview ? (
                                     <div className="space-y-3 text-center">
-                                        <div className="relative mx-auto h-28 w-28 rounded-xl overflow-hidden border-2 border-indigo-500/30">
-                                            {worksheetPreview.startsWith("data:application/pdf") ? (
+                                        <div className="relative mx-auto h-28 w-28 rounded-xl overflow-hidden border-2 border-indigo-500/30 flex items-center justify-center bg-muted">
+                                            {selectedWorksheetFile?.type.includes("pdf") ? (
                                                 <div className="h-full w-full flex items-center justify-center bg-rose-50 text-rose-500 font-bold text-xs">PDF Document</div>
+                                            ) : selectedWorksheetFile?.type.includes("word") || selectedWorksheetFile?.name.endsWith(".doc") || selectedWorksheetFile?.name.endsWith(".docx") ? (
+                                                <div className="h-full w-full flex items-center justify-center bg-blue-50 text-blue-500 font-bold text-xs">Word Document</div>
                                             ) : (
                                                 <img src={worksheetPreview} alt="Worksheet preview" className="h-full w-full object-cover" />
                                             )}
                                         </div>
                                         <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider flex items-center justify-center gap-1">
-                                            <Check size={12} /> File selected
+                                            <Check size={12} /> File selected: {selectedWorksheetFile?.name}
                                         </p>
                                     </div>
                                 ) : (
@@ -1529,7 +1622,7 @@ export function StudentDashboardClient({
                                         </div>
                                         <div>
                                             <p className="text-xs font-bold text-foreground">Click to upload worksheet</p>
-                                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Supports PNG, JPG, JPEG, PDF files</p>
+                                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Supports PNG, JPG, JPEG, PDF, Word files</p>
                                         </div>
                                     </div>
                                 )}
@@ -1540,7 +1633,7 @@ export function StudentDashboardClient({
                             <Button
                                 type="button"
                                 variant="ghost"
-                                onClick={() => { setWorksheetModalOpen(false); setWorksheetPreview(null); setWorksheetTitle(""); }}
+                                onClick={() => { setWorksheetModalOpen(false); setWorksheetPreview(null); setWorksheetTitle(""); setSelectedWorksheetFile(null); }}
                                 className="h-11 px-6 rounded-lg font-bold text-xs"
                             >
                                 Cancel
@@ -1712,15 +1805,17 @@ export function StudentDashboardClient({
                                 
                                 {studyMaterialPreview ? (
                                     <div className="space-y-3 text-center">
-                                        <div className="relative mx-auto h-28 w-28 rounded-xl overflow-hidden border-2 border-indigo-500/30">
-                                            {studyMaterialPreview.startsWith("data:application/pdf") ? (
+                                        <div className="relative mx-auto h-28 w-28 rounded-xl overflow-hidden border-2 border-indigo-500/30 flex items-center justify-center bg-muted">
+                                            {selectedStudyMaterialFile?.type.includes("pdf") ? (
                                                 <div className="h-full w-full flex items-center justify-center bg-rose-50 text-rose-500 font-bold text-xs">PDF Document</div>
+                                            ) : selectedStudyMaterialFile?.type.includes("word") || selectedStudyMaterialFile?.name.endsWith(".doc") || selectedStudyMaterialFile?.name.endsWith(".docx") ? (
+                                                <div className="h-full w-full flex items-center justify-center bg-blue-50 text-blue-500 font-bold text-xs">Word Document</div>
                                             ) : (
                                                 <img src={studyMaterialPreview} alt="Study material preview" className="h-full w-full object-cover" />
                                             )}
                                         </div>
                                         <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider flex items-center justify-center gap-1">
-                                            <Check size={12} /> File selected
+                                            <Check size={12} /> File selected: {selectedStudyMaterialFile?.name}
                                         </p>
                                     </div>
                                 ) : (
@@ -1730,7 +1825,7 @@ export function StudentDashboardClient({
                                         </div>
                                         <div>
                                             <p className="text-xs font-bold text-foreground">Click to upload document/image</p>
-                                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Supports PNG, JPG, JPEG, PDF files</p>
+                                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Supports PNG, JPG, JPEG, PDF, Word files</p>
                                         </div>
                                     </div>
                                 )}
@@ -1741,7 +1836,7 @@ export function StudentDashboardClient({
                             <Button
                                 type="button"
                                 variant="ghost"
-                                onClick={() => { setStudyMaterialModalOpen(false); setStudyMaterialPreview(null); setStudyMaterialTitle(""); }}
+                                onClick={() => { setStudyMaterialModalOpen(false); setStudyMaterialPreview(null); setStudyMaterialTitle(""); setSelectedStudyMaterialFile(null); }}
                                 className="h-11 px-6 rounded-lg font-bold text-xs"
                             >
                                 Cancel

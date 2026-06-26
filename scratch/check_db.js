@@ -1,32 +1,28 @@
-const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 
-const envFile = fs.readFileSync('.env.local', 'utf8');
-const env = {};
-envFile.split('\n').forEach(line => {
-    const parts = line.split('=');
-    if (parts.length >= 2) {
-        env[parts[0].trim()] = parts.slice(1).join('=').trim();
-    }
-});
+const supabaseUrl = 'https://bgaepltxhycmripzovan.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnYWVwbHR4aHljbXJpcHpvdmFuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDExMTE4MCwiZXhwIjoyMDg1Njg3MTgwfQ.EJwpYBKvfNQZRa9mtsNqa-Nn7-IUP4uhSeqTNnm1kN0';
 
-async function run() {
-    const supabase = createClient(
-        env.NEXT_PUBLIC_SUPABASE_URL,
-        env.SUPABASE_SERVICE_ROLE_KEY
-    );
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log("Fetching student_details schema info...");
+async function checkHomework() {
+    console.log("Fetching homework assignments...");
     const { data, error } = await supabase
-        .from('student_details')
+        .from('homework_assignments')
         .select('*')
         .limit(1);
 
     if (error) {
-        console.error("Query failed:", error);
+        console.error("Error fetching:", error);
+        return;
+    }
+
+    if (data && data.length > 0) {
+        console.log("Full record keys:", Object.keys(data[0]));
+        console.log("Full record data:", data[0]);
     } else {
-        console.log("Success! Columns in student_details:", Object.keys(data[0] || {}));
+        console.log("No data found.");
     }
 }
 
-run();
+checkHomework();
