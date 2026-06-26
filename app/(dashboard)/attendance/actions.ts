@@ -13,11 +13,22 @@ import { getSignedUploadUrl, getSignedDownloadUrl } from "@/lib/r2";
  */
 export async function resolveR2Url(url: string | null | undefined): Promise<string | null | undefined> {
     if (!url) return url;
-    if (url.startsWith("http://") || url.startsWith("https://")) {
-        return url;
+    
+    let key = url;
+    if (url.includes("supabase.storage/")) {
+        const parts = url.split("supabase.storage/");
+        key = parts[1];
+    } else if (url.includes("/storage/v1/object/public/")) {
+        const parts = url.split("/storage/v1/object/public/");
+        key = parts[1];
     }
+    
+    if (key.startsWith("http://") || key.startsWith("https://")) {
+        return key;
+    }
+    
     try {
-        return await getSignedDownloadUrl(url);
+        return await getSignedDownloadUrl(key);
     } catch (err) {
         console.error("resolveR2Url Error:", err);
         return url;
@@ -946,11 +957,20 @@ export async function getStudentHistory(studentId: string) {
     if (hwError) console.error("Error fetching student homework:", hwError);
 
     // Resolve R2 URLs for homework submissions and worksheets
-    const resolvedHomework = homework ? await Promise.all(homework.map(async hw => ({
-        ...hw,
-        submission_url: await resolveR2Url(hw.submission_url),
-        worksheet_url: await resolveR2Url(hw.worksheet_url)
-    }))) : [];
+    const resolvedHomework = homework ? await Promise.all(homework.map(async hw => {
+        let worksheetUrl = hw.worksheet_url;
+        if (!worksheetUrl && hw.description) {
+            const match = hw.description.match(/Attachment File:\s*(https?:\/\/[^\s\)\"\'\>]+)/i);
+            if (match) {
+                worksheetUrl = match[1];
+            }
+        }
+        return {
+            ...hw,
+            submission_url: await resolveR2Url(hw.submission_url),
+            worksheet_url: await resolveR2Url(worksheetUrl)
+        };
+    })) : [];
 
     // 3. Fetch uploaded materials
     const { data: materials, error: matError } = await supabase
@@ -1390,11 +1410,20 @@ export async function getStudentDashboardData() {
         .order('due_date', { ascending: true });
 
     // Resolve R2 URLs for homework submissions and worksheets
-    const resolvedHomeworkData = homeworkData ? await Promise.all(homeworkData.map(async hw => ({
-        ...hw,
-        submission_url: await resolveR2Url(hw.submission_url),
-        worksheet_url: await resolveR2Url(hw.worksheet_url)
-    }))) : [];
+    const resolvedHomeworkData = homeworkData ? await Promise.all(homeworkData.map(async hw => {
+        let worksheetUrl = hw.worksheet_url;
+        if (!worksheetUrl && hw.description) {
+            const match = hw.description.match(/Attachment File:\s*(https?:\/\/[^\s\)\"\'\>]+)/i);
+            if (match) {
+                worksheetUrl = match[1];
+            }
+        }
+        return {
+            ...hw,
+            submission_url: await resolveR2Url(hw.submission_url),
+            worksheet_url: await resolveR2Url(worksheetUrl)
+        };
+    })) : [];
 
     // 3. Fetch shared materials
     const { data: materialsData } = await supabase
