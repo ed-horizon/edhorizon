@@ -16,7 +16,7 @@ import {
 import { isSameDay, format, isAfter } from "date-fns"
 import { cn, formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { submitHomework, requestReschedule, applyForLeave, logStudentJoinClass, submitCompletedWorksheet, uploadStudentStudyMaterial, getSignedUploadUrlAction } from "@/app/(dashboard)/attendance/actions"
+import { submitHomework, requestReschedule, applyForLeave, logStudentJoinClass, submitCompletedWorksheet, uploadStudentStudyMaterial, uploadFileToR2Action } from "@/app/(dashboard)/attendance/actions"
 import { createPaymentRecord } from "@/app/(dashboard)/payments/actions"
 import { toast } from "sonner"
 import { ClassLogsCalendarClient } from "@/components/features/class-logs/ClassLogsCalendarClient"
@@ -488,35 +488,22 @@ export function StudentDashboardClient({
             let finalUrl = ""
 
             if (selectedHomeworkFile) {
-                // Get presigned upload URL
-                const signedRes = await getSignedUploadUrlAction(
-                    selectedHomeworkFile.name,
-                    selectedHomeworkFile.type,
-                    selectedHomeworkFile.size,
+                const formData = new FormData()
+                formData.append('file', selectedHomeworkFile)
+
+                const uploadRes = await uploadFileToR2Action(
+                    formData,
                     'homework_submission',
                     currentUserProfile?.id,
                     undefined,
                     selectedHomework.id
                 )
 
-                if (!signedRes.success || !signedRes.uploadUrl || !signedRes.fileKey) {
-                    throw new Error(signedRes.error || "Failed to generate upload URL")
+                if (!uploadRes.success || !uploadRes.fileKey) {
+                    throw new Error(uploadRes.error || "Failed to upload homework file")
                 }
 
-                // Upload directly to Cloudflare R2
-                const uploadRes = await fetch(signedRes.uploadUrl, {
-                    method: 'PUT',
-                    body: selectedHomeworkFile,
-                    headers: {
-                        'Content-Type': selectedHomeworkFile.type
-                    }
-                })
-
-                if (!uploadRes.ok) {
-                    throw new Error("Failed to upload homework file directly to storage")
-                }
-
-                finalUrl = signedRes.fileKey
+                finalUrl = uploadRes.fileKey
             }
 
             const result = await submitHomework(selectedHomework.id, finalUrl, submissionNotes)
@@ -559,32 +546,19 @@ export function StudentDashboardClient({
         }
         setIsSubmittingWorksheet(true)
         try {
-            // Get presigned upload URL
-            const signedRes = await getSignedUploadUrlAction(
-                selectedWorksheetFile.name,
-                selectedWorksheetFile.type,
-                selectedWorksheetFile.size,
+            const formData = new FormData()
+            formData.append('file', selectedWorksheetFile)
+
+            const uploadRes = await uploadFileToR2Action(
+                formData,
                 'student_material'
             )
 
-            if (!signedRes.success || !signedRes.uploadUrl || !signedRes.fileKey) {
-                throw new Error(signedRes.error || "Failed to generate upload URL")
+            if (!uploadRes.success || !uploadRes.fileKey) {
+                throw new Error(uploadRes.error || "Failed to upload worksheet file")
             }
 
-            // Upload directly to Cloudflare R2
-            const uploadRes = await fetch(signedRes.uploadUrl, {
-                method: 'PUT',
-                body: selectedWorksheetFile,
-                headers: {
-                    'Content-Type': selectedWorksheetFile.type
-                }
-            })
-
-            if (!uploadRes.ok) {
-                throw new Error("Failed to upload worksheet file directly to storage")
-            }
-
-            const result = await submitCompletedWorksheet(worksheetTitle, signedRes.fileKey)
+            const result = await submitCompletedWorksheet(worksheetTitle, uploadRes.fileKey)
             if (result.success) {
                 toast.success("Completed worksheet uploaded successfully!")
                 setWorksheetModalOpen(false)
@@ -622,32 +596,19 @@ export function StudentDashboardClient({
         }
         setIsSubmittingStudyMaterial(true)
         try {
-            // Get presigned upload URL
-            const signedRes = await getSignedUploadUrlAction(
-                selectedStudyMaterialFile.name,
-                selectedStudyMaterialFile.type,
-                selectedStudyMaterialFile.size,
+            const formData = new FormData()
+            formData.append('file', selectedStudyMaterialFile)
+
+            const uploadRes = await uploadFileToR2Action(
+                formData,
                 'student_material'
             )
 
-            if (!signedRes.success || !signedRes.uploadUrl || !signedRes.fileKey) {
-                throw new Error(signedRes.error || "Failed to generate upload URL")
+            if (!uploadRes.success || !uploadRes.fileKey) {
+                throw new Error(uploadRes.error || "Failed to upload study material file")
             }
 
-            // Upload directly to Cloudflare R2
-            const uploadRes = await fetch(signedRes.uploadUrl, {
-                method: 'PUT',
-                body: selectedStudyMaterialFile,
-                headers: {
-                    'Content-Type': selectedStudyMaterialFile.type
-                }
-            })
-
-            if (!uploadRes.ok) {
-                throw new Error("Failed to upload study material file directly to storage")
-            }
-
-            const result = await uploadStudentStudyMaterial(studyMaterialTitle, signedRes.fileKey)
+            const result = await uploadStudentStudyMaterial(studyMaterialTitle, uploadRes.fileKey)
             if (result.success) {
                 toast.success("Study material uploaded successfully!")
                 setStudyMaterialModalOpen(false)

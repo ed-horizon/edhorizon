@@ -5,7 +5,8 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { startOfMonth, endOfMonth, isAfter } from "date-fns";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getSignedUploadUrl, getSignedDownloadUrl } from "@/lib/r2";
+import { getSignedUploadUrl, getSignedDownloadUrl, r2Client } from "@/lib/r2";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
 
 /**
  * Resolves an R2 object key into a signed download URL if it's a relative path/key.
@@ -122,6 +123,108 @@ export async function getSignedUploadUrlAction(
         };
     } catch (error: any) {
         console.error("getSignedUploadUrlAction error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Uploads a file directly to Cloudflare R2 from the Next.js server-side,
+ * bypassing any client-side CORS issues, and stores the metadata in Supabase.
+ */
+export async function uploadFileToR2Action(
+    formData: FormData,
+    purpose: 'teacher_material' | 'homework_submission' | 'student_material' | 'preview',
+    studentId?: string,
+    teacherId?: string,
+    homeworkId?: string
+) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const file = formData.get('file') as File;
+    if (!file) return { success: false, error: "No file provided" };
+
+    // Validate size (max 20MB)
+    if (file.size > 20 * 1024 * 1024) {
+        return { success: false, error: "File size exceeds the 20MB limit." };
+    }
+
+    // Validate MIME type
+    const allowedMimeTypes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/heic',
+        'image/heif'
+    ];
+    if (!allowedMimeTypes.includes(file.type)) {
+        return { success: false, error: "Unsupported file type." };
+    }
+
+    // Generate unique object key using Crypto UUID or fallback
+    const fileId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+    const cleanFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    let key = `tmp/${user.id}/${fileId}-${cleanFileName}`;
+
+    if (purpose === 'homework_submission' && studentId && homeworkId) {
+        key = `students/${studentId}/homework/${homeworkId}/submissions/${fileId}-${cleanFileName}`;
+    } else if (purpose === 'student_material' && studentId) {
+        key = `students/${studentId}/materials/${fileId}-${cleanFileName}`;
+    } else if (purpose === 'teacher_material' && studentId) {
+        key = `teachers/${user.id}/students/${studentId}/materials/${fileId}-${cleanFileName}`;
+    }
+
+    try {
+        // Convert File to ArrayBuffer then Buffer for upload
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        // Upload to Cloudflare R2
+        await r2Client.send(new PutObjectCommand({
+            Bucket: process.env.R2_BUCKET_NAME || "edhorizon-homework",
+            Key: key,
+            Body: buffer,
+            ContentType: file.type
+        }));
+
+        // Save metadata to Supabase
+        const { data: metadata, error: dbError } = await supabase
+            .from('file_metadata')
+            .insert({
+                r2_key: key,
+                original_filename: file.name,
+                mime_type: file.type,
+                size_bytes: file.size,
+                uploaded_by: user.id,
+                student_id: studentId || null,
+                teacher_id: teacherId || null,
+                homework_id: homeworkId || null,
+                purpose: purpose,
+                expiry_at: purpose === 'homework_submission' 
+                    ? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
+                    : purpose === 'teacher_material'
+                    ? new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString()
+                    : null
+            })
+            .select()
+            .single();
+
+        if (dbError) {
+            console.error("file_metadata insertion error:", dbError);
+            return { success: false, error: dbError.message };
+        }
+
+        return {
+            success: true,
+            fileKey: key,
+            metadataId: metadata.id
+        };
+    } catch (error: any) {
+        console.error("uploadFileToR2Action error:", error);
         return { success: false, error: error.message };
     }
 }

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { assignHomework, uploadMaterial, requestReschedule, getSignedUploadUrlAction } from "@/app/(dashboard)/attendance/actions"
+import { assignHomework, uploadMaterial, requestReschedule, uploadFileToR2Action } from "@/app/(dashboard)/attendance/actions"
 import { toast } from "sonner"
 import { BookOpen, Upload, Calendar, FileText, Link2, Clock, Sparkles } from "lucide-react"
 
@@ -53,33 +53,20 @@ export function AssignHomeworkDialog({ studentId, studentName, trigger, onSucces
             let worksheetUrl = ""
 
             if (selectedFile) {
-                // Get presigned upload URL
-                const signedRes = await getSignedUploadUrlAction(
-                    selectedFile.name,
-                    selectedFile.type,
-                    selectedFile.size,
+                const formData = new FormData()
+                formData.append('file', selectedFile)
+
+                const uploadRes = await uploadFileToR2Action(
+                    formData,
                     'teacher_material',
                     studentId
                 )
 
-                if (!signedRes.success || !signedRes.uploadUrl || !signedRes.fileKey) {
-                    throw new Error(signedRes.error || "Failed to generate upload URL")
+                if (!uploadRes.success || !uploadRes.fileKey) {
+                    throw new Error(uploadRes.error || "Failed to upload worksheet file")
                 }
 
-                // Upload directly to Cloudflare R2
-                const uploadRes = await fetch(signedRes.uploadUrl, {
-                    method: 'PUT',
-                    body: selectedFile,
-                    headers: {
-                        'Content-Type': selectedFile.type
-                    }
-                })
-
-                if (!uploadRes.ok) {
-                    throw new Error("Failed to upload worksheet file directly to storage")
-                }
-
-                worksheetUrl = signedRes.fileKey
+                worksheetUrl = uploadRes.fileKey
             }
 
             const result = await assignHomework(studentId, title, description, dueDate, worksheetUrl)
@@ -241,33 +228,20 @@ export function UploadMaterialDialog({ studentId, studentName, trigger, onSucces
             let finalFileUrl = fileUrl.trim()
 
             if (selectedFile) {
-                // Get presigned upload URL
-                const signedRes = await getSignedUploadUrlAction(
-                    selectedFile.name,
-                    selectedFile.type,
-                    selectedFile.size,
+                const formData = new FormData()
+                formData.append('file', selectedFile)
+
+                const uploadRes = await uploadFileToR2Action(
+                    formData,
                     'teacher_material',
                     studentId
                 )
 
-                if (!signedRes.success || !signedRes.uploadUrl || !signedRes.fileKey) {
-                    throw new Error(signedRes.error || "Failed to generate upload URL")
+                if (!uploadRes.success || !uploadRes.fileKey) {
+                    throw new Error(uploadRes.error || "Failed to upload worksheet file")
                 }
 
-                // Upload to Cloudflare R2 directly from browser
-                const uploadRes = await fetch(signedRes.uploadUrl, {
-                    method: 'PUT',
-                    body: selectedFile,
-                    headers: {
-                        'Content-Type': selectedFile.type
-                    }
-                })
-
-                if (!uploadRes.ok) {
-                    throw new Error("Failed to upload worksheet file directly to storage")
-                }
-
-                finalFileUrl = signedRes.fileKey
+                finalFileUrl = uploadRes.fileKey
             }
 
             const result = await uploadMaterial(studentId, title, finalFileUrl)
