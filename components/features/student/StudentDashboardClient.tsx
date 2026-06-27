@@ -16,8 +16,9 @@ import {
 import { isSameDay, format, isAfter } from "date-fns"
 import { cn, formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { submitHomework, requestReschedule, applyForLeave, logStudentJoinClass, submitCompletedWorksheet, uploadStudentStudyMaterial, uploadFileToR2Action } from "@/app/(dashboard)/attendance/actions"
+import { submitHomework, requestReschedule, applyForLeave, logStudentJoinClass, submitCompletedWorksheet, uploadStudentStudyMaterial } from "@/app/(dashboard)/attendance/actions"
 import { createPaymentRecord } from "@/app/(dashboard)/payments/actions"
+import { deleteUploadedR2File, uploadFileDirectToR2 } from "@/lib/r2-upload-client"
 import { toast } from "sonner"
 import { ClassLogsCalendarClient } from "@/components/features/class-logs/ClassLogsCalendarClient"
 
@@ -484,26 +485,17 @@ export function StudentDashboardClient({
         if (!selectedHomework) return
 
         setIsSubmitting(true)
+        const uploadContext = {
+            purpose: "homework_submission" as const,
+            homeworkId: selectedHomework.id,
+        }
+        let uploadedFileKey: string | null = null
         try {
             let finalUrl = ""
 
             if (selectedHomeworkFile) {
-                const formData = new FormData()
-                formData.append('file', selectedHomeworkFile)
-
-                const uploadRes = await uploadFileToR2Action(
-                    formData,
-                    'homework_submission',
-                    currentUserProfile?.id,
-                    undefined,
-                    selectedHomework.id
-                )
-
-                if (!uploadRes.success || !uploadRes.fileKey) {
-                    throw new Error(uploadRes.error || "Failed to upload homework file")
-                }
-
-                finalUrl = uploadRes.fileKey
+                uploadedFileKey = await uploadFileDirectToR2(selectedHomeworkFile, uploadContext)
+                finalUrl = uploadedFileKey
             }
 
             const result = await submitHomework(selectedHomework.id, finalUrl, submissionNotes)
@@ -517,10 +509,12 @@ export function StudentDashboardClient({
                 setSelectedHomework(null)
                 window.location.reload()
             } else {
+                if (uploadedFileKey) await deleteUploadedR2File(uploadedFileKey, uploadContext)
                 toast.error(result.error || "Failed to submit work")
             }
-        } catch (error: any) {
-            toast.error(error.message || "An unexpected error occurred while submitting homework")
+        } catch (error: unknown) {
+            if (uploadedFileKey) await deleteUploadedR2File(uploadedFileKey, uploadContext)
+            toast.error(error instanceof Error ? error.message : "An unexpected error occurred while submitting homework")
         } finally {
             setIsSubmitting(false)
         }
@@ -545,20 +539,11 @@ export function StudentDashboardClient({
             return
         }
         setIsSubmittingWorksheet(true)
+        const uploadContext = { purpose: "student_material" as const }
+        let uploadedFileKey: string | null = null
         try {
-            const formData = new FormData()
-            formData.append('file', selectedWorksheetFile)
-
-            const uploadRes = await uploadFileToR2Action(
-                formData,
-                'student_material'
-            )
-
-            if (!uploadRes.success || !uploadRes.fileKey) {
-                throw new Error(uploadRes.error || "Failed to upload worksheet file")
-            }
-
-            const result = await submitCompletedWorksheet(worksheetTitle, uploadRes.fileKey)
+            uploadedFileKey = await uploadFileDirectToR2(selectedWorksheetFile, uploadContext)
+            const result = await submitCompletedWorksheet(worksheetTitle, uploadedFileKey)
             if (result.success) {
                 toast.success("Completed worksheet uploaded successfully!")
                 setWorksheetModalOpen(false)
@@ -567,10 +552,12 @@ export function StudentDashboardClient({
                 setSelectedWorksheetFile(null)
                 window.location.reload()
             } else {
+                await deleteUploadedR2File(uploadedFileKey, uploadContext)
                 toast.error(result.error || "Failed to upload worksheet")
             }
-        } catch (error: any) {
-            toast.error(error.message || "An unexpected error occurred while submitting worksheet")
+        } catch (error: unknown) {
+            if (uploadedFileKey) await deleteUploadedR2File(uploadedFileKey, uploadContext)
+            toast.error(error instanceof Error ? error.message : "An unexpected error occurred while submitting worksheet")
         } finally {
             setIsSubmittingWorksheet(false)
         }
@@ -595,20 +582,11 @@ export function StudentDashboardClient({
             return
         }
         setIsSubmittingStudyMaterial(true)
+        const uploadContext = { purpose: "student_material" as const }
+        let uploadedFileKey: string | null = null
         try {
-            const formData = new FormData()
-            formData.append('file', selectedStudyMaterialFile)
-
-            const uploadRes = await uploadFileToR2Action(
-                formData,
-                'student_material'
-            )
-
-            if (!uploadRes.success || !uploadRes.fileKey) {
-                throw new Error(uploadRes.error || "Failed to upload study material file")
-            }
-
-            const result = await uploadStudentStudyMaterial(studyMaterialTitle, uploadRes.fileKey)
+            uploadedFileKey = await uploadFileDirectToR2(selectedStudyMaterialFile, uploadContext)
+            const result = await uploadStudentStudyMaterial(studyMaterialTitle, uploadedFileKey)
             if (result.success) {
                 toast.success("Study material uploaded successfully!")
                 setStudyMaterialModalOpen(false)
@@ -617,10 +595,12 @@ export function StudentDashboardClient({
                 setSelectedStudyMaterialFile(null)
                 window.location.reload()
             } else {
+                await deleteUploadedR2File(uploadedFileKey, uploadContext)
                 toast.error(result.error || "Failed to upload study material")
             }
-        } catch (error: any) {
-            toast.error(error.message || "An unexpected error occurred while uploading study material")
+        } catch (error: unknown) {
+            if (uploadedFileKey) await deleteUploadedR2File(uploadedFileKey, uploadContext)
+            toast.error(error instanceof Error ? error.message : "An unexpected error occurred while uploading study material")
         } finally {
             setIsSubmittingStudyMaterial(false)
         }
