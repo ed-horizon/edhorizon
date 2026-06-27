@@ -2,7 +2,7 @@
 
 > **A Symphony of Learning & Operational Excellence, Built for the Era of AI.**
 
-EdHorizon is not just a platform; it’s a modern engineering manifesto. Built with **Next.js 15**, **Supabase**, and **Tailwind v4**, it represents the pinnacle of AI-assisted software development—where rapid iteration meets high-fidelity design.
+EdHorizon is built with **Next.js 16**, **Supabase**, and **Tailwind v4**.
 
 ---
 
@@ -49,24 +49,55 @@ This project was built using **Modern Software Engineering Methodologies** tailo
 
 ## 🚀 Technical Stack
 
-- **Frontend**: Next.js 15 (App Router), React 19, Framer Motion
+- **Frontend**: Next.js 16 (App Router), React 19, Framer Motion
 - **Styling**: Tailwind CSS v4, shadcn/ui
 - **Backend & Security**: Supabase (PostgreSQL, Auth, RLS)
-- **Deployment**: Vercel & Supabase Cloud
+- **Private file storage**: Cloudflare R2 with short-lived signed URLs
+- **Deployment**: Vercel, Supabase Cloud, and Cloudflare R2
 
 ---
 
 ## ⚙️ Getting Started
 
 ```bash
-# Clone the vision
-git clone https://github.com/rdshyamvijay/edhorizon.git
+# Clone the repository
+git clone https://github.com/ed-horizon/edhorizon.git
 
-# Install the engine
-npm install
+# Install locked dependencies
+npm ci
 
-# ignite the environment
+# Create .env.local from the documented variable names
+cp .env.example .env.local
+
+# Start development
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to enter the horizon.
+
+### Environment configuration
+
+Supabase stores authentication, relational data, and file metadata. Cloudflare R2 stores the private file objects. Configure every variable listed in `.env.example` locally and in the appropriate Vercel environment.
+
+Never commit `.env.local` or place either R2 secret in a `NEXT_PUBLIC_` variable.
+
+### R2 browser upload CORS
+
+Uploads go directly from the browser to a short-lived presigned R2 URL. Configure the private bucket's CORS policy for each application origin:
+
+```json
+[
+  {
+    "AllowedOrigins": [
+      "http://localhost:3000",
+      "https://edhorizon-dev.vercel.app"
+    ],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["Content-Type"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Add an exact preview deployment origin while testing a preview. Do not use `*` for the production bucket.

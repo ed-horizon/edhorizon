@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { assignHomework, uploadMaterial, requestReschedule, uploadFileToR2Action } from "@/app/(dashboard)/attendance/actions"
+import { assignHomework, uploadMaterial, requestReschedule } from "@/app/(dashboard)/attendance/actions"
+import { deleteUploadedR2File, uploadFileDirectToR2 } from "@/lib/r2-upload-client"
 import { toast } from "sonner"
 import { BookOpen, Upload, Calendar, FileText, Link2, Clock, Sparkles } from "lucide-react"
 
@@ -49,24 +50,17 @@ export function AssignHomeworkDialog({ studentId, studentName, trigger, onSucces
         }
 
         setIsSubmitting(true)
+        const uploadContext = {
+            purpose: "teacher_material" as const,
+            studentId,
+        }
+        let uploadedFileKey: string | null = null
         try {
             let worksheetUrl = ""
 
             if (selectedFile) {
-                const formData = new FormData()
-                formData.append('file', selectedFile)
-
-                const uploadRes = await uploadFileToR2Action(
-                    formData,
-                    'teacher_material',
-                    studentId
-                )
-
-                if (!uploadRes.success || !uploadRes.fileKey) {
-                    throw new Error(uploadRes.error || "Failed to upload worksheet file")
-                }
-
-                worksheetUrl = uploadRes.fileKey
+                uploadedFileKey = await uploadFileDirectToR2(selectedFile, uploadContext)
+                worksheetUrl = uploadedFileKey
             }
 
             const result = await assignHomework(studentId, title, description, dueDate, worksheetUrl)
@@ -81,10 +75,12 @@ export function AssignHomeworkDialog({ studentId, studentName, trigger, onSucces
                 setIsOpen(false)
                 if (onSuccess) onSuccess()
             } else {
+                if (uploadedFileKey) await deleteUploadedR2File(uploadedFileKey, uploadContext)
                 toast.error(result.error || "Failed to assign homework")
             }
-        } catch (error: any) {
-            toast.error(error.message || "Failed to assign homework")
+        } catch (error: unknown) {
+            if (uploadedFileKey) await deleteUploadedR2File(uploadedFileKey, uploadContext)
+            toast.error(error instanceof Error ? error.message : "Failed to assign homework")
         } finally {
             setIsSubmitting(false)
         }
@@ -224,24 +220,17 @@ export function UploadMaterialDialog({ studentId, studentName, trigger, onSucces
         }
 
         setIsSubmitting(true)
+        const uploadContext = {
+            purpose: "teacher_material" as const,
+            studentId,
+        }
+        let uploadedFileKey: string | null = null
         try {
             let finalFileUrl = fileUrl.trim()
 
             if (selectedFile) {
-                const formData = new FormData()
-                formData.append('file', selectedFile)
-
-                const uploadRes = await uploadFileToR2Action(
-                    formData,
-                    'teacher_material',
-                    studentId
-                )
-
-                if (!uploadRes.success || !uploadRes.fileKey) {
-                    throw new Error(uploadRes.error || "Failed to upload worksheet file")
-                }
-
-                finalFileUrl = uploadRes.fileKey
+                uploadedFileKey = await uploadFileDirectToR2(selectedFile, uploadContext)
+                finalFileUrl = uploadedFileKey
             }
 
             const result = await uploadMaterial(studentId, title, finalFileUrl)
@@ -255,10 +244,12 @@ export function UploadMaterialDialog({ studentId, studentName, trigger, onSucces
                 setIsOpen(false)
                 if (onSuccess) onSuccess()
             } else {
+                if (uploadedFileKey) await deleteUploadedR2File(uploadedFileKey, uploadContext)
                 toast.error(result.error || "Failed to share material")
             }
-        } catch (error: any) {
-            toast.error(error.message || "Failed to share material")
+        } catch (error: unknown) {
+            if (uploadedFileKey) await deleteUploadedR2File(uploadedFileKey, uploadContext)
+            toast.error(error instanceof Error ? error.message : "Failed to share material")
         } finally {
             setIsSubmitting(false)
         }
