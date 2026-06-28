@@ -12,7 +12,7 @@ import { toast } from "sonner"
 import { format } from "date-fns"
 import { 
     Video, Calendar, Clock, ExternalLink, CheckCircle2, AlertCircle,
-    Users, ChevronDown, ChevronUp, BookOpen, Upload, 
+    Users, ChevronDown, ChevronUp, BookOpen, Upload, Download,
     FileText, Award, Star, Loader2, Sparkles, LogOut, Check, X, Plus
 } from "lucide-react"
 import { formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
@@ -874,22 +874,59 @@ export function TeacherDashboardClient({
                                                                     <p className="text-xs text-muted-foreground italic py-6 text-center">No homework assigned yet.</p>
                                                                 ) : (
                                                                     <div className="space-y-2">
-                                                                        {history.homework.map((hw: any) => (
-                                                                            <div key={hw.id} className="p-3.5 rounded-xl border border-border/40 bg-card text-xs flex items-center justify-between gap-4">
-                                                                                <div>
-                                                                                    <p className="font-bold text-foreground">{hw.title}</p>
-                                                                                    {hw.description && <p className="text-muted-foreground italic text-[11px] mt-0.5">{hw.description}</p>}
-                                                                                    {hw.due_date && <p className="text-[10px] text-indigo-500 mt-1 font-semibold">Due: {format(new Date(hw.due_date), 'MMM dd, yyyy')}</p>}
+                                                                        {history.homework.map((hw: any) => {
+                                                                            const desc = hw.description || '';
+                                                                            const match = desc.match(/Attachment File:\s*(https?:\/\/[^\s\)\"\'\>]+)/i);
+                                                                            let cleanDesc = desc;
+                                                                            let attachmentUrl = hw.worksheet_url || null;
+                                                                            if (match) {
+                                                                                cleanDesc = desc.replace(/Attachment File:\s*https?:\/\/[^\s\)\"\'\>]+/i, '').trim();
+                                                                                if (!attachmentUrl) {
+                                                                                    attachmentUrl = match[1];
+                                                                                }
+                                                                            }
+                                                                            return (
+                                                                                <div key={hw.id} className="p-3.5 rounded-xl border border-border/40 bg-card text-xs flex items-center justify-between gap-4">
+                                                                                    <div className="space-y-1 max-w-[70%]">
+                                                                                        <p className="font-bold text-foreground">{hw.title}</p>
+                                                                                        {cleanDesc && <p className="text-muted-foreground italic text-[11px] mt-0.5">{cleanDesc}</p>}
+                                                                                        {attachmentUrl && (
+                                                                                            <div className="mt-1">
+                                                                                                <a href={attachmentUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-indigo-600 font-bold hover:underline text-[10px]">
+                                                                                                    <Download size={10} />
+                                                                                                    <span>Download Assigned Worksheet</span>
+                                                                                                </a>
+                                                                                            </div>
+                                                                                        )}
+                                                                                        {hw.due_date && <p className="text-[10px] text-indigo-500 mt-1 font-semibold">Due: {format(new Date(hw.due_date), 'MMM dd, yyyy')}</p>}
+                                                                                        {hw.submission_notes && (
+                                                                                            <p className="text-[10px] text-muted-foreground bg-muted/20 p-2 rounded-lg border border-border/10 mt-1.5 italic">
+                                                                                                <strong>Notes:</strong> "{hw.submission_notes}"
+                                                                                            </p>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        {hw.submission_url && (
+                                                                                            <a href={hw.submission_url} target="_blank" rel="noopener noreferrer">
+                                                                                                <Button size="sm" variant="outline" className="h-7 rounded-lg text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 gap-1 border border-indigo-500/20">
+                                                                                                    <FileText size={10} />
+                                                                                                    <span>View Homework</span>
+                                                                                                </Button>
+                                                                                            </a>
+                                                                                        )}
+                                                                                        <Badge variant="outline" className={`font-black uppercase tracking-wider text-[8px] ${
+                                                                                            hw.status === 'completed'
+                                                                                                ? 'bg-emerald-50 text-emerald-600 border-emerald-500/20'
+                                                                                                : hw.status === 'submitted'
+                                                                                                ? 'bg-indigo-50 text-indigo-600 border-indigo-500/20'
+                                                                                                : 'bg-amber-50 text-amber-600 border-amber-500/20'
+                                                                                        }`}>
+                                                                                            {hw.status}
+                                                                                        </Badge>
+                                                                                    </div>
                                                                                 </div>
-                                                                                <Badge variant="outline" className={`font-black uppercase tracking-wider text-[8px] ${
-                                                                                    hw.status === 'completed'
-                                                                                        ? 'bg-emerald-50 text-emerald-600 border-emerald-500/20'
-                                                                                        : 'bg-amber-50 text-amber-600 border-amber-500/20'
-                                                                                }`}>
-                                                                                    {hw.status}
-                                                                                </Badge>
-                                                                            </div>
-                                                                        ))}
+                                                                            );
+                                                                        })}
                                                                     </div>
                                                                 )
                                                             )}

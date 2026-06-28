@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { assignHomework, uploadMaterial, requestReschedule } from "@/app/(dashboard)/attendance/actions"
+import { deleteUploadedR2File, uploadFileDirectToR2 } from "@/lib/r2-upload-client"
 import { toast } from "sonner"
 import { BookOpen, Upload, Calendar, FileText, Link2, Clock, Sparkles } from "lucide-react"
 
@@ -25,11 +26,13 @@ export function AssignHomeworkDialog({ studentId, studentName, trigger, onSucces
     const [dueDate, setDueDate] = useState("")
     const [filePreview, setFilePreview] = useState("")
     const [fileName, setFileName] = useState("")
+    const [selectedFile, setSelectedFile] = useState<File | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (file) {
+            setSelectedFile(file)
             setFileName(file.name)
             const reader = new FileReader()
             reader.onloadend = () => {
@@ -47,16 +50,20 @@ export function AssignHomeworkDialog({ studentId, studentName, trigger, onSucces
         }
 
         setIsSubmitting(true)
+        const uploadContext = {
+            purpose: "teacher_material" as const,
+            studentId,
+        }
+        let uploadedFileKey: string | null = null
         try {
-            let finalDescription = description
-            if (filePreview) {
-                const mockAttachmentUrl = `https://supabase.storage/materials/${studentId}_${Date.now()}_hw.jpg`
-                finalDescription = description 
-                    ? `${description}\n\nAttachment File: ${mockAttachmentUrl}` 
-                    : `Attachment File: ${mockAttachmentUrl}`
+            let worksheetUrl = ""
+
+            if (selectedFile) {
+                uploadedFileKey = await uploadFileDirectToR2(selectedFile, uploadContext)
+                worksheetUrl = uploadedFileKey
             }
 
-            const result = await assignHomework(studentId, title, finalDescription, dueDate)
+            const result = await assignHomework(studentId, title, description, dueDate, worksheetUrl)
             if (result.success) {
                 toast.success("Homework assigned successfully!")
                 setTitle("")
@@ -64,13 +71,16 @@ export function AssignHomeworkDialog({ studentId, studentName, trigger, onSucces
                 setDueDate("")
                 setFilePreview("")
                 setFileName("")
+                setSelectedFile(null)
                 setIsOpen(false)
                 if (onSuccess) onSuccess()
             } else {
+                if (uploadedFileKey) await deleteUploadedR2File(uploadedFileKey, uploadContext)
                 toast.error(result.error || "Failed to assign homework")
             }
-        } catch (error: any) {
-            toast.error(error.message || "Failed to assign homework")
+        } catch (error: unknown) {
+            if (uploadedFileKey) await deleteUploadedR2File(uploadedFileKey, uploadContext)
+            toast.error(error instanceof Error ? error.message : "Failed to assign homework")
         } finally {
             setIsSubmitting(false)
         }
@@ -181,11 +191,13 @@ export function UploadMaterialDialog({ studentId, studentName, trigger, onSucces
     const [fileUrl, setFileUrl] = useState("")
     const [fileName, setFileName] = useState("")
     const [filePreview, setFilePreview] = useState("")
+    const [selectedFile, setSelectedFile] = useState<File | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (file) {
+            setSelectedFile(file)
             setFileName(file.name)
             const reader = new FileReader()
             reader.onloadend = () => {
@@ -202,14 +214,25 @@ export function UploadMaterialDialog({ studentId, studentName, trigger, onSucces
             return
         }
 
-        if (!fileUrl.trim() && !filePreview) {
+        if (!fileUrl.trim() && !selectedFile) {
             toast.error("Please enter a document link or upload a worksheet file")
             return
         }
 
         setIsSubmitting(true)
+        const uploadContext = {
+            purpose: "teacher_material" as const,
+            studentId,
+        }
+        let uploadedFileKey: string | null = null
         try {
-            const finalFileUrl = fileUrl.trim() || `https://supabase.storage/materials/${studentId}_${Date.now()}_worksheet.jpg`
+            let finalFileUrl = fileUrl.trim()
+
+            if (selectedFile) {
+                uploadedFileKey = await uploadFileDirectToR2(selectedFile, uploadContext)
+                finalFileUrl = uploadedFileKey
+            }
+
             const result = await uploadMaterial(studentId, title, finalFileUrl)
             if (result.success) {
                 toast.success("Worksheet / Material shared successfully!")
@@ -217,13 +240,16 @@ export function UploadMaterialDialog({ studentId, studentName, trigger, onSucces
                 setFileUrl("")
                 setFileName("")
                 setFilePreview("")
+                setSelectedFile(null)
                 setIsOpen(false)
                 if (onSuccess) onSuccess()
             } else {
+                if (uploadedFileKey) await deleteUploadedR2File(uploadedFileKey, uploadContext)
                 toast.error(result.error || "Failed to share material")
             }
-        } catch (error: any) {
-            toast.error(error.message || "Failed to share material")
+        } catch (error: unknown) {
+            if (uploadedFileKey) await deleteUploadedR2File(uploadedFileKey, uploadContext)
+            toast.error(error instanceof Error ? error.message : "Failed to share material")
         } finally {
             setIsSubmitting(false)
         }
