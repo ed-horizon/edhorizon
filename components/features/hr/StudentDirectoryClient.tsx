@@ -40,6 +40,14 @@ interface Student {
         monthly_fee_3?: number | null;
         classes_per_month_3?: number | null;
         assigned_teacher_id_3?: string | null;
+        subject_name_4?: string | null;
+        monthly_fee_4?: number | null;
+        classes_per_month_4?: number | null;
+        assigned_teacher_id_4?: string | null;
+        subject_name_5?: string | null;
+        monthly_fee_5?: number | null;
+        classes_per_month_5?: number | null;
+        assigned_teacher_id_5?: string | null;
     } | null;
 }
 
@@ -86,6 +94,14 @@ export default function StudentDirectoryClient({
         monthly_fee_3: 0,
         classes_per_month_3: 0,
         assigned_teacher_id_3: "",
+        subject_name_4: "",
+        monthly_fee_4: 0,
+        classes_per_month_4: 0,
+        assigned_teacher_id_4: "",
+        subject_name_5: "",
+        monthly_fee_5: 0,
+        classes_per_month_5: 0,
+        assigned_teacher_id_5: "",
         assigned_teacher_id: ""
     });
 
@@ -109,8 +125,19 @@ export default function StudentDirectoryClient({
         monthly_fee_3: 0,
         classes_per_month_3: 0,
         assigned_teacher_id_3: "",
+        subject_name_4: "",
+        monthly_fee_4: 0,
+        classes_per_month_4: 0,
+        assigned_teacher_id_4: "",
+        subject_name_5: "",
+        monthly_fee_5: 0,
+        classes_per_month_5: 0,
+        assigned_teacher_id_5: "",
         assigned_teacher_id: ""
     });
+
+    const [visibleSubjectsCountAdd, setVisibleSubjectsCountAdd] = useState(1);
+    const [visibleSubjectsCountEdit, setVisibleSubjectsCountEdit] = useState(1);
 
     const activeCount = initialStudents.filter(s => (s.student_details?.status || 'active') === 'active').length;
     const inactiveCount = initialStudents.filter(s => s.student_details?.status === 'inactive').length;
@@ -167,6 +194,14 @@ export default function StudentDirectoryClient({
             monthly_fee_3: formData.monthly_fee_3,
             classes_per_month_3: formData.classes_per_month_3,
             assigned_teacher_id_3: formData.assigned_teacher_id_3 || undefined,
+            subject_name_4: formData.subject_name_4 || undefined,
+            monthly_fee_4: formData.monthly_fee_4,
+            classes_per_month_4: formData.classes_per_month_4,
+            assigned_teacher_id_4: formData.assigned_teacher_id_4 || undefined,
+            subject_name_5: formData.subject_name_5 || undefined,
+            monthly_fee_5: formData.monthly_fee_5,
+            classes_per_month_5: formData.classes_per_month_5,
+            assigned_teacher_id_5: formData.assigned_teacher_id_5 || undefined,
             assigned_teacher_id: formData.assigned_teacher_id || undefined
         });
         setIsSubmitting(false);
@@ -191,8 +226,17 @@ export default function StudentDirectoryClient({
                 monthly_fee_3: 0,
                 classes_per_month_3: 0,
                 assigned_teacher_id_3: "",
+                subject_name_4: "",
+                monthly_fee_4: 0,
+                classes_per_month_4: 0,
+                assigned_teacher_id_4: "",
+                subject_name_5: "",
+                monthly_fee_5: 0,
+                classes_per_month_5: 0,
+                assigned_teacher_id_5: "",
                 assigned_teacher_id: ""
             });
+            setVisibleSubjectsCountAdd(1);
             toast.success("Student enrolled successfully");
         } else {
             toast.error(result.error);
@@ -223,8 +267,23 @@ export default function StudentDirectoryClient({
             monthly_fee_3: sd?.monthly_fee_3 ?? 0,
             classes_per_month_3: sd?.classes_per_month_3 ?? 0,
             assigned_teacher_id_3: sd?.assigned_teacher_id_3 || "",
+            subject_name_4: sd?.subject_name_4 || "",
+            monthly_fee_4: sd?.monthly_fee_4 ?? 0,
+            classes_per_month_4: sd?.classes_per_month_4 ?? 0,
+            assigned_teacher_id_4: sd?.assigned_teacher_id_4 || "",
+            subject_name_5: sd?.subject_name_5 || "",
+            monthly_fee_5: sd?.monthly_fee_5 ?? 0,
+            classes_per_month_5: sd?.classes_per_month_5 ?? 0,
+            assigned_teacher_id_5: sd?.assigned_teacher_id_5 || "",
             assigned_teacher_id: sd?.assigned_teacher_id || ""
         });
+        const initialCount = 
+            sd?.subject_name_5 ? 5 :
+            sd?.subject_name_4 ? 4 :
+            sd?.subject_name_3 ? 3 :
+            sd?.subject_name_2 ? 2 :
+            1;
+        setVisibleSubjectsCountEdit(initialCount);
         setEditingStudent(student);
         setOpenMenuId(null);
     };
@@ -256,6 +315,14 @@ export default function StudentDirectoryClient({
             monthly_fee_3: editFormData.monthly_fee_3,
             classes_per_month_3: editFormData.classes_per_month_3,
             assigned_teacher_id_3: editFormData.assigned_teacher_id_3 || undefined,
+            subject_name_4: editFormData.subject_name_4 || undefined,
+            monthly_fee_4: editFormData.monthly_fee_4,
+            classes_per_month_4: editFormData.classes_per_month_4,
+            assigned_teacher_id_4: editFormData.assigned_teacher_id_4 || undefined,
+            subject_name_5: editFormData.subject_name_5 || undefined,
+            monthly_fee_5: editFormData.monthly_fee_5,
+            classes_per_month_5: editFormData.classes_per_month_5,
+            assigned_teacher_id_5: editFormData.assigned_teacher_id_5 || undefined,
             assigned_teacher_id: editFormData.assigned_teacher_id || undefined
         });
         setIsSubmitting(false);
@@ -342,264 +409,401 @@ export default function StudentDirectoryClient({
 
             {/* Enroll Student Modal */}
             {isAddModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="w-full max-w-md bg-card rounded-[2rem] shadow-2xl overflow-hidden border border-border/40 animate-in zoom-in-95 duration-200">
-                        <div className="bg-muted/30 p-6 flex items-center justify-between border-b border-border/20">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
+                    <div className="w-full max-w-md bg-card rounded-[2rem] shadow-2xl border border-border/40 max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-muted/30 p-6 flex items-center justify-between border-b border-border/20 shrink-0">
                             <h2 className="text-xl font-serif font-bold tracking-tight">Enroll Student</h2>
                             <button onClick={() => setIsAddModalOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-muted transition-colors">
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
-                        <form onSubmit={handleEnrollStudent} className="p-8 space-y-4 max-h-[80vh] overflow-y-auto">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Full Name</label>
-                                <Input
-                                    required
-                                    value={formData.full_name}
-                                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="Jane Doe"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Student ID (Optional)</label>
-                                <Input
-                                    value={formData.custom_student_id}
-                                    onChange={(e) => setFormData({ ...formData, custom_student_id: e.target.value })}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="e.g. EH-ST-1001"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
-                                <Input
-                                    required
-                                    type="tel"
-                                    value={formData.mobile_number}
-                                    onChange={(e) => setFormData({ ...formData, mobile_number: e.target.value })}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="e.g. +91 9876543210"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">User ID (Login Email)</label>
-                                <Input
-                                    required
-                                    type="email"
-                                    value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="jane@example.com"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Parent Email (Optional)</label>
-                                <Input
-                                    type="email"
-                                    value={formData.parent_email}
-                                    onChange={(e) => setFormData({ ...formData, parent_email: e.target.value })}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="parent@example.com"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Grade Level</label>
-                                <Input
-                                    required
-                                    value={formData.grade_level}
-                                    onChange={(e) => setFormData({ ...formData, grade_level: e.target.value })}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="e.g. 10th Grade"
-                                />
-                            </div>
-                            {currentUserRole !== 'operations' && (
+                        <form onSubmit={handleEnrollStudent} className="flex-1 min-h-0 flex flex-col">
+                            <div className="flex-1 overflow-y-auto p-8 space-y-4 pr-6">
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Tutor Hourly Rate (₹/hr - optional)</label>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Full Name</label>
                                     <Input
-                                        type="number"
-                                        value={formData.tutor_hourly_rate}
-                                        onChange={(e) => setFormData({ ...formData, tutor_hourly_rate: e.target.value })}
-                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                        placeholder="e.g. 100 (Default uses tutor's hourly rate)"
+                                        required
+                                        value={formData.full_name}
+                                        onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                        placeholder="Jane Doe"
                                     />
                                 </div>
-                            )}
-
-                            <div className="space-y-4 border-t border-border/20 pt-4">
-                                <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 ml-1">Subject Packages</h4>
-
-                                {/* Subject 1 (Primary) */}
-                                <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10">
-                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 1 (Primary)</span>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
-                                            <Input
-                                                value={formData.subject_name_1}
-                                                onChange={(e) => setFormData({ ...formData, subject_name_1: e.target.value })}
-                                                placeholder="Maths"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
-                                            <Input
-                                                type="number"
-                                                value={formData.monthly_fee}
-                                                onChange={(e) => setFormData({ ...formData, monthly_fee: Number(e.target.value) })}
-                                                placeholder="4500"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
-                                            <Input
-                                                type="number"
-                                                value={formData.classes_per_month}
-                                                onChange={(e) => setFormData({ ...formData, classes_per_month: Number(e.target.value) })}
-                                                placeholder="12"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
-                                            <Select 
-                                                onValueChange={(val) => setFormData({ ...formData, assigned_teacher_id: val })} 
-                                                value={formData.assigned_teacher_id || "none"}
-                                            >
-                                                <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
-                                                    <SelectValue placeholder="Select Tutor..." />
-                                                </SelectTrigger>
-                                                <SelectContent className="rounded-xl border border-border/40">
-                                                    <SelectItem value="none" className="rounded-lg">None</SelectItem>
-                                                    {teachers.map(t => (
-                                                        <SelectItem key={t.id} value={t.id} className="rounded-lg">
-                                                            {t.full_name || t.email}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Student ID (Optional)</label>
+                                    <Input
+                                        value={formData.custom_student_id}
+                                        onChange={(e) => setFormData({ ...formData, custom_student_id: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                        placeholder="e.g. EH-ST-1001"
+                                    />
                                 </div>
-
-                                {/* Subject 2 */}
-                                <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10">
-                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 2 (Optional)</span>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
-                                            <Input
-                                                value={formData.subject_name_2}
-                                                onChange={(e) => setFormData({ ...formData, subject_name_2: e.target.value })}
-                                                placeholder="Science"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
-                                            <Input
-                                                type="number"
-                                                value={formData.monthly_fee_2}
-                                                onChange={(e) => setFormData({ ...formData, monthly_fee_2: Number(e.target.value) })}
-                                                placeholder="3500"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
-                                            <Input
-                                                type="number"
-                                                value={formData.classes_per_month_2}
-                                                onChange={(e) => setFormData({ ...formData, classes_per_month_2: Number(e.target.value) })}
-                                                placeholder="8"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
-                                            <Select 
-                                                onValueChange={(val) => setFormData({ ...formData, assigned_teacher_id_2: val })} 
-                                                value={formData.assigned_teacher_id_2 || "none"}
-                                            >
-                                                <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
-                                                    <SelectValue placeholder="Select Tutor..." />
-                                                </SelectTrigger>
-                                                <SelectContent className="rounded-xl border border-border/40">
-                                                    <SelectItem value="none" className="rounded-lg">None</SelectItem>
-                                                    {teachers.map(t => (
-                                                        <SelectItem key={t.id} value={t.id} className="rounded-lg">
-                                                            {t.full_name || t.email}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
+                                    <Input
+                                        required
+                                        type="tel"
+                                        value={formData.mobile_number}
+                                        onChange={(e) => setFormData({ ...formData, mobile_number: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                        placeholder="e.g. +91 9876543210"
+                                    />
                                 </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">User ID (Login Email)</label>
+                                    <Input
+                                        required
+                                        type="email"
+                                        value={formData.email}
+                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                        placeholder="jane@example.com"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Parent Email (Optional)</label>
+                                    <Input
+                                        type="email"
+                                        value={formData.parent_email}
+                                        onChange={(e) => setFormData({ ...formData, parent_email: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                        placeholder="parent@example.com"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Grade Level</label>
+                                    <Input
+                                        required
+                                        value={formData.grade_level}
+                                        onChange={(e) => setFormData({ ...formData, grade_level: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                        placeholder="e.g. 10th Grade"
+                                    />
+                                </div>
+                                {currentUserRole !== 'operations' && (
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Tutor Hourly Rate (₹/hr - optional)</label>
+                                        <Input
+                                            type="number"
+                                            value={formData.tutor_hourly_rate}
+                                            onChange={(e) => setFormData({ ...formData, tutor_hourly_rate: e.target.value })}
+                                            className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                            placeholder="e.g. 100 (Default uses tutor's hourly rate)"
+                                        />
+                                    </div>
+                                )}
 
-                                {/* Subject 3 */}
-                                <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10">
-                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 3 (Optional)</span>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
-                                            <Input
-                                                value={formData.subject_name_3}
-                                                onChange={(e) => setFormData({ ...formData, subject_name_3: e.target.value })}
-                                                placeholder="English"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
+                                <div className="space-y-4 border-t border-border/20 pt-4">
+                                    <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 ml-1">Subject Packages</h4>
+
+                                    {/* Subject 1 (Primary) */}
+                                    <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10 text-xs">
+                                        <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 1 (Primary)</span>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
+                                                <Input
+                                                    value={formData.subject_name_1}
+                                                    onChange={(e) => setFormData({ ...formData, subject_name_1: e.target.value })}
+                                                    placeholder="Maths"
+                                                    className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
+                                                <Input
+                                                    type="number"
+                                                    value={formData.monthly_fee}
+                                                    onChange={(e) => setFormData({ ...formData, monthly_fee: Number(e.target.value) })}
+                                                    placeholder="4500"
+                                                    className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
-                                            <Input
-                                                type="number"
-                                                value={formData.monthly_fee_3}
-                                                onChange={(e) => setFormData({ ...formData, monthly_fee_3: Number(e.target.value) })}
-                                                placeholder="3000"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
+                                                <Input
+                                                    type="number"
+                                                    value={formData.classes_per_month}
+                                                    onChange={(e) => setFormData({ ...formData, classes_per_month: Number(e.target.value) })}
+                                                    placeholder="12"
+                                                    className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
+                                                <Select 
+                                                    onValueChange={(val) => setFormData({ ...formData, assigned_teacher_id: val })} 
+                                                    value={formData.assigned_teacher_id || "none"}
+                                                >
+                                                    <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
+                                                        <SelectValue placeholder="Select Tutor..." />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="rounded-xl border border-border/40">
+                                                        <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                        {teachers.map(t => (
+                                                            <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                                {t.full_name || t.email}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
-                                            <Input
-                                                type="number"
-                                                value={formData.classes_per_month_3}
-                                                onChange={(e) => setFormData({ ...formData, classes_per_month_3: Number(e.target.value) })}
-                                                placeholder="8"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
+
+                                    {/* Subject 2 */}
+                                    {visibleSubjectsCountAdd >= 2 && (
+                                        <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10 text-xs animate-in slide-in-from-top-2 duration-200">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 2</span>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
+                                                    <Input
+                                                        value={formData.subject_name_2}
+                                                        onChange={(e) => setFormData({ ...formData, subject_name_2: e.target.value })}
+                                                        placeholder="Science"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={formData.monthly_fee_2}
+                                                        onChange={(e) => setFormData({ ...formData, monthly_fee_2: Number(e.target.value) })}
+                                                        placeholder="3500"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={formData.classes_per_month_2}
+                                                        onChange={(e) => setFormData({ ...formData, classes_per_month_2: Number(e.target.value) })}
+                                                        placeholder="8"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
+                                                    <Select 
+                                                        onValueChange={(val) => setFormData({ ...formData, assigned_teacher_id_2: val })} 
+                                                        value={formData.assigned_teacher_id_2 || "none"}
+                                                    >
+                                                        <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
+                                                            <SelectValue placeholder="Select Tutor..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-xl border border-border/40">
+                                                            <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                            {teachers.map(t => (
+                                                                <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                                    {t.full_name || t.email}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
-                                            <Select 
-                                                onValueChange={(val) => setFormData({ ...formData, assigned_teacher_id_3: val })} 
-                                                value={formData.assigned_teacher_id_3 || "none"}
-                                            >
-                                                <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
-                                                    <SelectValue placeholder="Select Tutor..." />
-                                                </SelectTrigger>
-                                                <SelectContent className="rounded-xl border border-border/40">
-                                                    <SelectItem value="none" className="rounded-lg">None</SelectItem>
-                                                    {teachers.map(t => (
-                                                        <SelectItem key={t.id} value={t.id} className="rounded-lg">
-                                                            {t.full_name || t.email}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                    )}
+
+                                    {/* Subject 3 */}
+                                    {visibleSubjectsCountAdd >= 3 && (
+                                        <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10 text-xs animate-in slide-in-from-top-2 duration-200">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 3</span>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
+                                                    <Input
+                                                        value={formData.subject_name_3}
+                                                        onChange={(e) => setFormData({ ...formData, subject_name_3: e.target.value })}
+                                                        placeholder="English"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={formData.monthly_fee_3}
+                                                        onChange={(e) => setFormData({ ...formData, monthly_fee_3: Number(e.target.value) })}
+                                                        placeholder="3000"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={formData.classes_per_month_3}
+                                                        onChange={(e) => setFormData({ ...formData, classes_per_month_3: Number(e.target.value) })}
+                                                        placeholder="8"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
+                                                    <Select 
+                                                        onValueChange={(val) => setFormData({ ...formData, assigned_teacher_id_3: val })} 
+                                                        value={formData.assigned_teacher_id_3 || "none"}
+                                                    >
+                                                        <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
+                                                            <SelectValue placeholder="Select Tutor..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-xl border border-border/40">
+                                                            <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                            {teachers.map(t => (
+                                                                <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                                    {t.full_name || t.email}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
+
+                                    {/* Subject 4 */}
+                                    {visibleSubjectsCountAdd >= 4 && (
+                                        <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10 text-xs animate-in slide-in-from-top-2 duration-200">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 4</span>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
+                                                    <Input
+                                                        value={formData.subject_name_4}
+                                                        onChange={(e) => setFormData({ ...formData, subject_name_4: e.target.value })}
+                                                        placeholder="Geography"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={formData.monthly_fee_4}
+                                                        onChange={(e) => setFormData({ ...formData, monthly_fee_4: Number(e.target.value) })}
+                                                        placeholder="3000"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={formData.classes_per_month_4}
+                                                        onChange={(e) => setFormData({ ...formData, classes_per_month_4: Number(e.target.value) })}
+                                                        placeholder="8"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
+                                                    <Select 
+                                                        onValueChange={(val) => setFormData({ ...formData, assigned_teacher_id_4: val })} 
+                                                        value={formData.assigned_teacher_id_4 || "none"}
+                                                    >
+                                                        <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
+                                                            <SelectValue placeholder="Select Tutor..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-xl border border-border/40">
+                                                            <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                            {teachers.map(t => (
+                                                                <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                                    {t.full_name || t.email}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Subject 5 */}
+                                    {visibleSubjectsCountAdd >= 5 && (
+                                        <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10 text-xs animate-in slide-in-from-top-2 duration-200">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 5</span>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
+                                                    <Input
+                                                        value={formData.subject_name_5}
+                                                        onChange={(e) => setFormData({ ...formData, subject_name_5: e.target.value })}
+                                                        placeholder="History"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={formData.monthly_fee_5}
+                                                        onChange={(e) => setFormData({ ...formData, monthly_fee_5: Number(e.target.value) })}
+                                                        placeholder="3000"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={formData.classes_per_month_5}
+                                                        onChange={(e) => setFormData({ ...formData, classes_per_month_5: Number(e.target.value) })}
+                                                        placeholder="8"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
+                                                    <Select 
+                                                        onValueChange={(val) => setFormData({ ...formData, assigned_teacher_id_5: val })} 
+                                                        value={formData.assigned_teacher_id_5 || "none"}
+                                                    >
+                                                        <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
+                                                            <SelectValue placeholder="Select Tutor..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-xl border border-border/40">
+                                                            <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                            {teachers.map(t => (
+                                                                <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                                    {t.full_name || t.email}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Add Subject Package Button */}
+                                    {visibleSubjectsCountAdd < 5 && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full rounded-xl border-dashed border-indigo-500/40 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50 text-[10px] font-bold gap-1 mt-2 py-3 h-auto uppercase tracking-wider"
+                                            onClick={() => setVisibleSubjectsCountAdd(prev => Math.min(5, prev + 1))}
+                                        >
+                                            + Add Another Subject ({visibleSubjectsCountAdd}/5)
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
-                            <div className="pt-4 flex gap-3">
+                            <div className="p-6 bg-muted/10 border-t border-border/20 flex gap-3 shrink-0">
                                 <Button
                                     type="button"
                                     variant="ghost"
@@ -831,264 +1035,401 @@ export default function StudentDirectoryClient({
 
             {/* Edit Student Modal */}
             {editingStudent && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="w-full max-w-md bg-card rounded-[2rem] shadow-2xl overflow-hidden border border-border/40 animate-in zoom-in-95 duration-200">
-                        <div className="bg-muted/30 p-6 flex items-center justify-between border-b border-border/20">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
+                    <div className="w-full max-w-md bg-card rounded-[2rem] shadow-2xl border border-border/40 max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-muted/30 p-6 flex items-center justify-between border-b border-border/20 shrink-0">
                             <h2 className="text-xl font-serif font-bold tracking-tight">Edit Student Profile</h2>
                             <button onClick={() => setEditingStudent(null)} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-muted transition-colors">
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
-                        <form onSubmit={handleUpdateStudent} className="p-8 space-y-4 max-h-[80vh] overflow-y-auto">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Full Name</label>
-                                <Input
-                                    required
-                                    value={editFormData.full_name}
-                                    onChange={(e) => setEditFormData({ ...editFormData, full_name: e.target.value })}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="Full Name"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Student ID (Optional)</label>
-                                <Input
-                                    value={editFormData.custom_student_id}
-                                    onChange={(e) => setEditFormData({ ...editFormData, custom_student_id: e.target.value })}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="e.g. EH-ST-1001"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
-                                <Input
-                                    required
-                                    type="tel"
-                                    value={editFormData.mobile_number}
-                                    onChange={(e) => setEditFormData({ ...editFormData, mobile_number: e.target.value })}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="e.g. +91 9876543210"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">User ID (Login Email)</label>
-                                <Input
-                                    required
-                                    type="email"
-                                    value={editFormData.email}
-                                    onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="jane@example.com"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Parent Email (Optional)</label>
-                                <Input
-                                    type="email"
-                                    value={editFormData.parent_email}
-                                    onChange={(e) => setEditFormData({ ...editFormData, parent_email: e.target.value })}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="parent@example.com"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Grade Level</label>
-                                <Input
-                                    required
-                                    value={editFormData.grade_level}
-                                    onChange={(e) => setEditFormData({ ...editFormData, grade_level: e.target.value })}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="e.g. 10th Grade"
-                                />
-                            </div>
-                            {currentUserRole !== 'operations' && (
+                        <form onSubmit={handleUpdateStudent} className="flex-1 min-h-0 flex flex-col">
+                            <div className="flex-1 overflow-y-auto p-8 space-y-4 pr-6">
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Tutor Hourly Rate (₹/hr - optional)</label>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Full Name</label>
                                     <Input
-                                        type="number"
-                                        value={editFormData.tutor_hourly_rate}
-                                        onChange={(e) => setEditFormData({ ...editFormData, tutor_hourly_rate: e.target.value })}
-                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                        placeholder="e.g. 100 (Default uses tutor's hourly rate)"
+                                        required
+                                        value={editFormData.full_name}
+                                        onChange={(e) => setEditFormData({ ...editFormData, full_name: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                        placeholder="Full Name"
                                     />
                                 </div>
-                            )}
-
-                            <div className="space-y-4 border-t border-border/20 pt-4">
-                                <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 ml-1">Subject Packages</h4>
-
-                                {/* Subject 1 (Primary) */}
-                                <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10">
-                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 1 (Primary)</span>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
-                                            <Input
-                                                value={editFormData.subject_name_1}
-                                                onChange={(e) => setEditFormData({ ...editFormData, subject_name_1: e.target.value })}
-                                                placeholder="Maths"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
-                                            <Input
-                                                type="number"
-                                                value={editFormData.monthly_fee}
-                                                onChange={(e) => setEditFormData({ ...editFormData, monthly_fee: Number(e.target.value) })}
-                                                placeholder="4500"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
-                                            <Input
-                                                type="number"
-                                                value={editFormData.classes_per_month}
-                                                onChange={(e) => setEditFormData({ ...editFormData, classes_per_month: Number(e.target.value) })}
-                                                placeholder="12"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
-                                            <Select 
-                                                onValueChange={(val) => setEditFormData({ ...editFormData, assigned_teacher_id: val })} 
-                                                value={editFormData.assigned_teacher_id || "none"}
-                                            >
-                                                <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
-                                                    <SelectValue placeholder="Select Tutor..." />
-                                                </SelectTrigger>
-                                                <SelectContent className="rounded-xl border border-border/40">
-                                                    <SelectItem value="none" className="rounded-lg">None</SelectItem>
-                                                    {teachers.map(t => (
-                                                        <SelectItem key={t.id} value={t.id} className="rounded-lg">
-                                                            {t.full_name || t.email}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Student ID (Optional)</label>
+                                    <Input
+                                        value={editFormData.custom_student_id}
+                                        onChange={(e) => setEditFormData({ ...editFormData, custom_student_id: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                        placeholder="e.g. EH-ST-1001"
+                                    />
                                 </div>
-
-                                {/* Subject 2 */}
-                                <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10">
-                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 2 (Optional)</span>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
-                                            <Input
-                                                value={editFormData.subject_name_2}
-                                                onChange={(e) => setEditFormData({ ...editFormData, subject_name_2: e.target.value })}
-                                                placeholder="Science"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
-                                            <Input
-                                                type="number"
-                                                value={editFormData.monthly_fee_2}
-                                                onChange={(e) => setEditFormData({ ...editFormData, monthly_fee_2: Number(e.target.value) })}
-                                                placeholder="3500"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
-                                            <Input
-                                                type="number"
-                                                value={editFormData.classes_per_month_2}
-                                                onChange={(e) => setEditFormData({ ...editFormData, classes_per_month_2: Number(e.target.value) })}
-                                                placeholder="8"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
-                                            <Select 
-                                                onValueChange={(val) => setEditFormData({ ...editFormData, assigned_teacher_id_2: val })} 
-                                                value={editFormData.assigned_teacher_id_2 || "none"}
-                                            >
-                                                <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
-                                                    <SelectValue placeholder="Select Tutor..." />
-                                                </SelectTrigger>
-                                                <SelectContent className="rounded-xl border border-border/40">
-                                                    <SelectItem value="none" className="rounded-lg">None</SelectItem>
-                                                    {teachers.map(t => (
-                                                        <SelectItem key={t.id} value={t.id} className="rounded-lg">
-                                                            {t.full_name || t.email}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
+                                    <Input
+                                        required
+                                        type="tel"
+                                        value={editFormData.mobile_number}
+                                        onChange={(e) => setEditFormData({ ...editFormData, mobile_number: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                        placeholder="e.g. +91 9876543210"
+                                    />
                                 </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">User ID (Login Email)</label>
+                                    <Input
+                                        required
+                                        type="email"
+                                        value={editFormData.email}
+                                        onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                        placeholder="jane@example.com"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Parent Email (Optional)</label>
+                                    <Input
+                                        type="email"
+                                        value={editFormData.parent_email}
+                                        onChange={(e) => setEditFormData({ ...editFormData, parent_email: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                        placeholder="parent@example.com"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Grade Level</label>
+                                    <Input
+                                        required
+                                        value={editFormData.grade_level}
+                                        onChange={(e) => setEditFormData({ ...editFormData, grade_level: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                        placeholder="e.g. 10th Grade"
+                                    />
+                                </div>
+                                {currentUserRole !== 'operations' && (
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Tutor Hourly Rate (₹/hr - optional)</label>
+                                        <Input
+                                            type="number"
+                                            value={editFormData.tutor_hourly_rate}
+                                            onChange={(e) => setEditFormData({ ...editFormData, tutor_hourly_rate: e.target.value })}
+                                            className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                            placeholder="e.g. 100 (Default uses tutor's hourly rate)"
+                                        />
+                                    </div>
+                                )}
 
-                                {/* Subject 3 */}
-                                <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10">
-                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 3 (Optional)</span>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
-                                            <Input
-                                                value={editFormData.subject_name_3}
-                                                onChange={(e) => setEditFormData({ ...editFormData, subject_name_3: e.target.value })}
-                                                placeholder="English"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
+                                <div className="space-y-4 border-t border-border/20 pt-4">
+                                    <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 ml-1">Subject Packages</h4>
+
+                                    {/* Subject 1 (Primary) */}
+                                    <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10 text-xs">
+                                        <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 1 (Primary)</span>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
+                                                <Input
+                                                    value={editFormData.subject_name_1}
+                                                    onChange={(e) => setEditFormData({ ...editFormData, subject_name_1: e.target.value })}
+                                                    placeholder="Maths"
+                                                    className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
+                                                <Input
+                                                    type="number"
+                                                    value={editFormData.monthly_fee}
+                                                    onChange={(e) => setEditFormData({ ...editFormData, monthly_fee: Number(e.target.value) })}
+                                                    placeholder="4500"
+                                                    className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
-                                            <Input
-                                                type="number"
-                                                value={editFormData.monthly_fee_3}
-                                                onChange={(e) => setEditFormData({ ...editFormData, monthly_fee_3: Number(e.target.value) })}
-                                                placeholder="3000"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
+                                                <Input
+                                                    type="number"
+                                                    value={editFormData.classes_per_month}
+                                                    onChange={(e) => setEditFormData({ ...editFormData, classes_per_month: Number(e.target.value) })}
+                                                    placeholder="12"
+                                                    className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
+                                                <Select 
+                                                    onValueChange={(val) => setEditFormData({ ...editFormData, assigned_teacher_id: val })} 
+                                                    value={editFormData.assigned_teacher_id || "none"}
+                                                >
+                                                    <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
+                                                        <SelectValue placeholder="Select Tutor..." />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="rounded-xl border border-border/40">
+                                                        <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                        {teachers.map(t => (
+                                                            <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                                {t.full_name || t.email}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
-                                            <Input
-                                                type="number"
-                                                value={editFormData.classes_per_month_3}
-                                                onChange={(e) => setEditFormData({ ...editFormData, classes_per_month_3: Number(e.target.value) })}
-                                                placeholder="8"
-                                                className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                            />
+
+                                    {/* Subject 2 */}
+                                    {visibleSubjectsCountEdit >= 2 && (
+                                        <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10 text-xs animate-in slide-in-from-top-2 duration-200">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 2</span>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
+                                                    <Input
+                                                        value={editFormData.subject_name_2}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, subject_name_2: e.target.value })}
+                                                        placeholder="Science"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={editFormData.monthly_fee_2}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, monthly_fee_2: Number(e.target.value) })}
+                                                        placeholder="3500"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={editFormData.classes_per_month_2}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, classes_per_month_2: Number(e.target.value) })}
+                                                        placeholder="8"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
+                                                    <Select 
+                                                        onValueChange={(val) => setEditFormData({ ...editFormData, assigned_teacher_id_2: val })} 
+                                                        value={editFormData.assigned_teacher_id_2 || "none"}
+                                                    >
+                                                        <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
+                                                            <SelectValue placeholder="Select Tutor..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-xl border border-border/40">
+                                                            <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                            {teachers.map(t => (
+                                                                <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                                    {t.full_name || t.email}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
-                                            <Select 
-                                                onValueChange={(val) => setEditFormData({ ...editFormData, assigned_teacher_id_3: val })} 
-                                                value={editFormData.assigned_teacher_id_3 || "none"}
-                                            >
-                                                <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
-                                                    <SelectValue placeholder="Select Tutor..." />
-                                                </SelectTrigger>
-                                                <SelectContent className="rounded-xl border border-border/40">
-                                                    <SelectItem value="none" className="rounded-lg">None</SelectItem>
-                                                    {teachers.map(t => (
-                                                        <SelectItem key={t.id} value={t.id} className="rounded-lg">
-                                                            {t.full_name || t.email}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                    )}
+
+                                    {/* Subject 3 */}
+                                    {visibleSubjectsCountEdit >= 3 && (
+                                        <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10 text-xs animate-in slide-in-from-top-2 duration-200">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 3</span>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
+                                                    <Input
+                                                        value={editFormData.subject_name_3}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, subject_name_3: e.target.value })}
+                                                        placeholder="English"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={editFormData.monthly_fee_3}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, monthly_fee_3: Number(e.target.value) })}
+                                                        placeholder="3000"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={editFormData.classes_per_month_3}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, classes_per_month_3: Number(e.target.value) })}
+                                                        placeholder="8"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
+                                                    <Select 
+                                                        onValueChange={(val) => setEditFormData({ ...editFormData, assigned_teacher_id_3: val })} 
+                                                        value={editFormData.assigned_teacher_id_3 || "none"}
+                                                    >
+                                                        <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
+                                                            <SelectValue placeholder="Select Tutor..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-xl border border-border/40">
+                                                            <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                            {teachers.map(t => (
+                                                                <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                                    {t.full_name || t.email}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
+
+                                    {/* Subject 4 */}
+                                    {visibleSubjectsCountEdit >= 4 && (
+                                        <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10 text-xs animate-in slide-in-from-top-2 duration-200">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 4</span>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
+                                                    <Input
+                                                        value={editFormData.subject_name_4}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, subject_name_4: e.target.value })}
+                                                        placeholder="Geography"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={editFormData.monthly_fee_4}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, monthly_fee_4: Number(e.target.value) })}
+                                                        placeholder="3000"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={editFormData.classes_per_month_4}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, classes_per_month_4: Number(e.target.value) })}
+                                                        placeholder="8"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
+                                                    <Select 
+                                                        onValueChange={(val) => setEditFormData({ ...editFormData, assigned_teacher_id_4: val })} 
+                                                        value={editFormData.assigned_teacher_id_4 || "none"}
+                                                    >
+                                                        <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
+                                                            <SelectValue placeholder="Select Tutor..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-xl border border-border/40">
+                                                            <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                            {teachers.map(t => (
+                                                                <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                                    {t.full_name || t.email}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Subject 5 */}
+                                    {visibleSubjectsCountEdit >= 5 && (
+                                        <div className="space-y-3 bg-muted/20 p-4 rounded-2xl border border-border/10 text-xs animate-in slide-in-from-top-2 duration-200">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Subject 5</span>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject Name</label>
+                                                    <Input
+                                                        value={editFormData.subject_name_5}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, subject_name_5: e.target.value })}
+                                                        placeholder="History"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Fee (₹)</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={editFormData.monthly_fee_5}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, monthly_fee_5: Number(e.target.value) })}
+                                                        placeholder="3000"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Classes/Mo</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={editFormData.classes_per_month_5}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, classes_per_month_5: Number(e.target.value) })}
+                                                        placeholder="8"
+                                                        className="h-10 rounded-xl bg-background border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Assign Tutor</label>
+                                                    <Select 
+                                                        onValueChange={(val) => setEditFormData({ ...editFormData, assigned_teacher_id_5: val })} 
+                                                        value={editFormData.assigned_teacher_id_5 || "none"}
+                                                    >
+                                                        <SelectTrigger className="h-10 rounded-xl border-none bg-background text-[11px]">
+                                                            <SelectValue placeholder="Select Tutor..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-xl border border-border/40">
+                                                            <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                            {teachers.map(t => (
+                                                                <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                                    {t.full_name || t.email}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Add Subject Package Button */}
+                                    {visibleSubjectsCountEdit < 5 && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full rounded-xl border-dashed border-indigo-500/40 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50 text-[10px] font-bold gap-1 mt-2 py-3 h-auto uppercase tracking-wider"
+                                            onClick={() => setVisibleSubjectsCountEdit(prev => Math.min(5, prev + 1))}
+                                        >
+                                            + Add Another Subject ({visibleSubjectsCountEdit}/5)
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
-                            <div className="pt-4 flex gap-3">
+                            <div className="p-6 bg-muted/10 border-t border-border/20 flex gap-3 shrink-0">
                                 <Button
                                     type="button"
                                     variant="ghost"

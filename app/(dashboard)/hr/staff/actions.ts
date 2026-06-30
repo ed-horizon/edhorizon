@@ -183,6 +183,14 @@ export async function createStudentMember(data: {
     monthly_fee_3?: number;
     classes_per_month_3?: number;
     assigned_teacher_id_3?: string;
+    subject_name_4?: string;
+    monthly_fee_4?: number;
+    classes_per_month_4?: number;
+    assigned_teacher_id_4?: string;
+    subject_name_5?: string;
+    monthly_fee_5?: number;
+    classes_per_month_5?: number;
+    assigned_teacher_id_5?: string;
     assigned_teacher_id?: string;
 }) {
     const supabase = await createClient();
@@ -241,6 +249,14 @@ export async function createStudentMember(data: {
                 monthly_fee_3: data.monthly_fee_3 || 0,
                 classes_per_month_3: data.classes_per_month_3 || 0,
                 assigned_teacher_id_3: data.assigned_teacher_id_3 || null,
+                subject_name_4: data.subject_name_4 || null,
+                monthly_fee_4: data.monthly_fee_4 || 0,
+                classes_per_month_4: data.classes_per_month_4 || 0,
+                assigned_teacher_id_4: data.assigned_teacher_id_4 || null,
+                subject_name_5: data.subject_name_5 || null,
+                monthly_fee_5: data.monthly_fee_5 || 0,
+                classes_per_month_5: data.classes_per_month_5 || 0,
+                assigned_teacher_id_5: data.assigned_teacher_id_5 || null,
                 assigned_teacher_id: data.assigned_teacher_id || null
             });
 
@@ -272,6 +288,14 @@ export async function updateStudentMember(id: string, data: {
     monthly_fee_3?: number;
     classes_per_month_3?: number;
     assigned_teacher_id_3?: string;
+    subject_name_4?: string;
+    monthly_fee_4?: number;
+    classes_per_month_4?: number;
+    assigned_teacher_id_4?: string;
+    subject_name_5?: string;
+    monthly_fee_5?: number;
+    classes_per_month_5?: number;
+    assigned_teacher_id_5?: string;
     assigned_teacher_id?: string;
 }) {
     const supabase = await createClient();
@@ -334,7 +358,15 @@ export async function updateStudentMember(id: string, data: {
         subject_name_3: data.subject_name_3 !== undefined ? data.subject_name_3 : null,
         monthly_fee_3: data.monthly_fee_3 !== undefined ? data.monthly_fee_3 : 0,
         classes_per_month_3: data.classes_per_month_3 !== undefined ? data.classes_per_month_3 : 0,
-        assigned_teacher_id_3: data.assigned_teacher_id_3 !== undefined ? data.assigned_teacher_id_3 : null
+        assigned_teacher_id_3: data.assigned_teacher_id_3 !== undefined ? data.assigned_teacher_id_3 : null,
+        subject_name_4: data.subject_name_4 !== undefined ? data.subject_name_4 : null,
+        monthly_fee_4: data.monthly_fee_4 !== undefined ? data.monthly_fee_4 : 0,
+        classes_per_month_4: data.classes_per_month_4 !== undefined ? data.classes_per_month_4 : 0,
+        assigned_teacher_id_4: data.assigned_teacher_id_4 !== undefined ? data.assigned_teacher_id_4 : null,
+        subject_name_5: data.subject_name_5 !== undefined ? data.subject_name_5 : null,
+        monthly_fee_5: data.monthly_fee_5 !== undefined ? data.monthly_fee_5 : 0,
+        classes_per_month_5: data.classes_per_month_5 !== undefined ? data.classes_per_month_5 : 0,
+        assigned_teacher_id_5: data.assigned_teacher_id_5 !== undefined ? data.assigned_teacher_id_5 : null
     };
     if (data.monthly_fee !== undefined) updateFields.monthly_fee = data.monthly_fee;
     if (data.classes_per_month !== undefined) updateFields.classes_per_month = data.classes_per_month;

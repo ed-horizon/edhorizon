@@ -82,9 +82,19 @@ interface StudentDetails {
     monthly_fee_3?: number | null;
     classes_per_month_3?: number | null;
     assigned_teacher_id_3?: string | null;
+    subject_name_4?: string | null;
+    monthly_fee_4?: number | null;
+    classes_per_month_4?: number | null;
+    assigned_teacher_id_4?: string | null;
+    subject_name_5?: string | null;
+    monthly_fee_5?: number | null;
+    classes_per_month_5?: number | null;
+    assigned_teacher_id_5?: string | null;
     assigned_teacher?: { full_name: string | null } | null;
     assigned_teacher_2?: { full_name: string | null } | null;
     assigned_teacher_3?: { full_name: string | null } | null;
+    assigned_teacher_4?: { full_name: string | null } | null;
+    assigned_teacher_5?: { full_name: string | null } | null;
 }
 
 interface RescheduleRequest {
@@ -172,6 +182,22 @@ export function StudentDashboardClient({
                 fee: Number(details.monthly_fee_3) || 0,
                 classesPerMonth: Number(details.classes_per_month_3) || 0,
                 tutor: details.assigned_teacher_3?.full_name || "Unassigned"
+            });
+        }
+        if (details.subject_name_4) {
+            activeSubjects.push({
+                name: details.subject_name_4,
+                fee: Number(details.monthly_fee_4) || 0,
+                classesPerMonth: Number(details.classes_per_month_4) || 0,
+                tutor: details.assigned_teacher_4?.full_name || "Unassigned"
+            });
+        }
+        if (details.subject_name_5) {
+            activeSubjects.push({
+                name: details.subject_name_5,
+                fee: Number(details.monthly_fee_5) || 0,
+                classesPerMonth: Number(details.classes_per_month_5) || 0,
+                tutor: details.assigned_teacher_5?.full_name || "Unassigned"
             });
         }
     } else {

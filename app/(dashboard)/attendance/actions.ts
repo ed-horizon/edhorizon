@@ -1729,7 +1729,9 @@ export async function getStudentDashboardData() {
             *,
             assigned_teacher:profiles!assigned_teacher_id(full_name),
             assigned_teacher_2:profiles!assigned_teacher_id_2(full_name),
-            assigned_teacher_3:profiles!assigned_teacher_id_3(full_name)
+            assigned_teacher_3:profiles!assigned_teacher_id_3(full_name),
+            assigned_teacher_4:profiles!assigned_teacher_id_4(full_name),
+            assigned_teacher_5:profiles!assigned_teacher_id_5(full_name)
         `)
         .eq('id', user.id)
         .maybeSingle();
@@ -2124,6 +2126,14 @@ export async function onboardStudent(payload: {
     monthlyFee3?: number;
     classesPerMonth3?: number;
     assignedTeacherId3?: string;
+    subjectName4?: string;
+    monthlyFee4?: number;
+    classesPerMonth4?: number;
+    assignedTeacherId4?: string;
+    subjectName5?: string;
+    monthlyFee5?: number;
+    classesPerMonth5?: number;
+    assignedTeacherId5?: string;
 }) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -2196,7 +2206,15 @@ export async function onboardStudent(payload: {
             subject_name_3: payload.subjectName3 || null,
             monthly_fee_3: payload.monthlyFee3 || 0,
             classes_per_month_3: payload.classesPerMonth3 || 0,
-            assigned_teacher_id_3: payload.assignedTeacherId3 || null
+            assigned_teacher_id_3: payload.assignedTeacherId3 || null,
+            subject_name_4: payload.subjectName4 || null,
+            monthly_fee_4: payload.monthlyFee4 || 0,
+            classes_per_month_4: payload.classesPerMonth4 || 0,
+            assigned_teacher_id_4: payload.assignedTeacherId4 || null,
+            subject_name_5: payload.subjectName5 || null,
+            monthly_fee_5: payload.monthlyFee5 || 0,
+            classes_per_month_5: payload.classesPerMonth5 || 0,
+            assigned_teacher_id_5: payload.assignedTeacherId5 || null
         });
 
     if (detailsError) {
