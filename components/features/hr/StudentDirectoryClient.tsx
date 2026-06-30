@@ -28,6 +28,10 @@ interface Student {
         classes_per_month: number;
         tutor_hourly_rate?: number | null;
         assigned_teacher?: { full_name: string | null } | null;
+        assigned_teacher_2?: { full_name: string | null } | null;
+        assigned_teacher_3?: { full_name: string | null } | null;
+        assigned_teacher_4?: { full_name: string | null } | null;
+        assigned_teacher_5?: { full_name: string | null } | null;
         assigned_teacher_id?: string | null;
         custom_student_id?: string | null;
         parent_email?: string | null;
@@ -189,20 +193,20 @@ export default function StudentDirectoryClient({
             subject_name_2: formData.subject_name_2 || undefined,
             monthly_fee_2: formData.monthly_fee_2,
             classes_per_month_2: formData.classes_per_month_2,
-            assigned_teacher_id_2: formData.assigned_teacher_id_2 || undefined,
+            assigned_teacher_id_2: (formData.assigned_teacher_id_2 === "none" || !formData.assigned_teacher_id_2) ? undefined : formData.assigned_teacher_id_2,
             subject_name_3: formData.subject_name_3 || undefined,
             monthly_fee_3: formData.monthly_fee_3,
             classes_per_month_3: formData.classes_per_month_3,
-            assigned_teacher_id_3: formData.assigned_teacher_id_3 || undefined,
+            assigned_teacher_id_3: (formData.assigned_teacher_id_3 === "none" || !formData.assigned_teacher_id_3) ? undefined : formData.assigned_teacher_id_3,
             subject_name_4: formData.subject_name_4 || undefined,
             monthly_fee_4: formData.monthly_fee_4,
             classes_per_month_4: formData.classes_per_month_4,
-            assigned_teacher_id_4: formData.assigned_teacher_id_4 || undefined,
+            assigned_teacher_id_4: (formData.assigned_teacher_id_4 === "none" || !formData.assigned_teacher_id_4) ? undefined : formData.assigned_teacher_id_4,
             subject_name_5: formData.subject_name_5 || undefined,
             monthly_fee_5: formData.monthly_fee_5,
             classes_per_month_5: formData.classes_per_month_5,
-            assigned_teacher_id_5: formData.assigned_teacher_id_5 || undefined,
-            assigned_teacher_id: formData.assigned_teacher_id || undefined
+            assigned_teacher_id_5: (formData.assigned_teacher_id_5 === "none" || !formData.assigned_teacher_id_5) ? undefined : formData.assigned_teacher_id_5,
+            assigned_teacher_id: (formData.assigned_teacher_id === "none" || !formData.assigned_teacher_id) ? undefined : formData.assigned_teacher_id
         });
         setIsSubmitting(false);
         if (result.success) {
@@ -310,20 +314,20 @@ export default function StudentDirectoryClient({
             subject_name_2: editFormData.subject_name_2 || undefined,
             monthly_fee_2: editFormData.monthly_fee_2,
             classes_per_month_2: editFormData.classes_per_month_2,
-            assigned_teacher_id_2: editFormData.assigned_teacher_id_2 || undefined,
+            assigned_teacher_id_2: (editFormData.assigned_teacher_id_2 === "none" || !editFormData.assigned_teacher_id_2) ? undefined : editFormData.assigned_teacher_id_2,
             subject_name_3: editFormData.subject_name_3 || undefined,
             monthly_fee_3: editFormData.monthly_fee_3,
             classes_per_month_3: editFormData.classes_per_month_3,
-            assigned_teacher_id_3: editFormData.assigned_teacher_id_3 || undefined,
+            assigned_teacher_id_3: (editFormData.assigned_teacher_id_3 === "none" || !editFormData.assigned_teacher_id_3) ? undefined : editFormData.assigned_teacher_id_3,
             subject_name_4: editFormData.subject_name_4 || undefined,
             monthly_fee_4: editFormData.monthly_fee_4,
             classes_per_month_4: editFormData.classes_per_month_4,
-            assigned_teacher_id_4: editFormData.assigned_teacher_id_4 || undefined,
+            assigned_teacher_id_4: (editFormData.assigned_teacher_id_4 === "none" || !editFormData.assigned_teacher_id_4) ? undefined : editFormData.assigned_teacher_id_4,
             subject_name_5: editFormData.subject_name_5 || undefined,
             monthly_fee_5: editFormData.monthly_fee_5,
             classes_per_month_5: editFormData.classes_per_month_5,
-            assigned_teacher_id_5: editFormData.assigned_teacher_id_5 || undefined,
-            assigned_teacher_id: editFormData.assigned_teacher_id || undefined
+            assigned_teacher_id_5: (editFormData.assigned_teacher_id_5 === "none" || !editFormData.assigned_teacher_id_5) ? undefined : editFormData.assigned_teacher_id_5,
+            assigned_teacher_id: (editFormData.assigned_teacher_id === "none" || !editFormData.assigned_teacher_id) ? undefined : editFormData.assigned_teacher_id
         });
         setIsSubmitting(false);
         if (result.success) {
@@ -847,6 +851,63 @@ export default function StudentDirectoryClient({
                         {filteredStudents.map((student, index) => {
                             const isLastItem = index >= filteredStudents.length - 2;
                             const { studentId, mobileNumber } = parseStudentIdAndMobile(student.student_details?.custom_student_id);
+                            
+                            const sd = student.student_details;
+                            const totalFee = (sd?.monthly_fee ?? 0) + 
+                                             (sd?.monthly_fee_2 ?? 0) + 
+                                             (sd?.monthly_fee_3 ?? 0) + 
+                                             (sd?.monthly_fee_4 ?? 0) + 
+                                             (sd?.monthly_fee_5 ?? 0);
+                            const totalClasses = (sd?.classes_per_month ?? 0) + 
+                                                 (sd?.classes_per_month_2 ?? 0) + 
+                                                 (sd?.classes_per_month_3 ?? 0) + 
+                                                 (sd?.classes_per_month_4 ?? 0) + 
+                                                 (sd?.classes_per_month_5 ?? 0);
+
+                            // Collect active subjects with their tutors
+                            const activeSubjects: { name: string; teacherName: string; key: number }[] = [];
+                            if (sd?.subject_name_1) {
+                                activeSubjects.push({ 
+                                    name: sd.subject_name_1, 
+                                    teacherName: sd.assigned_teacher?.full_name || 'Unassigned',
+                                    key: 1
+                                });
+                            } else if (sd?.assigned_teacher) {
+                                activeSubjects.push({ 
+                                    name: 'Maths', 
+                                    teacherName: sd.assigned_teacher?.full_name || 'Unassigned',
+                                    key: 1
+                                });
+                            }
+                            if (sd?.subject_name_2) {
+                                activeSubjects.push({ 
+                                    name: sd.subject_name_2, 
+                                    teacherName: student.student_details?.assigned_teacher_2?.full_name || 'Unassigned',
+                                    key: 2
+                                });
+                            }
+                            if (sd?.subject_name_3) {
+                                activeSubjects.push({ 
+                                    name: sd.subject_name_3, 
+                                    teacherName: student.student_details?.assigned_teacher_3?.full_name || 'Unassigned',
+                                    key: 3
+                                });
+                            }
+                            if (sd?.subject_name_4) {
+                                activeSubjects.push({ 
+                                    name: sd.subject_name_4, 
+                                    teacherName: student.student_details?.assigned_teacher_4?.full_name || 'Unassigned',
+                                    key: 4
+                                });
+                            }
+                            if (sd?.subject_name_5) {
+                                activeSubjects.push({ 
+                                    name: sd.subject_name_5, 
+                                    teacherName: student.student_details?.assigned_teacher_5?.full_name || 'Unassigned',
+                                    key: 5
+                                });
+                            }
+
                             return (
                                 <TableRow key={student.id} className="hover:bg-muted/20 transition-colors border-b-border/20">
                                     <TableCell className="py-5 pl-8">
@@ -884,11 +945,11 @@ export default function StudentDirectoryClient({
                                     </TableCell>
                                     {isFeesVisible && (
                                         <TableCell className="text-center font-bold text-foreground text-xs">
-                                            ₹{student.student_details?.monthly_fee !== undefined ? student.student_details.monthly_fee : '0'}
+                                            ₹{totalFee}
                                         </TableCell>
                                     )}
                                     <TableCell className="text-center font-bold text-foreground text-xs">
-                                        {student.student_details?.classes_per_month !== undefined ? student.student_details.classes_per_month : '12'} classes
+                                        {totalClasses} classes
                                     </TableCell>
                                     <TableCell className="text-center">
                                         <div className="flex flex-col items-center gap-1">
@@ -938,7 +999,16 @@ export default function StudentDirectoryClient({
                                     </TableCell>
                                     <TableCell className="text-center">
                                         <div className="flex flex-col items-center gap-1">
-                                            {["hr", "super_admin", "admin", "operations"].includes(currentUserRole || "") ? (
+                                            {activeSubjects.length > 1 ? (
+                                                <div className="flex flex-col gap-1 text-[10px] text-left min-w-[130px] mx-auto w-fit bg-muted/20 p-2.5 rounded-xl border border-border/10">
+                                                    {activeSubjects.map((sub) => (
+                                                        <div key={sub.key} className="flex items-center gap-2 justify-between">
+                                                            <span className="font-bold text-slate-500 uppercase tracking-tighter shrink-0">{sub.name}:</span>
+                                                            <span className="font-extrabold text-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/20 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-tighter truncate max-w-[80px]" title={sub.teacherName}>{sub.teacherName}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : ["hr", "super_admin", "admin", "operations"].includes(currentUserRole || "") ? (
                                                 <div className="w-40 mx-auto">
                                                     <Select 
                                                         onValueChange={(val) => handleAssignTutor(student.id, val)}

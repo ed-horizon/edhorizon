@@ -244,20 +244,20 @@ export async function createStudentMember(data: {
                 subject_name_2: data.subject_name_2 || null,
                 monthly_fee_2: data.monthly_fee_2 || 0,
                 classes_per_month_2: data.classes_per_month_2 || 0,
-                assigned_teacher_id_2: data.assigned_teacher_id_2 || null,
+                assigned_teacher_id_2: (data.assigned_teacher_id_2 === "none" || data.assigned_teacher_id_2 === "unassigned" || !data.assigned_teacher_id_2) ? null : data.assigned_teacher_id_2,
                 subject_name_3: data.subject_name_3 || null,
                 monthly_fee_3: data.monthly_fee_3 || 0,
                 classes_per_month_3: data.classes_per_month_3 || 0,
-                assigned_teacher_id_3: data.assigned_teacher_id_3 || null,
+                assigned_teacher_id_3: (data.assigned_teacher_id_3 === "none" || data.assigned_teacher_id_3 === "unassigned" || !data.assigned_teacher_id_3) ? null : data.assigned_teacher_id_3,
                 subject_name_4: data.subject_name_4 || null,
                 monthly_fee_4: data.monthly_fee_4 || 0,
                 classes_per_month_4: data.classes_per_month_4 || 0,
-                assigned_teacher_id_4: data.assigned_teacher_id_4 || null,
+                assigned_teacher_id_4: (data.assigned_teacher_id_4 === "none" || data.assigned_teacher_id_4 === "unassigned" || !data.assigned_teacher_id_4) ? null : data.assigned_teacher_id_4,
                 subject_name_5: data.subject_name_5 || null,
                 monthly_fee_5: data.monthly_fee_5 || 0,
                 classes_per_month_5: data.classes_per_month_5 || 0,
-                assigned_teacher_id_5: data.assigned_teacher_id_5 || null,
-                assigned_teacher_id: data.assigned_teacher_id || null
+                assigned_teacher_id_5: (data.assigned_teacher_id_5 === "none" || data.assigned_teacher_id_5 === "unassigned" || !data.assigned_teacher_id_5) ? null : data.assigned_teacher_id_5,
+                assigned_teacher_id: (data.assigned_teacher_id === "none" || data.assigned_teacher_id === "unassigned" || !data.assigned_teacher_id) ? null : data.assigned_teacher_id
             });
 
         if (updateError) {
@@ -354,24 +354,24 @@ export async function updateStudentMember(id: string, data: {
         subject_name_2: data.subject_name_2 !== undefined ? data.subject_name_2 : null,
         monthly_fee_2: data.monthly_fee_2 !== undefined ? data.monthly_fee_2 : 0,
         classes_per_month_2: data.classes_per_month_2 !== undefined ? data.classes_per_month_2 : 0,
-        assigned_teacher_id_2: data.assigned_teacher_id_2 !== undefined ? data.assigned_teacher_id_2 : null,
+        assigned_teacher_id_2: (data.assigned_teacher_id_2 !== undefined && data.assigned_teacher_id_2 !== "none" && data.assigned_teacher_id_2 !== "unassigned") ? data.assigned_teacher_id_2 : null,
         subject_name_3: data.subject_name_3 !== undefined ? data.subject_name_3 : null,
         monthly_fee_3: data.monthly_fee_3 !== undefined ? data.monthly_fee_3 : 0,
         classes_per_month_3: data.classes_per_month_3 !== undefined ? data.classes_per_month_3 : 0,
-        assigned_teacher_id_3: data.assigned_teacher_id_3 !== undefined ? data.assigned_teacher_id_3 : null,
+        assigned_teacher_id_3: (data.assigned_teacher_id_3 !== undefined && data.assigned_teacher_id_3 !== "none" && data.assigned_teacher_id_3 !== "unassigned") ? data.assigned_teacher_id_3 : null,
         subject_name_4: data.subject_name_4 !== undefined ? data.subject_name_4 : null,
         monthly_fee_4: data.monthly_fee_4 !== undefined ? data.monthly_fee_4 : 0,
         classes_per_month_4: data.classes_per_month_4 !== undefined ? data.classes_per_month_4 : 0,
-        assigned_teacher_id_4: data.assigned_teacher_id_4 !== undefined ? data.assigned_teacher_id_4 : null,
+        assigned_teacher_id_4: (data.assigned_teacher_id_4 !== undefined && data.assigned_teacher_id_4 !== "none" && data.assigned_teacher_id_4 !== "unassigned") ? data.assigned_teacher_id_4 : null,
         subject_name_5: data.subject_name_5 !== undefined ? data.subject_name_5 : null,
         monthly_fee_5: data.monthly_fee_5 !== undefined ? data.monthly_fee_5 : 0,
         classes_per_month_5: data.classes_per_month_5 !== undefined ? data.classes_per_month_5 : 0,
-        assigned_teacher_id_5: data.assigned_teacher_id_5 !== undefined ? data.assigned_teacher_id_5 : null
+        assigned_teacher_id_5: (data.assigned_teacher_id_5 !== undefined && data.assigned_teacher_id_5 !== "none" && data.assigned_teacher_id_5 !== "unassigned") ? data.assigned_teacher_id_5 : null
     };
     if (data.monthly_fee !== undefined) updateFields.monthly_fee = data.monthly_fee;
     if (data.classes_per_month !== undefined) updateFields.classes_per_month = data.classes_per_month;
     if (data.tutor_hourly_rate !== undefined) updateFields.tutor_hourly_rate = data.tutor_hourly_rate;
-    if (data.assigned_teacher_id !== undefined) updateFields.assigned_teacher_id = data.assigned_teacher_id;
+    if (data.assigned_teacher_id !== undefined) updateFields.assigned_teacher_id = (data.assigned_teacher_id === "none" || data.assigned_teacher_id === "unassigned" || !data.assigned_teacher_id) ? null : data.assigned_teacher_id;
 
     const { error: detailError } = await adminClient
         .from("student_details")

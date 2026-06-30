@@ -149,6 +149,7 @@ export async function getPendingPayments() {
                 full_name, 
                 email,
                 student_details!student_details_id_fkey(
+                    status,
                     assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
                         staff_details (status)
                     )
@@ -164,8 +165,12 @@ export async function getPendingPayments() {
     }
 
     const filtered = (data || []).filter((p: any) => {
-        if (currentUserRole === 'super_admin') return true;
         const details = Array.isArray(p.student?.student_details) ? p.student?.student_details[0] : p.student?.student_details;
+        
+        // Hide inactive students
+        if (details?.status === 'inactive') return false;
+
+        if (currentUserRole === 'super_admin') return true;
         const teacherDetails = Array.isArray(details?.assigned_teacher?.staff_details)
             ? details?.assigned_teacher?.staff_details[0]
             : details?.assigned_teacher?.staff_details;
@@ -198,6 +203,7 @@ export async function getAllPayments() {
                 full_name, 
                 email,
                 student_details!student_details_id_fkey(
+                    status,
                     assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
                         staff_details (status)
                     )
@@ -212,8 +218,12 @@ export async function getAllPayments() {
     }
 
     const filtered = (data || []).filter((p: any) => {
-        if (currentUserRole === 'super_admin') return true;
         const details = Array.isArray(p.student?.student_details) ? p.student?.student_details[0] : p.student?.student_details;
+        
+        // Hide inactive students
+        if (details?.status === 'inactive') return false;
+
+        if (currentUserRole === 'super_admin') return true;
         const teacherDetails = Array.isArray(details?.assigned_teacher?.staff_details)
             ? details?.assigned_teacher?.staff_details[0]
             : details?.assigned_teacher?.staff_details;
