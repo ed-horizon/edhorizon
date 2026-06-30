@@ -349,7 +349,7 @@ export default function OperationsDashboard() {
     };
 
     // Quality Alerts Calculations
-    const classesNotMarked = classes.filter(c => c.status === 'scheduled' && new Date(c.scheduled_at) < new Date());
+    const classesNotMarked = classes.filter(c => (c.status === 'scheduled' || c.status === 'ongoing') && new Date(c.scheduled_at) < new Date());
     const pendingComplaintsCount = complaints.filter(c => c.status === 'pending').length;
     const unpaidLeadsCount = leads.filter(l => l.status === 'converted' && l.value > 4000).length; // Simulated payment pending
 
@@ -358,7 +358,7 @@ export default function OperationsDashboard() {
         if (c.status !== 'scheduled' && c.status !== 'ongoing') return false;
         const startTime = new Date(c.scheduled_at).getTime();
         const elapsed = nowTime - startTime;
-        return elapsed > 10 * 60 * 1000 && elapsed < 24 * 60 * 60 * 1000 && !c.tutor_joined_at;
+        return elapsed > 5 * 60 * 1000 && elapsed < 24 * 60 * 60 * 1000 && !c.tutor_joined_at;
     });
 
     const todayStr = new Date().toISOString().split('T')[0];

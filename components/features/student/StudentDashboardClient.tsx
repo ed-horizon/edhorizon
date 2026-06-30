@@ -881,10 +881,10 @@ export function StudentDashboardClient({
                             ) : (
                                 <div className="space-y-4">
                                     {/* Shared Worksheets */}
-                                    {materials.filter(m => m.teacher_id !== null && m.teacher_id !== undefined).length > 0 && (
+                                    {materials.filter(m => !m.title.startsWith('[Submitted Worksheet]') && !m.title.startsWith('[Study Material]')).length > 0 && (
                                         <div className="space-y-2">
                                             <span className="block text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Teacher's Worksheets</span>
-                                            {materials.filter(m => m.teacher_id !== null && m.teacher_id !== undefined).map(mat => (
+                                            {materials.filter(m => !m.title.startsWith('[Submitted Worksheet]') && !m.title.startsWith('[Study Material]')).map(mat => (
                                                 <div key={mat.id} className="p-4 rounded-xl border border-border/30 bg-muted/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-indigo-500/10 transition-all">
                                                     <div className="space-y-1 min-w-0 flex-1">
                                                         <p className="font-semibold text-sm text-foreground truncate">{mat.title}</p>
@@ -904,10 +904,10 @@ export function StudentDashboardClient({
                                     )}
 
                                     {/* Student Submitted Worksheets */}
-                                    {materials.filter(m => m.teacher_id === null || m.teacher_id === undefined).length > 0 && (
+                                    {materials.filter(m => m.title.startsWith('[Submitted Worksheet]') || m.title.startsWith('[Study Material]')).length > 0 && (
                                         <div className="space-y-2 pt-2 border-t border-border/10">
                                             <span className="block text-[9px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400">Your Submitted Worksheets</span>
-                                            {materials.filter(m => m.teacher_id === null || m.teacher_id === undefined).map(mat => (
+                                            {materials.filter(m => m.title.startsWith('[Submitted Worksheet]') || m.title.startsWith('[Study Material]')).map(mat => (
                                                 <div key={mat.id} className="p-4 rounded-xl border border-border/30 bg-muted/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-indigo-500/10 transition-all">
                                                     <div className="space-y-1 min-w-0 flex-1">
                                                         <p className="font-semibold text-sm text-foreground truncate">{mat.title}</p>

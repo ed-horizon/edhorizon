@@ -654,6 +654,30 @@ export async function completeLiveClass(classId: string) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
+    // Fetch caller's profile role
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    // Check if scheduled more than 24 hours ago
+    const { data: classObj } = await supabase
+        .from('live_classes')
+        .select('scheduled_at')
+        .eq('id', classId)
+        .single();
+
+    if (profile?.role === 'teacher' && classObj?.scheduled_at) {
+        const elapsed = new Date().getTime() - new Date(classObj.scheduled_at).getTime();
+        if (elapsed > 24 * 60 * 60 * 1000) {
+            return { 
+                success: false, 
+                error: "This session is locked because it was scheduled more than 24 hours ago. Tutors are only permitted to mark attendance within 24 hours of the session. Please contact HR or Operations to log this session." 
+            };
+        }
+    }
+
     // Just mark class as completed and pending verification
     const { error: updateError } = await supabase
         .from('live_classes')
@@ -678,6 +702,27 @@ export async function markStudentAttendance(classId: string, studentId: string, 
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
+
+    // Fetch caller's profile role
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    // Check if scheduled more than 24 hours ago
+    const { data: classObj } = await supabase
+        .from('live_classes')
+        .select('scheduled_at')
+        .eq('id', classId)
+        .single();
+
+    if (profile?.role === 'teacher' && classObj?.scheduled_at) {
+        const elapsed = new Date().getTime() - new Date(classObj.scheduled_at).getTime();
+        if (elapsed > 24 * 60 * 60 * 1000) {
+            throw new Error("This session is locked because it was scheduled more than 24 hours ago. Tutors are only permitted to mark attendance within 24 hours of the session.");
+        }
+    }
 
     const { error } = await supabase
         .from('student_attendance')
@@ -2236,12 +2281,21 @@ export async function submitCompletedWorksheet(title: string, fileUrl: string) {
 
     if (!metadata) return { success: false, error: "Worksheet upload could not be verified." };
 
+    // Fetch student's assigned teacher ID to satisfy RLS for teacher downloads
+    const { data: studentDetails } = await supabase
+        .from('student_details')
+        .select('assigned_teacher_id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+    const teacherId = studentDetails?.assigned_teacher_id || null;
+
     const adminClient = createAdminClient();
     const { error } = await adminClient
         .from('student_materials')
         .insert({
             student_id: user.id,
-            teacher_id: null,
+            teacher_id: teacherId,
             title: `[Submitted Worksheet] ${title}`,
             file_url: fileUrl
         });
