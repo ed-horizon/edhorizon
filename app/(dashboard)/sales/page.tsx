@@ -40,6 +40,16 @@ export default function SalesDashboard() {
     const [onboardClassesPerMonth, setOnboardClassesPerMonth] = useState("12");
     const [onboardTeacherId, setOnboardTeacherId] = useState("");
     const [onboardStudentId, setOnboardStudentId] = useState("");
+    const [onboardParentEmail, setOnboardParentEmail] = useState("");
+    const [onboardSubject1Name, setOnboardSubject1Name] = useState("Maths");
+    const [onboardSubject2Name, setOnboardSubject2Name] = useState("");
+    const [onboardFee2, setOnboardFee2] = useState("0");
+    const [onboardClassesPerMonth2, setOnboardClassesPerMonth2] = useState("0");
+    const [onboardTeacherId2, setOnboardTeacherId2] = useState("");
+    const [onboardSubject3Name, setOnboardSubject3Name] = useState("");
+    const [onboardFee3, setOnboardFee3] = useState("0");
+    const [onboardClassesPerMonth3, setOnboardClassesPerMonth3] = useState("0");
+    const [onboardTeacherId3, setOnboardTeacherId3] = useState("");
     const [isOnboarding, setIsOnboarding] = useState(false);
 
     const loadData = async (headMode: boolean) => {
@@ -80,7 +90,17 @@ export default function SalesDashboard() {
                 monthlyFee: Number(onboardFee) || 4500,
                 classesPerMonth: Number(onboardClassesPerMonth) || 12,
                 assignedTeacherId: onboardTeacherId === "none" || !onboardTeacherId ? undefined : onboardTeacherId,
-                customStudentId: serializedId
+                customStudentId: serializedId,
+                parentEmail: onboardParentEmail || undefined,
+                subjectName1: onboardSubject1Name || "Maths",
+                subjectName2: onboardSubject2Name || undefined,
+                monthlyFee2: Number(onboardFee2) || 0,
+                classesPerMonth2: Number(onboardClassesPerMonth2) || 0,
+                assignedTeacherId2: onboardTeacherId2 === "none" || !onboardTeacherId2 ? undefined : onboardTeacherId2,
+                subjectName3: onboardSubject3Name || undefined,
+                monthlyFee3: Number(onboardFee3) || 0,
+                classesPerMonth3: Number(onboardClassesPerMonth3) || 0,
+                assignedTeacherId3: onboardTeacherId3 === "none" || !onboardTeacherId3 ? undefined : onboardTeacherId3
             });
 
             if (res.error) {
@@ -96,6 +116,16 @@ export default function SalesDashboard() {
                 setOnboardClassesPerMonth("12");
                 setOnboardTeacherId("");
                 setOnboardStudentId("");
+                setOnboardParentEmail("");
+                setOnboardSubject1Name("Maths");
+                setOnboardSubject2Name("");
+                setOnboardFee2("0");
+                setOnboardClassesPerMonth2("0");
+                setOnboardTeacherId2("");
+                setOnboardSubject3Name("");
+                setOnboardFee3("0");
+                setOnboardClassesPerMonth3("0");
+                setOnboardTeacherId3("");
                 await loadData(isHeadView);
             }
         } catch (err: any) {
@@ -629,15 +659,26 @@ export default function SalesDashboard() {
                                 />
                             </div>
                             <div className="space-y-1.5">
-                                <Label htmlFor="student-email">Parent Email *</Label>
+                                <Label htmlFor="student-email">User ID (Login Email) *</Label>
                                 <Input 
                                     id="student-email"
                                     required
                                     type="email"
                                     value={onboardEmail}
                                     onChange={(e) => setOnboardEmail(e.target.value)}
+                                    placeholder="e.g. rohan@edhorizon.com"
+                                    className="rounded-xl h-10 text-xs text-foreground"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="parent-email">Parent Email (Optional)</Label>
+                                <Input 
+                                    id="parent-email"
+                                    type="email"
+                                    value={onboardParentEmail}
+                                    onChange={(e) => setOnboardParentEmail(e.target.value)}
                                     placeholder="parent@example.com"
-                                    className="rounded-xl h-10 text-xs"
+                                    className="rounded-xl h-10 text-xs text-foreground"
                                 />
                             </div>
                             <div className="space-y-1.5">
@@ -648,57 +689,187 @@ export default function SalesDashboard() {
                                     value={onboardMobile}
                                     onChange={(e) => setOnboardMobile(e.target.value)}
                                     placeholder="e.g. 9876543210"
-                                    className="rounded-xl h-10 text-xs"
+                                    className="rounded-xl h-10 text-xs text-foreground"
                                 />
                             </div>
-                            <div className="grid grid-cols-3 gap-3">
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="student-class">Grade</Label>
-                                    <Input 
-                                        id="student-class"
-                                        value={onboardClass}
-                                        onChange={(e) => setOnboardClass(e.target.value)}
-                                        placeholder="e.g. Class 3"
-                                        className="rounded-xl h-10 text-xs"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="student-fee">Fee (₹)</Label>
-                                    <Input 
-                                        id="student-fee"
-                                        value={onboardFee}
-                                        onChange={(e) => setOnboardFee(e.target.value)}
-                                        placeholder="4500"
-                                        className="rounded-xl h-10 text-xs"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="student-classes-per-month">Classes/Mo</Label>
-                                    <Input 
-                                        id="student-classes-per-month"
-                                        value={onboardClassesPerMonth}
-                                        onChange={(e) => setOnboardClassesPerMonth(e.target.value)}
-                                        placeholder="12"
-                                        className="rounded-xl h-10 text-xs"
-                                    />
-                                </div>
-                            </div>
-                            
                             <div className="space-y-1.5">
-                                <Label htmlFor="student-tutor">Assign Tutor</Label>
-                                <Select onValueChange={setOnboardTeacherId} value={onboardTeacherId}>
-                                    <SelectTrigger id="student-tutor" className="h-10 rounded-xl border border-muted/50 bg-background text-xs text-foreground">
-                                        <SelectValue placeholder="Assign a tutor (optional)..." />
-                                    </SelectTrigger>
-                                    <SelectContent className="rounded-xl border border-border/40">
-                                        <SelectItem value="none" className="rounded-lg">None (Unassigned)</SelectItem>
-                                        {teachers.map(t => (
-                                            <SelectItem key={t.id} value={t.id} className="rounded-lg">
-                                                {t.full_name || t.email}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <Label htmlFor="student-class">Grade</Label>
+                                <Input 
+                                    id="student-class"
+                                    value={onboardClass}
+                                    onChange={(e) => setOnboardClass(e.target.value)}
+                                    placeholder="e.g. Class 3"
+                                    className="rounded-xl h-10 text-xs text-foreground"
+                                />
+                            </div>
+
+                            <div className="space-y-4 border-t border-border/10 pt-4">
+                                <h4 className="font-bold text-xs uppercase tracking-wider text-indigo-600">Subject Packages</h4>
+                                
+                                {/* Subject 1 (Primary) */}
+                                <div className="space-y-3 bg-muted/10 p-4 rounded-2xl border border-border/10">
+                                    <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Subject 1 (Primary)</span>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="sub1-name">Subject Name</Label>
+                                            <Input 
+                                                id="sub1-name"
+                                                value={onboardSubject1Name}
+                                                onChange={(e) => setOnboardSubject1Name(e.target.value)}
+                                                placeholder="e.g. Maths"
+                                                className="rounded-xl h-10 text-xs text-foreground"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="sub1-fee">Fee (₹)</Label>
+                                            <Input 
+                                                id="sub1-fee"
+                                                value={onboardFee}
+                                                onChange={(e) => setOnboardFee(e.target.value)}
+                                                placeholder="4500"
+                                                className="rounded-xl h-10 text-xs text-foreground"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="sub1-classes">Classes / Month</Label>
+                                            <Input 
+                                                id="sub1-classes"
+                                                value={onboardClassesPerMonth}
+                                                onChange={(e) => setOnboardClassesPerMonth(e.target.value)}
+                                                placeholder="12"
+                                                className="rounded-xl h-10 text-xs text-foreground"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="sub1-tutor">Assign Tutor</Label>
+                                            <Select onValueChange={setOnboardTeacherId} value={onboardTeacherId}>
+                                                <SelectTrigger id="sub1-tutor" className="h-10 rounded-xl border border-muted/50 bg-background text-xs text-foreground">
+                                                    <SelectValue placeholder="Assign tutor..." />
+                                                </SelectTrigger>
+                                                <SelectContent className="rounded-xl border border-border/40">
+                                                    <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                    {teachers.map(t => (
+                                                        <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                            {t.full_name || t.email}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Subject 2 */}
+                                <div className="space-y-3 bg-muted/10 p-4 rounded-2xl border border-border/10">
+                                    <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Subject 2 (Optional)</span>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="sub2-name">Subject Name</Label>
+                                            <Input 
+                                                id="sub2-name"
+                                                value={onboardSubject2Name}
+                                                onChange={(e) => setOnboardSubject2Name(e.target.value)}
+                                                placeholder="e.g. Science"
+                                                className="rounded-xl h-10 text-xs text-foreground"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="sub2-fee">Fee (₹)</Label>
+                                            <Input 
+                                                id="sub2-fee"
+                                                value={onboardFee2}
+                                                onChange={(e) => setOnboardFee2(e.target.value)}
+                                                placeholder="3500"
+                                                className="rounded-xl h-10 text-xs text-foreground"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="sub2-classes">Classes / Month</Label>
+                                            <Input 
+                                                id="sub2-classes"
+                                                value={onboardClassesPerMonth2}
+                                                onChange={(e) => setOnboardClassesPerMonth2(e.target.value)}
+                                                placeholder="8"
+                                                className="rounded-xl h-10 text-xs text-foreground"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="sub2-tutor">Assign Tutor</Label>
+                                            <Select onValueChange={setOnboardTeacherId2} value={onboardTeacherId2}>
+                                                <SelectTrigger id="sub2-tutor" className="h-10 rounded-xl border border-muted/50 bg-background text-xs text-foreground">
+                                                    <SelectValue placeholder="Assign tutor..." />
+                                                </SelectTrigger>
+                                                <SelectContent className="rounded-xl border border-border/40">
+                                                    <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                    {teachers.map(t => (
+                                                        <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                            {t.full_name || t.email}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Subject 3 */}
+                                <div className="space-y-3 bg-muted/10 p-4 rounded-2xl border border-border/10">
+                                    <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Subject 3 (Optional)</span>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="sub3-name">Subject Name</Label>
+                                            <Input 
+                                                id="sub3-name"
+                                                value={onboardSubject3Name}
+                                                onChange={(e) => setOnboardSubject3Name(e.target.value)}
+                                                placeholder="e.g. English"
+                                                className="rounded-xl h-10 text-xs text-foreground"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="sub3-fee">Fee (₹)</Label>
+                                            <Input 
+                                                id="sub3-fee"
+                                                value={onboardFee3}
+                                                onChange={(e) => setOnboardFee3(e.target.value)}
+                                                placeholder="3000"
+                                                className="rounded-xl h-10 text-xs text-foreground"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="sub3-classes">Classes / Month</Label>
+                                            <Input 
+                                                id="sub3-classes"
+                                                value={onboardClassesPerMonth3}
+                                                onChange={(e) => setOnboardClassesPerMonth3(e.target.value)}
+                                                placeholder="8"
+                                                className="rounded-xl h-10 text-xs text-foreground"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="sub3-tutor">Assign Tutor</Label>
+                                            <Select onValueChange={setOnboardTeacherId3} value={onboardTeacherId3}>
+                                                <SelectTrigger id="sub3-tutor" className="h-10 rounded-xl border border-muted/50 bg-background text-xs text-foreground">
+                                                    <SelectValue placeholder="Assign tutor..." />
+                                                </SelectTrigger>
+                                                <SelectContent className="rounded-xl border border-border/40">
+                                                    <SelectItem value="none" className="rounded-lg">None</SelectItem>
+                                                    {teachers.map(t => (
+                                                        <SelectItem key={t.id} value={t.id} className="rounded-lg">
+                                                            {t.full_name || t.email}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="flex justify-end gap-3 pt-2">

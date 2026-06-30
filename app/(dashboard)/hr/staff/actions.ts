@@ -173,6 +173,17 @@ export async function createStudentMember(data: {
     tutor_hourly_rate?: number | null;
     custom_student_id?: string;
     mobile_number: string;
+    parent_email?: string;
+    subject_name_1?: string;
+    subject_name_2?: string;
+    monthly_fee_2?: number;
+    classes_per_month_2?: number;
+    assigned_teacher_id_2?: string;
+    subject_name_3?: string;
+    monthly_fee_3?: number;
+    classes_per_month_3?: number;
+    assigned_teacher_id_3?: string;
+    assigned_teacher_id?: string;
 }) {
     const supabase = await createClient();
     const adminClient = createAdminClient();
@@ -219,7 +230,18 @@ export async function createStudentMember(data: {
                 classes_per_month: data.classes_per_month !== undefined ? data.classes_per_month : 12,
                 tutor_hourly_rate: data.tutor_hourly_rate !== undefined ? data.tutor_hourly_rate : null,
                 status: 'active',
-                custom_student_id: serializedId
+                custom_student_id: serializedId,
+                parent_email: data.parent_email || null,
+                subject_name_1: data.subject_name_1 || 'Maths',
+                subject_name_2: data.subject_name_2 || null,
+                monthly_fee_2: data.monthly_fee_2 || 0,
+                classes_per_month_2: data.classes_per_month_2 || 0,
+                assigned_teacher_id_2: data.assigned_teacher_id_2 || null,
+                subject_name_3: data.subject_name_3 || null,
+                monthly_fee_3: data.monthly_fee_3 || 0,
+                classes_per_month_3: data.classes_per_month_3 || 0,
+                assigned_teacher_id_3: data.assigned_teacher_id_3 || null,
+                assigned_teacher_id: data.assigned_teacher_id || null
             });
 
         if (updateError) {
@@ -231,8 +253,8 @@ export async function createStudentMember(data: {
     return { success: true };
 }
 
-export async function updateStudentMember(id: string, data: { 
-    full_name: string; 
+export async function updateStudentMember(id: string, data: {
+    full_name: string;
     email: string; 
     grade_level: string;
     monthly_fee?: number;
@@ -240,6 +262,17 @@ export async function updateStudentMember(id: string, data: {
     tutor_hourly_rate?: number | null;
     custom_student_id?: string;
     mobile_number: string;
+    parent_email?: string;
+    subject_name_1?: string;
+    subject_name_2?: string;
+    monthly_fee_2?: number;
+    classes_per_month_2?: number;
+    assigned_teacher_id_2?: string;
+    subject_name_3?: string;
+    monthly_fee_3?: number;
+    classes_per_month_3?: number;
+    assigned_teacher_id_3?: string;
+    assigned_teacher_id?: string;
 }) {
     const supabase = await createClient();
     const adminClient = createAdminClient();
@@ -291,11 +324,22 @@ export async function updateStudentMember(id: string, data: {
 
     const updateFields: any = {
         grade_level: data.grade_level,
-        custom_student_id: serializedId
+        custom_student_id: serializedId,
+        parent_email: data.parent_email !== undefined ? data.parent_email : null,
+        subject_name_1: data.subject_name_1 || 'Maths',
+        subject_name_2: data.subject_name_2 !== undefined ? data.subject_name_2 : null,
+        monthly_fee_2: data.monthly_fee_2 !== undefined ? data.monthly_fee_2 : 0,
+        classes_per_month_2: data.classes_per_month_2 !== undefined ? data.classes_per_month_2 : 0,
+        assigned_teacher_id_2: data.assigned_teacher_id_2 !== undefined ? data.assigned_teacher_id_2 : null,
+        subject_name_3: data.subject_name_3 !== undefined ? data.subject_name_3 : null,
+        monthly_fee_3: data.monthly_fee_3 !== undefined ? data.monthly_fee_3 : 0,
+        classes_per_month_3: data.classes_per_month_3 !== undefined ? data.classes_per_month_3 : 0,
+        assigned_teacher_id_3: data.assigned_teacher_id_3 !== undefined ? data.assigned_teacher_id_3 : null
     };
     if (data.monthly_fee !== undefined) updateFields.monthly_fee = data.monthly_fee;
     if (data.classes_per_month !== undefined) updateFields.classes_per_month = data.classes_per_month;
     if (data.tutor_hourly_rate !== undefined) updateFields.tutor_hourly_rate = data.tutor_hourly_rate;
+    if (data.assigned_teacher_id !== undefined) updateFields.assigned_teacher_id = data.assigned_teacher_id;
 
     const { error: detailError } = await adminClient
         .from("student_details")

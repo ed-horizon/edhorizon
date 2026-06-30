@@ -1725,7 +1725,12 @@ export async function getStudentDashboardData() {
     // 4. Fetch student details (fees & billing info)
     const { data: detailsData } = await supabase
         .from('student_details')
-        .select('*')
+        .select(`
+            *,
+            assigned_teacher:profiles!assigned_teacher_id(full_name),
+            assigned_teacher_2:profiles!assigned_teacher_id_2(full_name),
+            assigned_teacher_3:profiles!assigned_teacher_id_3(full_name)
+        `)
         .eq('id', user.id)
         .maybeSingle();
 
@@ -2109,6 +2114,16 @@ export async function onboardStudent(payload: {
     classesPerMonth?: number;
     assignedTeacherId?: string;
     customStudentId?: string;
+    parentEmail?: string;
+    subjectName1?: string;
+    subjectName2?: string;
+    monthlyFee2?: number;
+    classesPerMonth2?: number;
+    assignedTeacherId2?: string;
+    subjectName3?: string;
+    monthlyFee3?: number;
+    classesPerMonth3?: number;
+    assignedTeacherId3?: string;
 }) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -2171,7 +2186,17 @@ export async function onboardStudent(payload: {
             assigned_teacher_id: payload.assignedTeacherId || null,
             status: 'active',
             classes_per_month: payload.classesPerMonth || 12,
-            custom_student_id: payload.customStudentId || null
+            custom_student_id: payload.customStudentId || null,
+            parent_email: payload.parentEmail || null,
+            subject_name_1: payload.subjectName1 || 'Maths',
+            subject_name_2: payload.subjectName2 || null,
+            monthly_fee_2: payload.monthlyFee2 || 0,
+            classes_per_month_2: payload.classesPerMonth2 || 0,
+            assigned_teacher_id_2: payload.assignedTeacherId2 || null,
+            subject_name_3: payload.subjectName3 || null,
+            monthly_fee_3: payload.monthlyFee3 || 0,
+            classes_per_month_3: payload.classesPerMonth3 || 0,
+            assigned_teacher_id_3: payload.assignedTeacherId3 || null
         });
 
     if (detailsError) {
