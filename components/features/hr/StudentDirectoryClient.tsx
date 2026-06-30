@@ -864,17 +864,19 @@ export default function StudentDirectoryClient({
                                                  (sd?.classes_per_month_4 ?? 0) + 
                                                  (sd?.classes_per_month_5 ?? 0);
 
-                            // Collect active subjects with their tutors
-                            const activeSubjects: { name: string; teacherName: string; key: number }[] = [];
+                            // Collect active subjects with their tutors and fees
+                            const activeSubjects: { name: string; fee: number; teacherName: string; key: number }[] = [];
                             if (sd?.subject_name_1) {
                                 activeSubjects.push({ 
                                     name: sd.subject_name_1, 
+                                    fee: sd.monthly_fee ?? 0,
                                     teacherName: sd.assigned_teacher?.full_name || 'Unassigned',
                                     key: 1
                                 });
                             } else if (sd?.assigned_teacher) {
                                 activeSubjects.push({ 
                                     name: 'Maths', 
+                                    fee: sd.monthly_fee ?? 0,
                                     teacherName: sd.assigned_teacher?.full_name || 'Unassigned',
                                     key: 1
                                 });
@@ -882,6 +884,7 @@ export default function StudentDirectoryClient({
                             if (sd?.subject_name_2) {
                                 activeSubjects.push({ 
                                     name: sd.subject_name_2, 
+                                    fee: sd.monthly_fee_2 ?? 0,
                                     teacherName: student.student_details?.assigned_teacher_2?.full_name || 'Unassigned',
                                     key: 2
                                 });
@@ -889,6 +892,7 @@ export default function StudentDirectoryClient({
                             if (sd?.subject_name_3) {
                                 activeSubjects.push({ 
                                     name: sd.subject_name_3, 
+                                    fee: sd.monthly_fee_3 ?? 0,
                                     teacherName: student.student_details?.assigned_teacher_3?.full_name || 'Unassigned',
                                     key: 3
                                 });
@@ -896,6 +900,7 @@ export default function StudentDirectoryClient({
                             if (sd?.subject_name_4) {
                                 activeSubjects.push({ 
                                     name: sd.subject_name_4, 
+                                    fee: sd.monthly_fee_4 ?? 0,
                                     teacherName: student.student_details?.assigned_teacher_4?.full_name || 'Unassigned',
                                     key: 4
                                 });
@@ -903,6 +908,7 @@ export default function StudentDirectoryClient({
                             if (sd?.subject_name_5) {
                                 activeSubjects.push({ 
                                     name: sd.subject_name_5, 
+                                    fee: sd.monthly_fee_5 ?? 0,
                                     teacherName: student.student_details?.assigned_teacher_5?.full_name || 'Unassigned',
                                     key: 5
                                 });
@@ -944,8 +950,21 @@ export default function StudentDirectoryClient({
                                         </div>
                                     </TableCell>
                                     {isFeesVisible && (
-                                        <TableCell className="text-center font-bold text-foreground text-xs">
-                                            ₹{totalFee}
+                                        <TableCell className="text-center">
+                                            {activeSubjects.length > 1 ? (
+                                                <div className="flex flex-col gap-1 text-[10px] text-left min-w-[110px] mx-auto w-fit bg-indigo-500/10 p-2.5 rounded-xl border border-indigo-500/20">
+                                                    {activeSubjects.map((sub) => (
+                                                        <div key={sub.key} className="flex items-center gap-2 justify-between">
+                                                            <span className="font-bold text-slate-500 uppercase tracking-tighter shrink-0">{sub.name}:</span>
+                                                            <span className="font-extrabold text-indigo-600">₹{sub.fee}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <span className="font-bold text-foreground text-xs">
+                                                    ₹{totalFee}
+                                                </span>
+                                            )}
                                         </TableCell>
                                     )}
                                     <TableCell className="text-center font-bold text-foreground text-xs">
