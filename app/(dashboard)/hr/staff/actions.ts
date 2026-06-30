@@ -265,7 +265,7 @@ export async function createStudentMember(data: {
         }
     }
 
-    revalidatePath("/hr/students");
+    revalidatePath("/(dashboard)", "layout");
     return { success: true };
 }
 
@@ -380,7 +380,7 @@ export async function updateStudentMember(id: string, data: {
 
     if (detailError) return { error: detailError.message };
 
-    revalidatePath("/hr/students");
+    revalidatePath("/(dashboard)", "layout");
     return { success: true };
 }
 

@@ -886,34 +886,34 @@ export default function StudentDirectoryClient({
                                     key: 1
                                 });
                             }
-                            if (sd?.subject_name_2) {
+                            if (sd?.subject_name_2 || sd?.assigned_teacher_id_2 || (sd?.monthly_fee_2 ?? 0) > 0) {
                                 activeSubjects.push({ 
-                                    name: sd.subject_name_2, 
-                                    fee: sd.monthly_fee_2 ?? 0,
+                                    name: sd?.subject_name_2 || 'Science', 
+                                    fee: sd?.monthly_fee_2 ?? 0,
                                     teacherName: student.student_details?.assigned_teacher_2?.full_name || 'Unassigned',
                                     key: 2
                                 });
                             }
-                            if (sd?.subject_name_3) {
+                            if (sd?.subject_name_3 || sd?.assigned_teacher_id_3 || (sd?.monthly_fee_3 ?? 0) > 0) {
                                 activeSubjects.push({ 
-                                    name: sd.subject_name_3, 
-                                    fee: sd.monthly_fee_3 ?? 0,
+                                    name: sd?.subject_name_3 || 'English', 
+                                    fee: sd?.monthly_fee_3 ?? 0,
                                     teacherName: student.student_details?.assigned_teacher_3?.full_name || 'Unassigned',
                                     key: 3
                                 });
                             }
-                            if (sd?.subject_name_4) {
+                            if (sd?.subject_name_4 || sd?.assigned_teacher_id_4 || (sd?.monthly_fee_4 ?? 0) > 0) {
                                 activeSubjects.push({ 
-                                    name: sd.subject_name_4, 
-                                    fee: sd.monthly_fee_4 ?? 0,
+                                    name: sd?.subject_name_4 || 'Geography', 
+                                    fee: sd?.monthly_fee_4 ?? 0,
                                     teacherName: student.student_details?.assigned_teacher_4?.full_name || 'Unassigned',
                                     key: 4
                                 });
                             }
-                            if (sd?.subject_name_5) {
+                            if (sd?.subject_name_5 || sd?.assigned_teacher_id_5 || (sd?.monthly_fee_5 ?? 0) > 0) {
                                 activeSubjects.push({ 
-                                    name: sd.subject_name_5, 
-                                    fee: sd.monthly_fee_5 ?? 0,
+                                    name: sd?.subject_name_5 || 'History', 
+                                    fee: sd?.monthly_fee_5 ?? 0,
                                     teacherName: student.student_details?.assigned_teacher_5?.full_name || 'Unassigned',
                                     key: 5
                                 });
