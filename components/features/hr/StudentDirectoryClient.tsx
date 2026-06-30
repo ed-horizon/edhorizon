@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Search, MoreHorizontal, Mail, Calendar, Users, GraduationCap, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { 
     Select,
     SelectContent,
@@ -70,6 +70,7 @@ export default function StudentDirectoryClient({
 }) {
     const isFeesVisible = ["super_admin", "operations"].includes(currentUserRole || "");
     const searchParams = useSearchParams();
+    const router = useRouter();
     const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "");
     const [selectedStatus, setSelectedStatus] = useState<string>("active");
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -164,6 +165,7 @@ export default function StudentDirectoryClient({
             const result = await assignTutorToStudent(studentId, actualTeacherId);
             
             if (result.success) {
+                router.refresh();
                 toast.success("Tutor assigned successfully");
             } else {
                 toast.error(result.error || "Failed to assign tutor");
@@ -241,6 +243,7 @@ export default function StudentDirectoryClient({
                 assigned_teacher_id: ""
             });
             setVisibleSubjectsCountAdd(1);
+            router.refresh();
             toast.success("Student enrolled successfully");
         } else {
             toast.error(result.error);
@@ -332,6 +335,7 @@ export default function StudentDirectoryClient({
         setIsSubmitting(false);
         if (result.success) {
             setEditingStudent(null);
+            router.refresh();
             toast.success("Student profile updated");
         } else {
             toast.error(result.error);
@@ -342,6 +346,7 @@ export default function StudentDirectoryClient({
         const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
         const result = await updateStudentStatus(id, newStatus);
         if (result.success) {
+            router.refresh();
             toast.success(`Student status updated to ${newStatus}`);
         } else {
             toast.error(result.error);
