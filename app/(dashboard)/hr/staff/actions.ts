@@ -7,6 +7,53 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatStudentIdAndMobile } from "@/lib/utils";
 
+type TeacherRelation = {
+    staff_details?: { status?: string } | Array<{ status?: string }>;
+};
+
+function isLockedTeacherRelation(teacher: unknown) {
+    const relation = Array.isArray(teacher) ? teacher[0] : teacher;
+    if (!relation || typeof relation !== "object") return false;
+
+    const typedRelation = relation as TeacherRelation;
+    const staffDetails = Array.isArray(typedRelation.staff_details)
+        ? typedRelation.staff_details[0]
+        : typedRelation.staff_details;
+    return staffDetails?.status === "locked";
+}
+
+function hasLockedAssignedTeacher(student: unknown) {
+    if (!student || typeof student !== "object") return false;
+    const assignments = student as Record<string, unknown>;
+
+    return [
+        assignments.assigned_teacher,
+        assignments.assigned_teacher_2,
+        assignments.assigned_teacher_3,
+        assignments.assigned_teacher_4,
+        assignments.assigned_teacher_5,
+    ].some(isLockedTeacherRelation);
+}
+
+async function containsLockedTeacher(
+    adminClient: ReturnType<typeof createAdminClient>,
+    teacherIds: Array<string | undefined>,
+) {
+    const ids = teacherIds.filter(
+        (id): id is string => Boolean(id && id !== "none" && id !== "unassigned"),
+    );
+    if (ids.length === 0) return false;
+
+    const { data } = await adminClient
+        .from("staff_details")
+        .select("id")
+        .in("id", ids)
+        .eq("status", "locked")
+        .limit(1);
+
+    return Boolean(data?.length);
+}
+
 export async function createStaffMember(data: { full_name: string; email: string; role: string; employee_id?: string; mobile_number: string }) {
     const supabase = await createClient();
     const adminClient = createAdminClient();
@@ -209,6 +256,19 @@ export async function createStudentMember(data: {
         return { error: "Unauthorized" };
     }
 
+    if (
+        requesterProfile?.role !== "super_admin" &&
+        await containsLockedTeacher(adminClient, [
+            data.assigned_teacher_id,
+            data.assigned_teacher_id_2,
+            data.assigned_teacher_id_3,
+            data.assigned_teacher_id_4,
+            data.assigned_teacher_id_5,
+        ])
+    ) {
+        return { error: "Unauthorized: Only Super Admin can assign locked tutors." };
+    }
+
     // Create student directly with password 'password123' and confirm email
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.createUser({
         email: data.email,
@@ -320,18 +380,38 @@ export async function updateStudentMember(id: string, data: {
             assigned_teacher_id,
             assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
                 staff_details(status)
+            ),
+            assigned_teacher_2:profiles!student_details_assigned_teacher_id_2_fkey(
+                staff_details(status)
+            ),
+            assigned_teacher_3:profiles!student_details_assigned_teacher_id_3_fkey(
+                staff_details(status)
+            ),
+            assigned_teacher_4:profiles!student_details_assigned_teacher_id_4_fkey(
+                staff_details(status)
+            ),
+            assigned_teacher_5:profiles!student_details_assigned_teacher_id_5_fkey(
+                staff_details(status)
             )
         `)
         .eq("id", id)
         .single();
 
-    const teacherData = targetStudent?.assigned_teacher as any;
-    const teacher = Array.isArray(teacherData) ? teacherData[0] : teacherData;
-    const staffDetails = Array.isArray(teacher?.staff_details) ? teacher.staff_details[0] : teacher?.staff_details;
-    const isAssignedToLocked = staffDetails?.status === 'locked';
-
-    if (isAssignedToLocked && requesterProfile?.role !== 'super_admin') {
+    if (hasLockedAssignedTeacher(targetStudent) && requesterProfile?.role !== 'super_admin') {
         return { error: "Unauthorized: Only Super Admin can modify private students." };
+    }
+
+    if (
+        requesterProfile?.role !== "super_admin" &&
+        await containsLockedTeacher(adminClient, [
+            data.assigned_teacher_id,
+            data.assigned_teacher_id_2,
+            data.assigned_teacher_id_3,
+            data.assigned_teacher_id_4,
+            data.assigned_teacher_id_5,
+        ])
+    ) {
+        return { error: "Unauthorized: Only Super Admin can assign locked tutors." };
     }
 
     const { error: profileError } = await adminClient
@@ -407,17 +487,24 @@ export async function updateStudentStatus(id: string, status: string) {
             assigned_teacher_id,
             assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
                 staff_details(status)
+            ),
+            assigned_teacher_2:profiles!student_details_assigned_teacher_id_2_fkey(
+                staff_details(status)
+            ),
+            assigned_teacher_3:profiles!student_details_assigned_teacher_id_3_fkey(
+                staff_details(status)
+            ),
+            assigned_teacher_4:profiles!student_details_assigned_teacher_id_4_fkey(
+                staff_details(status)
+            ),
+            assigned_teacher_5:profiles!student_details_assigned_teacher_id_5_fkey(
+                staff_details(status)
             )
         `)
         .eq("id", id)
         .single();
 
-    const teacherData = targetStudent?.assigned_teacher as any;
-    const teacher = Array.isArray(teacherData) ? teacherData[0] : teacherData;
-    const staffDetails = Array.isArray(teacher?.staff_details) ? teacher.staff_details[0] : teacher?.staff_details;
-    const isAssignedToLocked = staffDetails?.status === 'locked';
-
-    if (isAssignedToLocked && requesterProfile?.role !== 'super_admin') {
+    if (hasLockedAssignedTeacher(targetStudent) && requesterProfile?.role !== 'super_admin') {
         return { error: "Unauthorized: Only Super Admin can modify private student status." };
     }
 

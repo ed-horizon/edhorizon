@@ -1,10 +1,25 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
+import { getCronAuthFailure } from "@/lib/cron-auth";
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const authFailure = getCronAuthFailure(
+        request.headers.get("authorization"),
+        process.env.CRON_SECRET,
+    );
+    if (authFailure) {
+        if (authFailure.status === 503) {
+            console.error("[CRON REMINDERS] CRON_SECRET is not configured.");
+        }
+        return NextResponse.json(
+            { error: authFailure.error },
+            { status: authFailure.status },
+        );
+    }
+
     console.log("[CRON REMINDERS] Starting upcoming class checks...");
     const adminClient = createAdminClient();
 
@@ -57,7 +72,10 @@ export async function GET() {
     const studentMap = Object.fromEntries(studentsRes.data?.map(s => [s.id, s]) || []);
     const studentDetailsMap = Object.fromEntries(studentDetailsRes.data?.map(sd => [sd.id, sd]) || []);
 
-    const sendResults = [];
+    const sendSummary = {
+        sent: 0,
+        failed: 0,
+    };
 
     // 4. Process reminders for each class
     for (const cls of upcomingClasses) {
@@ -130,17 +148,20 @@ export async function GET() {
 
             const sendRes = await sendEmail({ to: teacher.email, subject: emailSubject, html: emailHtml });
             if (sendRes.success) {
-                await adminClient.from('class_reminders_log').insert({
+                const { error: logError } = await adminClient.from('class_reminders_log').insert({
                     class_id: cls.id,
                     recipient_email: teacher.email,
                     recipient_role: 'teacher',
                     subject: emailSubject,
                     body: emailHtml
                 });
-                sendResults.push({ classId: cls.id, recipient: teacher.email, status: "sent" });
+                if (logError) {
+                    console.error(`[CRON REMINDERS] Failed to record teacher reminder for class ${cls.id}:`, logError);
+                }
+                sendSummary.sent += 1;
             } else {
-                console.error(`[CRON REMINDERS] Failed to send to teacher ${teacher.email}:`, sendRes.error);
-                sendResults.push({ classId: cls.id, recipient: teacher.email, status: "failed", error: sendRes.error });
+                console.error(`[CRON REMINDERS] Failed to send teacher reminder for class ${cls.id}.`);
+                sendSummary.failed += 1;
             }
         }
 
@@ -186,21 +207,24 @@ export async function GET() {
 
             const sendRes = await sendEmail({ to: parentEmail, subject: emailSubject, html: emailHtml });
             if (sendRes.success) {
-                await adminClient.from('class_reminders_log').insert({
+                const { error: logError } = await adminClient.from('class_reminders_log').insert({
                     class_id: cls.id,
                     recipient_email: parentEmail,
                     recipient_role: 'parent',
                     subject: emailSubject,
                     body: emailHtml
                 });
-                sendResults.push({ classId: cls.id, recipient: parentEmail, status: "sent" });
+                if (logError) {
+                    console.error(`[CRON REMINDERS] Failed to record parent reminder for class ${cls.id}:`, logError);
+                }
+                sendSummary.sent += 1;
             } else {
-                console.error(`[CRON REMINDERS] Failed to send to parent ${parentEmail}:`, sendRes.error);
-                sendResults.push({ classId: cls.id, recipient: parentEmail, status: "failed", error: sendRes.error });
+                console.error(`[CRON REMINDERS] Failed to send parent reminder for class ${cls.id}.`);
+                sendSummary.failed += 1;
             }
         }
     }
 
-    console.log(`[CRON REMINDERS] Finished processing. Sent reminders details:`, sendResults);
-    return NextResponse.json({ success: true, reminders: sendResults });
+    console.log(`[CRON REMINDERS] Finished processing. Sent: ${sendSummary.sent}; failed: ${sendSummary.failed}.`);
+    return NextResponse.json({ success: true, reminders: sendSummary });
 }

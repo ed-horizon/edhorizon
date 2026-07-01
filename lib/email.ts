@@ -2,8 +2,6 @@
 // Supports Resend API out of the box, falling back to local console logger.
 
 export async function sendEmail(payload: { to: string; subject: string; html: string }) {
-    console.log(`[EMAIL SENDING] to: ${payload.to}, subject: ${payload.subject}`);
-    
     const apiKey = process.env.RESEND_API_KEY;
     const fromAddress = process.env.EMAIL_FROM_ADDRESS || "reminders@edhorizon.app";
 
@@ -36,7 +34,11 @@ export async function sendEmail(payload: { to: string; subject: string; html: st
         }
     }
     
-    // Default logging fallback
-    console.log(`[MOCK EMAIL SENT SUCCESS] to: ${payload.to}\nSubject: ${payload.subject}\nBody:\n${payload.html}`);
+    if (process.env.NODE_ENV === "production") {
+        console.error("RESEND_API_KEY is not configured; email was not sent.");
+        return { success: false, error: "Email provider is not configured." };
+    }
+
+    console.log(`[MOCK EMAIL SENT] subject: ${payload.subject}`);
     return { success: true, mock: true };
 }
