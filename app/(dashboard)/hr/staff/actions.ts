@@ -7,6 +7,53 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatStudentIdAndMobile } from "@/lib/utils";
 
+type TeacherRelation = {
+    staff_details?: { status?: string } | Array<{ status?: string }>;
+};
+
+function isLockedTeacherRelation(teacher: unknown) {
+    const relation = Array.isArray(teacher) ? teacher[0] : teacher;
+    if (!relation || typeof relation !== "object") return false;
+
+    const typedRelation = relation as TeacherRelation;
+    const staffDetails = Array.isArray(typedRelation.staff_details)
+        ? typedRelation.staff_details[0]
+        : typedRelation.staff_details;
+    return staffDetails?.status === "locked";
+}
+
+function hasLockedAssignedTeacher(student: unknown) {
+    if (!student || typeof student !== "object") return false;
+    const assignments = student as Record<string, unknown>;
+
+    return [
+        assignments.assigned_teacher,
+        assignments.assigned_teacher_2,
+        assignments.assigned_teacher_3,
+        assignments.assigned_teacher_4,
+        assignments.assigned_teacher_5,
+    ].some(isLockedTeacherRelation);
+}
+
+async function containsLockedTeacher(
+    adminClient: ReturnType<typeof createAdminClient>,
+    teacherIds: Array<string | undefined>,
+) {
+    const ids = teacherIds.filter(
+        (id): id is string => Boolean(id && id !== "none" && id !== "unassigned"),
+    );
+    if (ids.length === 0) return false;
+
+    const { data } = await adminClient
+        .from("staff_details")
+        .select("id")
+        .in("id", ids)
+        .eq("status", "locked")
+        .limit(1);
+
+    return Boolean(data?.length);
+}
+
 export async function createStaffMember(data: { full_name: string; email: string; role: string; employee_id?: string; mobile_number: string }) {
     const supabase = await createClient();
     const adminClient = createAdminClient();
@@ -173,6 +220,25 @@ export async function createStudentMember(data: {
     tutor_hourly_rate?: number | null;
     custom_student_id?: string;
     mobile_number: string;
+    parent_email?: string;
+    subject_name_1?: string;
+    subject_name_2?: string;
+    monthly_fee_2?: number;
+    classes_per_month_2?: number;
+    assigned_teacher_id_2?: string;
+    subject_name_3?: string;
+    monthly_fee_3?: number;
+    classes_per_month_3?: number;
+    assigned_teacher_id_3?: string;
+    subject_name_4?: string;
+    monthly_fee_4?: number;
+    classes_per_month_4?: number;
+    assigned_teacher_id_4?: string;
+    subject_name_5?: string;
+    monthly_fee_5?: number;
+    classes_per_month_5?: number;
+    assigned_teacher_id_5?: string;
+    assigned_teacher_id?: string;
 }) {
     const supabase = await createClient();
     const adminClient = createAdminClient();
@@ -188,6 +254,19 @@ export async function createStudentMember(data: {
 
     if (!["super_admin", "admin", "hr", "operations"].includes(requesterProfile?.role || "")) {
         return { error: "Unauthorized" };
+    }
+
+    if (
+        requesterProfile?.role !== "super_admin" &&
+        await containsLockedTeacher(adminClient, [
+            data.assigned_teacher_id,
+            data.assigned_teacher_id_2,
+            data.assigned_teacher_id_3,
+            data.assigned_teacher_id_4,
+            data.assigned_teacher_id_5,
+        ])
+    ) {
+        return { error: "Unauthorized: Only Super Admin can assign locked tutors." };
     }
 
     // Create student directly with password 'password123' and confirm email
@@ -219,7 +298,26 @@ export async function createStudentMember(data: {
                 classes_per_month: data.classes_per_month !== undefined ? data.classes_per_month : 12,
                 tutor_hourly_rate: data.tutor_hourly_rate !== undefined ? data.tutor_hourly_rate : null,
                 status: 'active',
-                custom_student_id: serializedId
+                custom_student_id: serializedId,
+                parent_email: data.parent_email || null,
+                subject_name_1: data.subject_name_1 || 'Maths',
+                subject_name_2: data.subject_name_2 || null,
+                monthly_fee_2: data.monthly_fee_2 || 0,
+                classes_per_month_2: data.classes_per_month_2 || 0,
+                assigned_teacher_id_2: (data.assigned_teacher_id_2 === "none" || data.assigned_teacher_id_2 === "unassigned" || !data.assigned_teacher_id_2) ? null : data.assigned_teacher_id_2,
+                subject_name_3: data.subject_name_3 || null,
+                monthly_fee_3: data.monthly_fee_3 || 0,
+                classes_per_month_3: data.classes_per_month_3 || 0,
+                assigned_teacher_id_3: (data.assigned_teacher_id_3 === "none" || data.assigned_teacher_id_3 === "unassigned" || !data.assigned_teacher_id_3) ? null : data.assigned_teacher_id_3,
+                subject_name_4: data.subject_name_4 || null,
+                monthly_fee_4: data.monthly_fee_4 || 0,
+                classes_per_month_4: data.classes_per_month_4 || 0,
+                assigned_teacher_id_4: (data.assigned_teacher_id_4 === "none" || data.assigned_teacher_id_4 === "unassigned" || !data.assigned_teacher_id_4) ? null : data.assigned_teacher_id_4,
+                subject_name_5: data.subject_name_5 || null,
+                monthly_fee_5: data.monthly_fee_5 || 0,
+                classes_per_month_5: data.classes_per_month_5 || 0,
+                assigned_teacher_id_5: (data.assigned_teacher_id_5 === "none" || data.assigned_teacher_id_5 === "unassigned" || !data.assigned_teacher_id_5) ? null : data.assigned_teacher_id_5,
+                assigned_teacher_id: (data.assigned_teacher_id === "none" || data.assigned_teacher_id === "unassigned" || !data.assigned_teacher_id) ? null : data.assigned_teacher_id
             });
 
         if (updateError) {
@@ -227,12 +325,12 @@ export async function createStudentMember(data: {
         }
     }
 
-    revalidatePath("/hr/students");
+    revalidatePath("/(dashboard)", "layout");
     return { success: true };
 }
 
-export async function updateStudentMember(id: string, data: { 
-    full_name: string; 
+export async function updateStudentMember(id: string, data: {
+    full_name: string;
     email: string; 
     grade_level: string;
     monthly_fee?: number;
@@ -240,6 +338,25 @@ export async function updateStudentMember(id: string, data: {
     tutor_hourly_rate?: number | null;
     custom_student_id?: string;
     mobile_number: string;
+    parent_email?: string;
+    subject_name_1?: string;
+    subject_name_2?: string;
+    monthly_fee_2?: number;
+    classes_per_month_2?: number;
+    assigned_teacher_id_2?: string;
+    subject_name_3?: string;
+    monthly_fee_3?: number;
+    classes_per_month_3?: number;
+    assigned_teacher_id_3?: string;
+    subject_name_4?: string;
+    monthly_fee_4?: number;
+    classes_per_month_4?: number;
+    assigned_teacher_id_4?: string;
+    subject_name_5?: string;
+    monthly_fee_5?: number;
+    classes_per_month_5?: number;
+    assigned_teacher_id_5?: string;
+    assigned_teacher_id?: string;
 }) {
     const supabase = await createClient();
     const adminClient = createAdminClient();
@@ -263,18 +380,38 @@ export async function updateStudentMember(id: string, data: {
             assigned_teacher_id,
             assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
                 staff_details(status)
+            ),
+            assigned_teacher_2:profiles!student_details_assigned_teacher_id_2_fkey(
+                staff_details(status)
+            ),
+            assigned_teacher_3:profiles!student_details_assigned_teacher_id_3_fkey(
+                staff_details(status)
+            ),
+            assigned_teacher_4:profiles!student_details_assigned_teacher_id_4_fkey(
+                staff_details(status)
+            ),
+            assigned_teacher_5:profiles!student_details_assigned_teacher_id_5_fkey(
+                staff_details(status)
             )
         `)
         .eq("id", id)
         .single();
 
-    const teacherData = targetStudent?.assigned_teacher as any;
-    const teacher = Array.isArray(teacherData) ? teacherData[0] : teacherData;
-    const staffDetails = Array.isArray(teacher?.staff_details) ? teacher.staff_details[0] : teacher?.staff_details;
-    const isAssignedToLocked = staffDetails?.status === 'locked';
-
-    if (isAssignedToLocked && requesterProfile?.role !== 'super_admin') {
+    if (hasLockedAssignedTeacher(targetStudent) && requesterProfile?.role !== 'super_admin') {
         return { error: "Unauthorized: Only Super Admin can modify private students." };
+    }
+
+    if (
+        requesterProfile?.role !== "super_admin" &&
+        await containsLockedTeacher(adminClient, [
+            data.assigned_teacher_id,
+            data.assigned_teacher_id_2,
+            data.assigned_teacher_id_3,
+            data.assigned_teacher_id_4,
+            data.assigned_teacher_id_5,
+        ])
+    ) {
+        return { error: "Unauthorized: Only Super Admin can assign locked tutors." };
     }
 
     const { error: profileError } = await adminClient
@@ -291,11 +428,30 @@ export async function updateStudentMember(id: string, data: {
 
     const updateFields: any = {
         grade_level: data.grade_level,
-        custom_student_id: serializedId
+        custom_student_id: serializedId,
+        parent_email: data.parent_email !== undefined ? data.parent_email : null,
+        subject_name_1: data.subject_name_1 || 'Maths',
+        subject_name_2: data.subject_name_2 !== undefined ? data.subject_name_2 : null,
+        monthly_fee_2: data.monthly_fee_2 !== undefined ? data.monthly_fee_2 : 0,
+        classes_per_month_2: data.classes_per_month_2 !== undefined ? data.classes_per_month_2 : 0,
+        assigned_teacher_id_2: (data.assigned_teacher_id_2 !== undefined && data.assigned_teacher_id_2 !== "none" && data.assigned_teacher_id_2 !== "unassigned") ? data.assigned_teacher_id_2 : null,
+        subject_name_3: data.subject_name_3 !== undefined ? data.subject_name_3 : null,
+        monthly_fee_3: data.monthly_fee_3 !== undefined ? data.monthly_fee_3 : 0,
+        classes_per_month_3: data.classes_per_month_3 !== undefined ? data.classes_per_month_3 : 0,
+        assigned_teacher_id_3: (data.assigned_teacher_id_3 !== undefined && data.assigned_teacher_id_3 !== "none" && data.assigned_teacher_id_3 !== "unassigned") ? data.assigned_teacher_id_3 : null,
+        subject_name_4: data.subject_name_4 !== undefined ? data.subject_name_4 : null,
+        monthly_fee_4: data.monthly_fee_4 !== undefined ? data.monthly_fee_4 : 0,
+        classes_per_month_4: data.classes_per_month_4 !== undefined ? data.classes_per_month_4 : 0,
+        assigned_teacher_id_4: (data.assigned_teacher_id_4 !== undefined && data.assigned_teacher_id_4 !== "none" && data.assigned_teacher_id_4 !== "unassigned") ? data.assigned_teacher_id_4 : null,
+        subject_name_5: data.subject_name_5 !== undefined ? data.subject_name_5 : null,
+        monthly_fee_5: data.monthly_fee_5 !== undefined ? data.monthly_fee_5 : 0,
+        classes_per_month_5: data.classes_per_month_5 !== undefined ? data.classes_per_month_5 : 0,
+        assigned_teacher_id_5: (data.assigned_teacher_id_5 !== undefined && data.assigned_teacher_id_5 !== "none" && data.assigned_teacher_id_5 !== "unassigned") ? data.assigned_teacher_id_5 : null
     };
     if (data.monthly_fee !== undefined) updateFields.monthly_fee = data.monthly_fee;
     if (data.classes_per_month !== undefined) updateFields.classes_per_month = data.classes_per_month;
     if (data.tutor_hourly_rate !== undefined) updateFields.tutor_hourly_rate = data.tutor_hourly_rate;
+    if (data.assigned_teacher_id !== undefined) updateFields.assigned_teacher_id = (data.assigned_teacher_id === "none" || data.assigned_teacher_id === "unassigned" || !data.assigned_teacher_id) ? null : data.assigned_teacher_id;
 
     const { error: detailError } = await adminClient
         .from("student_details")
@@ -304,7 +460,7 @@ export async function updateStudentMember(id: string, data: {
 
     if (detailError) return { error: detailError.message };
 
-    revalidatePath("/hr/students");
+    revalidatePath("/(dashboard)", "layout");
     return { success: true };
 }
 
@@ -331,17 +487,24 @@ export async function updateStudentStatus(id: string, status: string) {
             assigned_teacher_id,
             assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
                 staff_details(status)
+            ),
+            assigned_teacher_2:profiles!student_details_assigned_teacher_id_2_fkey(
+                staff_details(status)
+            ),
+            assigned_teacher_3:profiles!student_details_assigned_teacher_id_3_fkey(
+                staff_details(status)
+            ),
+            assigned_teacher_4:profiles!student_details_assigned_teacher_id_4_fkey(
+                staff_details(status)
+            ),
+            assigned_teacher_5:profiles!student_details_assigned_teacher_id_5_fkey(
+                staff_details(status)
             )
         `)
         .eq("id", id)
         .single();
 
-    const teacherData = targetStudent?.assigned_teacher as any;
-    const teacher = Array.isArray(teacherData) ? teacherData[0] : teacherData;
-    const staffDetails = Array.isArray(teacher?.staff_details) ? teacher.staff_details[0] : teacher?.staff_details;
-    const isAssignedToLocked = staffDetails?.status === 'locked';
-
-    if (isAssignedToLocked && requesterProfile?.role !== 'super_admin') {
+    if (hasLockedAssignedTeacher(targetStudent) && requesterProfile?.role !== 'super_admin') {
         return { error: "Unauthorized: Only Super Admin can modify private student status." };
     }
 

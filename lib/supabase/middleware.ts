@@ -3,6 +3,12 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function updateSession(request: NextRequest) {
+    // Cron routes authenticate with their own server-only bearer secret. Let the
+    // request reach the route handler without requiring a browser session.
+    if (request.nextUrl.pathname === "/api/cron/reminders") {
+        return NextResponse.next();
+    }
+
     let response = NextResponse.next({
         request: {
             headers: request.headers,

@@ -16,6 +16,22 @@ export default async function StudentDirectory() {
                 assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (
                     full_name,
                     staff_details (status)
+                ),
+                assigned_teacher_2:profiles!student_details_assigned_teacher_id_2_fkey (
+                    full_name,
+                    staff_details (status)
+                ),
+                assigned_teacher_3:profiles!student_details_assigned_teacher_id_3_fkey (
+                    full_name,
+                    staff_details (status)
+                ),
+                assigned_teacher_4:profiles!student_details_assigned_teacher_id_4_fkey (
+                    full_name,
+                    staff_details (status)
+                ),
+                assigned_teacher_5:profiles!student_details_assigned_teacher_id_5_fkey (
+                    full_name,
+                    staff_details (status)
                 )
             )
         `)
@@ -59,11 +75,18 @@ export default async function StudentDirectory() {
 
     if (currentUserRole !== 'super_admin') {
         filteredStudents = processedStudents.filter((s: any) => {
-            const assignedTeacher = s.student_details?.assigned_teacher;
-            const teacherDetails = Array.isArray(assignedTeacher?.staff_details)
-                ? assignedTeacher?.staff_details[0]
-                : assignedTeacher?.staff_details;
-            return teacherDetails?.status !== 'locked';
+            const checkTeacherLocked = (teacher: any) => {
+                const details = Array.isArray(teacher?.staff_details) ? teacher.staff_details[0] : teacher?.staff_details;
+                return details?.status === 'locked';
+            };
+            const sd = s.student_details;
+            const isAnyTeacherLocked = 
+                checkTeacherLocked(sd?.assigned_teacher) ||
+                checkTeacherLocked(sd?.assigned_teacher_2) ||
+                checkTeacherLocked(sd?.assigned_teacher_3) ||
+                checkTeacherLocked(sd?.assigned_teacher_4) ||
+                checkTeacherLocked(sd?.assigned_teacher_5);
+            return !isAnyTeacherLocked;
         });
 
         filteredTeachers = (teachers || []).filter((t: any) => {

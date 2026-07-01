@@ -77,25 +77,39 @@ export default async function HRDashboard() {
         }
     }
 
-    // 3. SCAN FOR MISSING ATTENDANCE (Attendance forgets warning)
-    // Query scheduled classes that are in the past (scheduled_at < now) but status is still 'scheduled'
-    const { data: rawMissingAttendanceClasses } = await supabase
+    // 3. SCAN FOR MISSING ATTENDANCE & LATE CHECK-INS
+    // Query classes that are past start time and active
+    const { data: rawAlertClasses } = await supabase
         .from('live_classes')
         .select(`
             id,
             title,
             scheduled_at,
             student_id,
+            status,
+            tutor_joined_at,
+            tutor_joined_late,
             teacher:profiles!teacher_id(
                 full_name,
                 staff_details (status)
             ),
             student:profiles!student_id(full_name)
         `)
-        .eq('status', 'scheduled')
+        .in('status', ['scheduled', 'ongoing'])
         .lt('scheduled_at', now.toISOString());
 
-    const missingAttendanceClasses = (rawMissingAttendanceClasses || []).filter((c: any) => {
+    const missingAttendanceClasses = (rawAlertClasses || []).filter((c: any) => {
+        const elapsed = now.getTime() - new Date(c.scheduled_at).getTime();
+        if (elapsed < 24 * 60 * 60 * 1000) return false;
+        if (currentUserRole === 'super_admin') return true;
+        const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
+
+    const lateTutorAlerts = (rawAlertClasses || []).filter((c: any) => {
+        const elapsed = now.getTime() - new Date(c.scheduled_at).getTime();
+        if (elapsed <= 5 * 60 * 1000 || elapsed >= 24 * 60 * 60 * 1000) return false;
+        if (c.tutor_joined_at) return false;
         if (currentUserRole === 'super_admin') return true;
         const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
         return teacherDetails?.status !== 'locked';
@@ -165,7 +179,7 @@ export default async function HRDashboard() {
 
             {/* ATTENDANCE ALERTS SECTION: ALERTS IF TUTOR FORGOT TO MARK */}
             {missingAttendanceClasses && missingAttendanceClasses.length > 0 && (
-                <div className="bg-rose-50 dark:bg-rose-950/20 border-2 border-rose-500/35 rounded-2xl p-5 flex items-start gap-4 animate-bounce" style={{ animationDuration: '3s' }}>
+                <div className="bg-rose-50 dark:bg-rose-950/20 border-2 border-rose-500/35 rounded-2xl p-5 flex items-start gap-4" style={{ animationDuration: '3s' }}>
                     <AlertTriangle className="text-rose-600 shrink-0 mt-0.5" size={24} />
                     <div className="space-y-1.5 flex-1">
                         <span className="text-[10px] font-black uppercase text-rose-600 tracking-widest block">Forgot Attendance Alert</span>
@@ -196,6 +210,35 @@ export default async function HRDashboard() {
                                                 }
                                             />
                                         </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* LATE TUTOR ALERTS SECTION */}
+            {lateTutorAlerts && lateTutorAlerts.length > 0 && (
+                <div className="bg-amber-50 dark:bg-amber-950/20 border-2 border-amber-500/35 rounded-2xl p-5 flex items-start gap-4">
+                    <Clock className="text-amber-600 shrink-0 mt-0.5" size={24} />
+                    <div className="space-y-1.5 flex-1">
+                        <span className="text-[10px] font-black uppercase text-amber-600 tracking-widest block">Tutor Late / No-Show Alert</span>
+                        <h4 className="font-bold text-sm text-indigo-950 dark:text-amber-100">
+                            {lateTutorAlerts.length} classes have started but the tutor has not checked in (logged in):
+                        </h4>
+                        <div className="space-y-1.5 pt-2">
+                            {lateTutorAlerts.map(c => {
+                                const teacherName = Array.isArray(c.teacher) ? c.teacher[0]?.full_name : (c.teacher as any)?.full_name;
+                                const studentName = Array.isArray(c.student) ? c.student[0]?.full_name : (c.student as any)?.full_name;
+                                return (
+                                    <div key={c.id} className="text-xs text-muted-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-amber-500/10 pt-1.5">
+                                        <span>
+                                            Tutor <span className="font-bold text-foreground">{teacherName || 'N/A'}</span> has not logged in for student <span className="font-bold text-foreground">{studentName || 'N/A'}</span>.
+                                        </span>
+                                        <span className="text-[10px] bg-amber-100 dark:bg-amber-950 px-2 py-1 rounded font-bold shrink-0">
+                                            Scheduled: {format(new Date(c.scheduled_at), 'MMM dd, hh:mm a')}
+                                        </span>
                                     </div>
                                 );
                             })}
