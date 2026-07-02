@@ -30,6 +30,7 @@ interface LiveClass {
     course?: { title: string };
     student: { id: string; full_name: string; email: string } | null;
     tutor_joined_late?: boolean;
+    tutor_joined_at?: string;
 }
 
 interface Student {
@@ -73,6 +74,33 @@ export function TeacherDashboardClient({
     const [updatingRequestId, setUpdatingRequestId] = useState<string | null>(null)
     const [isCancellingId, setIsCancellingId] = useState<string | null>(null)
     const [dismissedCancelledIds, setDismissedCancelledIds] = useState<string[]>([])
+    const [currentTime, setCurrentTime] = useState(new Date())
+    const [loggingInClassId, setLoggingInClassId] = useState<string | null>(null)
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setCurrentTime(new Date())
+        }, 10000) // update every 10 seconds
+        return () => clearInterval(interval)
+    }, [])
+
+    const handleLogInClass = async (classId: string, meetingLink: string) => {
+        setLoggingInClassId(classId)
+        try {
+            const res = await logTutorJoinClass(classId)
+            if (res.success) {
+                toast.success("Successfully logged in to class!")
+                window.open(ensureAbsoluteUrl(meetingLink), '_blank')
+                window.location.reload()
+            } else {
+                toast.error(res.error || "Failed to log in to class.")
+            }
+        } catch (error: any) {
+            toast.error(error.message || "An unexpected error occurred.")
+        } finally {
+            setLoggingInClassId(null)
+        }
+    }
 
     useEffect(() => {
         try {
@@ -468,42 +496,93 @@ export function TeacherDashboardClient({
                                         </div>
 
                                         <div className="flex items-center gap-3 pt-2">
-                                            {c.status === 'completed' ? (
-                                                <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-500/20 rounded-xl px-4 py-2.5 text-xs font-bold w-full justify-center">
-                                                    <CheckCircle2 size={16} />
-                                                    <span>Session Logged</span>
-                                                </div>
-                                            ) : c.status === 'cancelled' ? (
-                                                <div className="flex items-center gap-2 text-rose-600 bg-rose-50 dark:bg-rose-900/10 border border-rose-500/20 rounded-xl px-4 py-2.5 text-xs font-bold w-full justify-center">
-                                                    <AlertCircle size={16} />
-                                                    <span>Session Cancelled</span>
-                                                </div>
-                                            ) : (
-                                                <div className="flex flex-col gap-2 w-full">
-                                                    <div className="flex items-center gap-3 w-full">
-                                                        <a href={ensureAbsoluteUrl(c.meeting_link)} target="_blank" rel="noopener noreferrer" className="flex-1" onClick={() => logTutorJoinClass(c.id)}>
-                                                            <Button className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest text-[10px] h-10 gap-2 shadow-lg shadow-indigo-600/10">
-                                                                 <span>Join Class</span>
-                                                                 <ExternalLink size={12} />
-                                                            </Button>
-                                                        </a>
-                                                        
-                                                        <PostClassLogModal
-                                                            classId={c.id}
-                                                            studentId={c.student?.id || ""}
-                                                            studentName={c.student?.full_name || ""}
-                                                            onSuccess={() => {
-                                                                window.location.reload()
-                                                            }}
-                                                            trigger={
-                                                                <Button variant="outline" className="rounded-xl font-black uppercase tracking-widest text-[10px] h-10 border-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50/50">
-                                                                    Log Class
+                                            {(() => {
+                                                const scheduledTime = new Date(c.scheduled_at).getTime();
+                                                const elapsedMinutes = (currentTime.getTime() - scheduledTime) / (1000 * 60);
+
+                                                if (c.status === 'completed') {
+                                                    return (
+                                                        <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-500/20 rounded-xl px-4 py-2.5 text-xs font-bold w-full justify-center">
+                                                            <CheckCircle2 size={16} />
+                                                            <span>Session Logged</span>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                if (c.status === 'cancelled') {
+                                                    return (
+                                                        <div className="flex items-center gap-2 text-rose-600 bg-rose-50 dark:bg-rose-900/10 border border-rose-500/20 rounded-xl px-4 py-2.5 text-xs font-bold w-full justify-center">
+                                                            <AlertCircle size={16} />
+                                                            <span>Session Cancelled</span>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                // If more than 24 hours have passed and not marked
+                                                if (elapsedMinutes > 24 * 60) {
+                                                    return (
+                                                        <div className="flex items-center gap-2 text-rose-600 bg-rose-50 dark:bg-rose-900/10 border border-rose-500/20 rounded-xl px-4 py-2.5 text-xs font-bold w-full justify-center">
+                                                            <AlertCircle size={16} />
+                                                            <span>Attendance Not Marked (Locked)</span>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                // If teacher has not checked in yet
+                                                if (!c.tutor_joined_at) {
+                                                    return (
+                                                        <Button 
+                                                            onClick={() => handleLogInClass(c.id, c.meeting_link)}
+                                                            disabled={loggingInClassId === c.id}
+                                                            className="w-full rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black uppercase tracking-widest text-[10px] h-10 gap-2 shadow-lg shadow-rose-600/10"
+                                                        >
+                                                            {loggingInClassId === c.id ? "Logging In..." : "Log In Class"}
+                                                            <ExternalLink size={12} />
+                                                        </Button>
+                                                    );
+                                                }
+
+                                                // Teacher has checked in (ongoing class workflow)
+                                                const isLocked = elapsedMinutes < 20;
+                                                const minutesLeft = Math.ceil(20 - elapsedMinutes);
+
+                                                return (
+                                                    <div className="flex flex-col gap-2 w-full">
+                                                        <div className="flex items-center gap-3 w-full">
+                                                            <a href={ensureAbsoluteUrl(c.meeting_link)} target="_blank" rel="noopener noreferrer" className="flex-1">
+                                                                <Button className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest text-[10px] h-10 gap-2 shadow-lg shadow-indigo-600/10">
+                                                                     <span>Join Class</span>
+                                                                     <ExternalLink size={12} />
                                                                 </Button>
-                                                            }
-                                                        />
+                                                            </a>
+                                                            
+                                                            {isLocked ? (
+                                                                <Button 
+                                                                    disabled 
+                                                                    variant="outline" 
+                                                                    className="rounded-xl font-black uppercase tracking-widest text-[10px] h-10 border-2 border-muted text-muted-foreground bg-muted/10 opacity-70"
+                                                                >
+                                                                    Log Class (Locked: {minutesLeft}m)
+                                                                </Button>
+                                                            ) : (
+                                                                <PostClassLogModal
+                                                                    classId={c.id}
+                                                                    studentId={c.student?.id || ""}
+                                                                    studentName={c.student?.full_name || ""}
+                                                                    onSuccess={() => {
+                                                                        window.location.reload()
+                                                                    }}
+                                                                    trigger={
+                                                                        <Button variant="outline" className="rounded-xl font-black uppercase tracking-widest text-[10px] h-10 border-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50/50">
+                                                                            Log Class
+                                                                        </Button>
+                                                                    }
+                                                                />
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </Card>
@@ -901,7 +980,7 @@ export function TeacherDashboardClient({
                                                                                         {hw.due_date && <p className="text-[10px] text-indigo-500 mt-1 font-semibold">Due: {format(new Date(hw.due_date), 'MMM dd, yyyy')}</p>}
                                                                                         {hw.submission_notes && (
                                                                                             <p className="text-[10px] text-muted-foreground bg-muted/20 p-2 rounded-lg border border-border/10 mt-1.5 italic">
-                                                                                                <strong>Notes:</strong> "{hw.submission_notes}"
+                                                                                                <strong>Notes:</strong> &quot;{hw.submission_notes}&quot;
                                                                                             </p>
                                                                                         )}
                                                                                     </div>
@@ -951,20 +1030,49 @@ export function TeacherDashboardClient({
                                                                         <p className="text-xs text-muted-foreground italic py-6 text-center">No worksheets or materials shared yet.</p>
                                                                     ) : (
                                                                         <div className="space-y-2">
-                                                                            {history.materials.map((mat: any) => (
-                                                                                <div key={mat.id} className="p-3.5 rounded-xl border border-border/40 bg-card text-xs flex items-center justify-between gap-4 hover:border-indigo-500/10 transition-colors">
-                                                                                    <div>
-                                                                                        <p className="font-bold text-foreground">{mat.title}</p>
-                                                                                        <p className="text-[10px] text-muted-foreground italic mt-0.5">Shared: {format(new Date(mat.created_at), 'MMM dd, yyyy')}</p>
+                                                                            {history.materials.map((mat: any) => {
+                                                                                const isSubmittedWorksheet = mat.title.startsWith('[Submitted Worksheet]');
+                                                                                const isStudyMaterial = mat.title.startsWith('[Study Material]');
+                                                                                
+                                                                                let displayTitle = mat.title;
+                                                                                if (isSubmittedWorksheet) {
+                                                                                    displayTitle = mat.title.replace('[Submitted Worksheet]', '').trim();
+                                                                                } else if (isStudyMaterial) {
+                                                                                    displayTitle = mat.title.replace('[Study Material]', '').trim();
+                                                                                }
+                                                                                
+                                                                                return (
+                                                                                    <div key={mat.id} className="p-3.5 rounded-xl border border-border/40 bg-card text-xs flex items-center justify-between gap-4 hover:border-indigo-500/10 transition-colors">
+                                                                                        <div className="space-y-1">
+                                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                                                <p className="font-bold text-foreground">{displayTitle}</p>
+                                                                                                {isSubmittedWorksheet && (
+                                                                                                    <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-500/20 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-md">
+                                                                                                        Student Submission
+                                                                                                    </Badge>
+                                                                                                )}
+                                                                                                {isStudyMaterial && (
+                                                                                                    <Badge variant="outline" className="bg-purple-50 text-purple-600 border-purple-500/20 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-md">
+                                                                                                        Student Material
+                                                                                                    </Badge>
+                                                                                                )}
+                                                                                                {!isSubmittedWorksheet && !isStudyMaterial && (
+                                                                                                    <Badge variant="outline" className="bg-indigo-50 text-indigo-600 border-indigo-500/20 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-md">
+                                                                                                        Teacher Upload
+                                                                                                    </Badge>
+                                                                                                )}
+                                                                                            </div>
+                                                                                            <p className="text-[10px] text-muted-foreground italic">Shared: {format(new Date(mat.created_at), 'MMM dd, yyyy')}</p>
+                                                                                        </div>
+                                                                                        <a href={mat.file_url} target="_blank" rel="noopener noreferrer">
+                                                                                            <Button size="sm" variant="ghost" className="h-8 rounded-lg text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 gap-1.5 border border-indigo-500/20">
+                                                                                                <Upload size={10} />
+                                                                                                <span>View</span>
+                                                                                            </Button>
+                                                                                        </a>
                                                                                     </div>
-                                                                                    <a href={mat.file_url} target="_blank" rel="noopener noreferrer">
-                                                                                        <Button size="sm" variant="ghost" className="h-8 rounded-lg text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 gap-1.5 border border-indigo-500/20">
-                                                                                            <Upload size={10} />
-                                                                                            <span>View</span>
-                                                                                        </Button>
-                                                                                    </a>
-                                                                                </div>
-                                                                            ))}
+                                                                                );
+                                                                            })}
                                                                         </div>
                                                                     )}
                                                                 </div>

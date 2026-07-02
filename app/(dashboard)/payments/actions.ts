@@ -4,6 +4,34 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+type TeacherRelation = {
+    staff_details?: { status?: string } | Array<{ status?: string }>;
+};
+
+function isLockedTeacherRelation(teacher: unknown) {
+    const relation = Array.isArray(teacher) ? teacher[0] : teacher;
+    if (!relation || typeof relation !== "object") return false;
+
+    const typedRelation = relation as TeacherRelation;
+    const staffDetails = Array.isArray(typedRelation.staff_details)
+        ? typedRelation.staff_details[0]
+        : typedRelation.staff_details;
+    return staffDetails?.status === "locked";
+}
+
+function hasLockedAssignedTeacher(studentDetails: unknown) {
+    if (!studentDetails || typeof studentDetails !== "object") return false;
+    const assignments = studentDetails as Record<string, unknown>;
+
+    return [
+        assignments.assigned_teacher,
+        assignments.assigned_teacher_2,
+        assignments.assigned_teacher_3,
+        assignments.assigned_teacher_4,
+        assignments.assigned_teacher_5,
+    ].some(isLockedTeacherRelation);
+}
+
 // Helper to check if user has Operations or Super Admin role
 async function checkManagerRole() {
     const supabase = await createClient();
@@ -149,7 +177,20 @@ export async function getPendingPayments() {
                 full_name, 
                 email,
                 student_details!student_details_id_fkey(
+                    status,
                     assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
+                        staff_details (status)
+                    ),
+                    assigned_teacher_2:profiles!student_details_assigned_teacher_id_2_fkey(
+                        staff_details (status)
+                    ),
+                    assigned_teacher_3:profiles!student_details_assigned_teacher_id_3_fkey(
+                        staff_details (status)
+                    ),
+                    assigned_teacher_4:profiles!student_details_assigned_teacher_id_4_fkey(
+                        staff_details (status)
+                    ),
+                    assigned_teacher_5:profiles!student_details_assigned_teacher_id_5_fkey(
                         staff_details (status)
                     )
                 )
@@ -164,12 +205,13 @@ export async function getPendingPayments() {
     }
 
     const filtered = (data || []).filter((p: any) => {
-        if (currentUserRole === 'super_admin') return true;
         const details = Array.isArray(p.student?.student_details) ? p.student?.student_details[0] : p.student?.student_details;
-        const teacherDetails = Array.isArray(details?.assigned_teacher?.staff_details)
-            ? details?.assigned_teacher?.staff_details[0]
-            : details?.assigned_teacher?.staff_details;
-        return teacherDetails?.status !== 'locked';
+        
+        // Hide inactive students
+        if (details?.status === 'inactive') return false;
+
+        if (currentUserRole === 'super_admin') return true;
+        return !hasLockedAssignedTeacher(details);
     });
 
     return filtered;
@@ -198,7 +240,20 @@ export async function getAllPayments() {
                 full_name, 
                 email,
                 student_details!student_details_id_fkey(
+                    status,
                     assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
+                        staff_details (status)
+                    ),
+                    assigned_teacher_2:profiles!student_details_assigned_teacher_id_2_fkey(
+                        staff_details (status)
+                    ),
+                    assigned_teacher_3:profiles!student_details_assigned_teacher_id_3_fkey(
+                        staff_details (status)
+                    ),
+                    assigned_teacher_4:profiles!student_details_assigned_teacher_id_4_fkey(
+                        staff_details (status)
+                    ),
+                    assigned_teacher_5:profiles!student_details_assigned_teacher_id_5_fkey(
                         staff_details (status)
                     )
                 )
@@ -212,12 +267,13 @@ export async function getAllPayments() {
     }
 
     const filtered = (data || []).filter((p: any) => {
-        if (currentUserRole === 'super_admin') return true;
         const details = Array.isArray(p.student?.student_details) ? p.student?.student_details[0] : p.student?.student_details;
-        const teacherDetails = Array.isArray(details?.assigned_teacher?.staff_details)
-            ? details?.assigned_teacher?.staff_details[0]
-            : details?.assigned_teacher?.staff_details;
-        return teacherDetails?.status !== 'locked';
+        
+        // Hide inactive students
+        if (details?.status === 'inactive') return false;
+
+        if (currentUserRole === 'super_admin') return true;
+        return !hasLockedAssignedTeacher(details);
     });
 
     return filtered;
@@ -240,6 +296,18 @@ export async function processPaymentApproval(paymentId: string, status: 'complet
             student:profiles!student_id(
                 student_details!student_details_id_fkey(
                     assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
+                        staff_details (status)
+                    ),
+                    assigned_teacher_2:profiles!student_details_assigned_teacher_id_2_fkey(
+                        staff_details (status)
+                    ),
+                    assigned_teacher_3:profiles!student_details_assigned_teacher_id_3_fkey(
+                        staff_details (status)
+                    ),
+                    assigned_teacher_4:profiles!student_details_assigned_teacher_id_4_fkey(
+                        staff_details (status)
+                    ),
+                    assigned_teacher_5:profiles!student_details_assigned_teacher_id_5_fkey(
                         staff_details (status)
                     )
                 )
@@ -265,12 +333,7 @@ export async function processPaymentApproval(paymentId: string, status: 'complet
         ? payment.student?.student_details[0]
         : payment.student?.student_details;
     
-    const assignedTeacher = details?.assigned_teacher;
-    const teacherDetails = Array.isArray(assignedTeacher?.staff_details)
-        ? assignedTeacher?.staff_details[0]
-        : assignedTeacher?.staff_details;
-
-    if (teacherDetails?.status === 'locked' && currentUserRole !== 'super_admin') {
+    if (hasLockedAssignedTeacher(details) && currentUserRole !== 'super_admin') {
         return { success: false, error: "Unauthorized: Only Super Admin can approve payments for private students." };
     }
 

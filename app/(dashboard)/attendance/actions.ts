@@ -48,6 +48,51 @@ function getErrorMessage(error: unknown) {
     return error instanceof Error ? error.message : "Unexpected R2 error";
 }
 
+type TeacherRelation = {
+    staff_details?: { status?: string } | Array<{ status?: string }>;
+};
+
+function isLockedTeacherRelation(teacher: unknown) {
+    const relation = Array.isArray(teacher) ? teacher[0] : teacher;
+    if (!relation || typeof relation !== "object") return false;
+
+    const typedRelation = relation as TeacherRelation;
+    const staffDetails = Array.isArray(typedRelation.staff_details)
+        ? typedRelation.staff_details[0]
+        : typedRelation.staff_details;
+    return staffDetails?.status === "locked";
+}
+
+function hasLockedAssignedTeacher(student: unknown) {
+    if (!student || typeof student !== "object") return false;
+    const assignments = student as Record<string, unknown>;
+
+    return [
+        assignments.assigned_teacher,
+        assignments.assigned_teacher_2,
+        assignments.assigned_teacher_3,
+        assignments.assigned_teacher_4,
+        assignments.assigned_teacher_5,
+    ].some(isLockedTeacherRelation);
+}
+
+async function containsLockedTeacher(
+    adminClient: ReturnType<typeof createAdminClient>,
+    teacherIds: Array<string | undefined>,
+) {
+    const ids = teacherIds.filter((id): id is string => Boolean(id));
+    if (ids.length === 0) return false;
+
+    const { data } = await adminClient
+        .from("staff_details")
+        .select("id")
+        .in("id", ids)
+        .eq("status", "locked")
+        .limit(1);
+
+    return Boolean(data?.length);
+}
+
 function validateUploadRequest(request: R2UploadRequest) {
     if (!request.fileName.trim()) return "File name is required.";
     if (!Number.isFinite(request.fileSize) || request.fileSize <= 0) return "File is empty.";
@@ -321,7 +366,10 @@ export async function getLiveClasses() {
         .from('live_classes')
         .select(`
             *,
-            teacher:profiles!teacher_id(full_name),
+            teacher:profiles!teacher_id(
+                full_name,
+                staff_details(status)
+            ),
             module:modules(title),
             course:courses(title)
         `);
@@ -341,14 +389,38 @@ export async function getLiveClasses() {
     if (studentIds.length > 0) {
         const { data: students } = await supabase
             .from('profiles')
-            .select('id, full_name')
+            .select(`
+                id, 
+                full_name,
+                student_details!student_details_id_fkey (status)
+            `)
             .in('id', studentIds);
         
         const studentMap = Object.fromEntries(students?.map(s => [s.id, s]) || []);
-        return data.map(c => ({
+        
+        const filtered = data.map(c => ({
             ...c,
             student: studentMap[c.student_id] || null
-        }));
+        })).filter(c => {
+            // Hide inactive students from all dashboards/places
+            const studentDetails = Array.isArray(c.student?.student_details)
+                ? c.student?.student_details[0]
+                : c.student?.student_details;
+            if (studentDetails?.status === 'inactive') return false;
+
+            // Hide locked teachers for non-super-admins
+            const currentUserRole = profile?.role || 'student';
+            if (currentUserRole !== 'super_admin') {
+                const teacherDetails = Array.isArray(c.teacher?.staff_details)
+                    ? c.teacher?.staff_details[0]
+                    : c.teacher?.staff_details;
+                if (teacherDetails?.status === 'locked') return false;
+            }
+
+            return true;
+        });
+
+        return filtered;
     }
 
     return data;
@@ -362,7 +434,8 @@ export async function getAssignedStudents() {
     const { data: studentsData, error } = await supabase
         .from('student_details')
         .select('*')
-        .eq('assigned_teacher_id', user.id);
+        .or(`assigned_teacher_id.eq.${user.id},assigned_teacher_id_2.eq.${user.id},assigned_teacher_id_3.eq.${user.id},assigned_teacher_id_4.eq.${user.id},assigned_teacher_id_5.eq.${user.id}`)
+        .neq('status', 'inactive');
 
     if (error) throw error;
     if (!studentsData || studentsData.length === 0) return [];
@@ -654,6 +727,30 @@ export async function completeLiveClass(classId: string) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
+    // Fetch caller's profile role
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    // Check if scheduled more than 24 hours ago
+    const { data: classObj } = await supabase
+        .from('live_classes')
+        .select('scheduled_at')
+        .eq('id', classId)
+        .single();
+
+    if (profile?.role === 'teacher' && classObj?.scheduled_at) {
+        const elapsed = new Date().getTime() - new Date(classObj.scheduled_at).getTime();
+        if (elapsed > 24 * 60 * 60 * 1000) {
+            return { 
+                success: false, 
+                error: "This session is locked because it was scheduled more than 24 hours ago. Tutors are only permitted to mark attendance within 24 hours of the session. Please contact HR or Operations to log this session." 
+            };
+        }
+    }
+
     // Just mark class as completed and pending verification
     const { error: updateError } = await supabase
         .from('live_classes')
@@ -678,6 +775,27 @@ export async function markStudentAttendance(classId: string, studentId: string, 
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
+
+    // Fetch caller's profile role
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    // Check if scheduled more than 24 hours ago
+    const { data: classObj } = await supabase
+        .from('live_classes')
+        .select('scheduled_at')
+        .eq('id', classId)
+        .single();
+
+    if (profile?.role === 'teacher' && classObj?.scheduled_at) {
+        const elapsed = new Date().getTime() - new Date(classObj.scheduled_at).getTime();
+        if (elapsed > 24 * 60 * 60 * 1000) {
+            throw new Error("This session is locked because it was scheduled more than 24 hours ago. Tutors are only permitted to mark attendance within 24 hours of the session.");
+        }
+    }
 
     const { error } = await supabase
         .from('student_attendance')
@@ -1001,7 +1119,11 @@ export async function getTeacherRequestsData() {
         .select(`
             *,
             class:live_classes(title, scheduled_at),
-            student:profiles!student_id(full_name, email)
+            student:profiles!student_id(
+                full_name, 
+                email,
+                student_details!student_details_id_fkey(status)
+            )
         `)
         .eq('teacher_id', user.id)
         .order('created_at', { ascending: false });
@@ -1012,16 +1134,30 @@ export async function getTeacherRequestsData() {
         .from('student_leaves')
         .select(`
             *,
-            student:profiles!student_id(full_name, email)
+            student:profiles!student_id(
+                full_name, 
+                email,
+                student_details!student_details_id_fkey(status)
+            )
         `)
         .eq('teacher_id', user.id)
         .order('created_at', { ascending: false });
 
     if (leaveError) console.error("Error fetching teacher leave requests:", leaveError);
 
+    const filteredRescheduleRequests = (rescheduleRequests || []).filter((r: any) => {
+        const studentDetails = Array.isArray(r.student?.student_details) ? r.student?.student_details[0] : r.student?.student_details;
+        return studentDetails?.status !== 'inactive';
+    });
+
+    const filteredLeaveRequests = (leaveRequests || []).filter((l: any) => {
+        const studentDetails = Array.isArray(l.student?.student_details) ? l.student?.student_details[0] : l.student?.student_details;
+        return studentDetails?.status !== 'inactive';
+    });
+
     return {
-        rescheduleRequests: rescheduleRequests || [],
-        leaveRequests: leaveRequests || []
+        rescheduleRequests: filteredRescheduleRequests,
+        leaveRequests: filteredLeaveRequests
     };
 }
 
@@ -1042,7 +1178,11 @@ export async function getAllRequestsData() {
         .select(`
             *,
             class:live_classes(title, scheduled_at),
-            student:profiles!student_id(full_name, email),
+            student:profiles!student_id(
+                full_name, 
+                email,
+                student_details!student_details_id_fkey(status)
+            ),
             teacher:profiles!teacher_id(
                 full_name,
                 staff_details (status)
@@ -1056,7 +1196,12 @@ export async function getAllRequestsData() {
         .from('student_leaves')
         .select(`
             *,
-            student:profiles!student_id(full_name, email, role),
+            student:profiles!student_id(
+                full_name, 
+                email, 
+                role,
+                student_details!student_details_id_fkey(status)
+            ),
             teacher:profiles!teacher_id(
                 full_name,
                 staff_details (status)
@@ -1067,12 +1212,18 @@ export async function getAllRequestsData() {
     if (leaveError) console.error("Error fetching all leave requests:", leaveError);
 
     const filteredRescheduleRequests = (rescheduleRequests || []).filter((r: any) => {
+        const studentDetails = Array.isArray(r.student?.student_details) ? r.student?.student_details[0] : r.student?.student_details;
+        if (studentDetails?.status === 'inactive') return false;
+
         if (currentUserRole === 'super_admin') return true;
         const teacherDetails = Array.isArray(r.teacher?.staff_details) ? r.teacher?.staff_details[0] : r.teacher?.staff_details;
         return teacherDetails?.status !== 'locked';
     });
 
     const filteredLeaveRequests = (leaveRequests || []).filter((l: any) => {
+        const studentDetails = Array.isArray(l.student?.student_details) ? l.student?.student_details[0] : l.student?.student_details;
+        if (studentDetails?.status === 'inactive') return false;
+
         if (currentUserRole === 'super_admin') return true;
         const teacherDetails = Array.isArray(l.teacher?.staff_details) ? l.teacher?.staff_details[0] : l.teacher?.staff_details;
         return teacherDetails?.status !== 'locked';
@@ -1398,14 +1549,24 @@ export async function getPendingClassVerifications() {
     if (studentIds.length > 0) {
         const { data: students } = await supabase
             .from('profiles')
-            .select('id, full_name, email')
+            .select(`
+                id, 
+                full_name, 
+                email,
+                student_details!student_details_id_fkey(status)
+            `)
             .in('id', studentIds);
         
         const studentMap = Object.fromEntries(students?.map(s => [s.id, s]) || []);
         return filtered.map(c => ({
             ...c,
             student: studentMap[c.student_id] || null
-        }));
+        })).filter(c => {
+            const studentDetails = Array.isArray(c.student?.student_details)
+                ? c.student?.student_details[0]
+                : c.student?.student_details;
+            return studentDetails?.status !== 'inactive';
+        });
     }
 
     return filtered;
@@ -1491,14 +1652,24 @@ export async function getAllCompletedClassLogs() {
     if (studentIds.length > 0) {
         const { data: students } = await supabase
             .from('profiles')
-            .select('id, full_name, email')
+            .select(`
+                id, 
+                full_name, 
+                email,
+                student_details!student_details_id_fkey(status)
+            `)
             .in('id', studentIds);
         
         const studentMap = Object.fromEntries(students?.map(s => [s.id, s]) || []);
         return filtered.map(c => ({
             ...c,
             student: studentMap[c.student_id] || null
-        }));
+        })).filter(c => {
+            const studentDetails = Array.isArray(c.student?.student_details)
+                ? c.student?.student_details[0]
+                : c.student?.student_details;
+            return studentDetails?.status !== 'inactive';
+        });
     }
 
     return filtered;
@@ -1680,7 +1851,14 @@ export async function getStudentDashboardData() {
     // 4. Fetch student details (fees & billing info)
     const { data: detailsData } = await supabase
         .from('student_details')
-        .select('*')
+        .select(`
+            *,
+            assigned_teacher:profiles!assigned_teacher_id(full_name),
+            assigned_teacher_2:profiles!assigned_teacher_id_2(full_name),
+            assigned_teacher_3:profiles!assigned_teacher_id_3(full_name),
+            assigned_teacher_4:profiles!assigned_teacher_id_4(full_name),
+            assigned_teacher_5:profiles!assigned_teacher_id_5(full_name)
+        `)
         .eq('id', user.id)
         .maybeSingle();
 
@@ -1825,14 +2003,23 @@ export async function getTeacherMissingAttendanceClasses() {
     if (studentIds.length > 0) {
         const { data: students } = await supabase
             .from('profiles')
-            .select('id, full_name')
+            .select(`
+                id, 
+                full_name,
+                student_details!student_details_id_fkey (status)
+            `)
             .in('id', studentIds);
         
         const studentMap = Object.fromEntries(students?.map(s => [s.id, s]) || []);
         return data.map(c => ({
             ...c,
             student: studentMap[c.student_id] || null
-        }));
+        })).filter(c => {
+            const studentDetails = Array.isArray(c.student?.student_details)
+                ? c.student?.student_details[0]
+                : c.student?.student_details;
+            return studentDetails?.status !== 'inactive';
+        });
     }
 
     return data;
@@ -1906,6 +2093,18 @@ export async function getStudentsWithClasses() {
                 custom_student_id,
                 assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (
                     staff_details (status)
+                ),
+                assigned_teacher_2:profiles!student_details_assigned_teacher_id_2_fkey (
+                    staff_details (status)
+                ),
+                assigned_teacher_3:profiles!student_details_assigned_teacher_id_3_fkey (
+                    staff_details (status)
+                ),
+                assigned_teacher_4:profiles!student_details_assigned_teacher_id_4_fkey (
+                    staff_details (status)
+                ),
+                assigned_teacher_5:profiles!student_details_assigned_teacher_id_5_fkey (
+                    staff_details (status)
                 )
             )
         `)
@@ -1918,11 +2117,26 @@ export async function getStudentsWithClasses() {
     }
 
     const filteredStudents = (students || []).filter((s: any) => {
-        if (currentUserRole === 'super_admin') return true;
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
-        const assignedTeacher = details?.assigned_teacher;
-        const teacherDetails = Array.isArray(assignedTeacher?.staff_details) ? assignedTeacher?.staff_details[0] : assignedTeacher?.staff_details;
-        return teacherDetails?.status !== 'locked';
+        
+        // Hide inactive students from all dashboards/places
+        if (details?.status === 'inactive') return false;
+
+        if (currentUserRole === 'super_admin') return true;
+
+        // Hide students of locked tutors
+        const checkTeacherLocked = (teacher: any) => {
+            const details = Array.isArray(teacher?.staff_details) ? teacher.staff_details[0] : teacher?.staff_details;
+            return details?.status === 'locked';
+        };
+        const isAnyTeacherLocked = 
+            checkTeacherLocked(details?.assigned_teacher) ||
+            checkTeacherLocked(details?.assigned_teacher_2) ||
+            checkTeacherLocked(details?.assigned_teacher_3) ||
+            checkTeacherLocked(details?.assigned_teacher_4) ||
+            checkTeacherLocked(details?.assigned_teacher_5);
+        
+        return !isAnyTeacherLocked;
     });
 
     // Fetch all live classes
@@ -2023,17 +2237,24 @@ export async function assignTutorToStudent(studentId: string, teacherId: string 
             .select(`
                 assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(
                     staff_details(status)
+                ),
+                assigned_teacher_2:profiles!student_details_assigned_teacher_id_2_fkey(
+                    staff_details(status)
+                ),
+                assigned_teacher_3:profiles!student_details_assigned_teacher_id_3_fkey(
+                    staff_details(status)
+                ),
+                assigned_teacher_4:profiles!student_details_assigned_teacher_id_4_fkey(
+                    staff_details(status)
+                ),
+                assigned_teacher_5:profiles!student_details_assigned_teacher_id_5_fkey(
+                    staff_details(status)
                 )
             `)
             .eq('id', studentId)
             .maybeSingle();
 
-        const teacherData = currentStudent?.assigned_teacher as any;
-        const teacher = Array.isArray(teacherData) ? teacherData[0] : teacherData;
-        const staffDetails = Array.isArray(teacher?.staff_details) ? teacher.staff_details[0] : teacher?.staff_details;
-        const isAssignedToLocked = staffDetails?.status === 'locked';
-
-        if (isAssignedToLocked) {
+        if (hasLockedAssignedTeacher(currentStudent)) {
             return { success: false, error: "Unauthorized: Only Super Admin can change assignments of private students." };
         }
     }
@@ -2064,6 +2285,24 @@ export async function onboardStudent(payload: {
     classesPerMonth?: number;
     assignedTeacherId?: string;
     customStudentId?: string;
+    parentEmail?: string;
+    subjectName1?: string;
+    subjectName2?: string;
+    monthlyFee2?: number;
+    classesPerMonth2?: number;
+    assignedTeacherId2?: string;
+    subjectName3?: string;
+    monthlyFee3?: number;
+    classesPerMonth3?: number;
+    assignedTeacherId3?: string;
+    subjectName4?: string;
+    monthlyFee4?: number;
+    classesPerMonth4?: number;
+    assignedTeacherId4?: string;
+    subjectName5?: string;
+    monthlyFee5?: number;
+    classesPerMonth5?: number;
+    assignedTeacherId5?: string;
 }) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -2081,6 +2320,19 @@ export async function onboardStudent(payload: {
     const isAuthorized = ['admin', 'super_admin', 'hr', 'operations', 'sales'].includes(profile?.role || '');
     if (!isAuthorized) {
         return { error: "Unauthorized" };
+    }
+
+    if (
+        profile?.role !== "super_admin" &&
+        await containsLockedTeacher(adminClient, [
+            payload.assignedTeacherId,
+            payload.assignedTeacherId2,
+            payload.assignedTeacherId3,
+            payload.assignedTeacherId4,
+            payload.assignedTeacherId5,
+        ])
+    ) {
+        return { error: "Unauthorized: Only Super Admin can assign locked tutors." };
     }
 
     // 1. Create the user in Auth with password 'password123'
@@ -2126,7 +2378,25 @@ export async function onboardStudent(payload: {
             assigned_teacher_id: payload.assignedTeacherId || null,
             status: 'active',
             classes_per_month: payload.classesPerMonth || 12,
-            custom_student_id: payload.customStudentId || null
+            custom_student_id: payload.customStudentId || null,
+            parent_email: payload.parentEmail || null,
+            subject_name_1: payload.subjectName1 || 'Maths',
+            subject_name_2: payload.subjectName2 || null,
+            monthly_fee_2: payload.monthlyFee2 || 0,
+            classes_per_month_2: payload.classesPerMonth2 || 0,
+            assigned_teacher_id_2: payload.assignedTeacherId2 || null,
+            subject_name_3: payload.subjectName3 || null,
+            monthly_fee_3: payload.monthlyFee3 || 0,
+            classes_per_month_3: payload.classesPerMonth3 || 0,
+            assigned_teacher_id_3: payload.assignedTeacherId3 || null,
+            subject_name_4: payload.subjectName4 || null,
+            monthly_fee_4: payload.monthlyFee4 || 0,
+            classes_per_month_4: payload.classesPerMonth4 || 0,
+            assigned_teacher_id_4: payload.assignedTeacherId4 || null,
+            subject_name_5: payload.subjectName5 || null,
+            monthly_fee_5: payload.monthlyFee5 || 0,
+            classes_per_month_5: payload.classesPerMonth5 || 0,
+            assigned_teacher_id_5: payload.assignedTeacherId5 || null
         });
 
     if (detailsError) {
@@ -2236,12 +2506,21 @@ export async function submitCompletedWorksheet(title: string, fileUrl: string) {
 
     if (!metadata) return { success: false, error: "Worksheet upload could not be verified." };
 
+    // Fetch student's assigned teacher ID to satisfy RLS for teacher downloads
+    const { data: studentDetails } = await supabase
+        .from('student_details')
+        .select('assigned_teacher_id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+    const teacherId = studentDetails?.assigned_teacher_id || null;
+
     const adminClient = createAdminClient();
     const { error } = await adminClient
         .from('student_materials')
         .insert({
             student_id: user.id,
-            teacher_id: null,
+            teacher_id: teacherId,
             title: `[Submitted Worksheet] ${title}`,
             file_url: fileUrl
         });

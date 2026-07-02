@@ -395,23 +395,28 @@ export function ClassLogsCalendarClient({
                                         
                                         {/* Status Dots */}
                                         <div className="flex flex-wrap gap-1 mt-2">
-                                            {dateClasses.slice(0, 3).map((c, i) => (
-                                                <span 
-                                                    key={i} 
-                                                    className={cn("w-1.5 h-1.5 rounded-full block",
-                                                        c.status === 'completed' && 'bg-emerald-500',
-                                                        c.status === 'cancelled' && 'bg-rose-500',
-                                                        (c.status === 'scheduled' || c.status === 'ongoing') && 'bg-indigo-500'
-                                                    )} 
-                                                />
-                                            ))}
+                                            {dateClasses.slice(0, 3).map((c, i) => {
+                                                const elapsed = new Date().getTime() - new Date(c.scheduled_at).getTime();
+                                                const isNotMarked = (c.status === 'scheduled' || c.status === 'ongoing') && elapsed > 24 * 60 * 60 * 1000;
+                                                return (
+                                                    <span 
+                                                        key={i} 
+                                                        className={cn("w-1.5 h-1.5 rounded-full block",
+                                                            c.status === 'completed' && 'bg-emerald-500',
+                                                            c.status === 'cancelled' && 'bg-rose-500',
+                                                            isNotMarked && 'bg-rose-500 animate-pulse',
+                                                            !isNotMarked && (c.status === 'scheduled' || c.status === 'ongoing') && 'bg-indigo-500'
+                                                        )} 
+                                                    />
+                                                );
+                                            })}
                                             {dateClasses.length > 3 && (
                                                 <span className="text-[7px] font-bold opacity-60 text-muted-foreground leading-none">+ {dateClasses.length - 3}</span>
                                             )}
                                         </div>
                                     </button>
                                 )
-                            })}
+                             })}
                         </div>
                     )}
                 </div>
@@ -437,6 +442,8 @@ export function ClassLogsCalendarClient({
                             ) : (
                                 getClassesForDate(selectedDate).map(c => {
                                     const att = c.student_attendance?.[0]
+                                    const elapsed = new Date().getTime() - new Date(c.scheduled_at).getTime();
+                                    const isNotMarked = (c.status === 'scheduled' || c.status === 'ongoing') && elapsed > 24 * 60 * 60 * 1000;
                                     return (
                                         <div 
                                             key={c.id} 
@@ -475,9 +482,10 @@ export function ClassLogsCalendarClient({
                                                 <Badge className={cn("text-[8px] font-black uppercase border-none rounded-full px-2 py-0.5",
                                                     c.status === 'completed' && 'bg-emerald-100 text-emerald-800',
                                                     c.status === 'cancelled' && 'bg-rose-100 text-rose-800',
-                                                    (c.status === 'scheduled' || c.status === 'ongoing') && 'bg-indigo-100 text-indigo-800'
+                                                    !isNotMarked && (c.status === 'scheduled' || c.status === 'ongoing') && 'bg-indigo-100 text-indigo-800',
+                                                    isNotMarked && 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400'
                                                 )}>
-                                                    {c.status}
+                                                    {isNotMarked ? "Attendance Not Marked" : c.status}
                                                 </Badge>
                                             </div>
  
