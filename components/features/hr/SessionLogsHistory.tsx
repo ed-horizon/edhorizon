@@ -27,6 +27,8 @@ interface CompletedClass {
     teacher: { full_name: string; email: string }
     student: { id: string; full_name: string; email: string } | null
     student_attendance?: { status: 'present' | 'absent' | 'late'; student_id: string }[]
+    tutor_joined_at?: string | null
+    tutor_joined_late?: boolean | null
 }
 
 interface SessionLogsHistoryProps {
@@ -223,6 +225,28 @@ function ViewLogDetailsDialog({ classItem }: ViewLogDetailsDialogProps) {
                                     <p className="text-xs text-muted-foreground italic mt-0.5">Unassigned</p>
                                 )}
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Check-In Audit Section */}
+                    <div className="space-y-3.5">
+                        <h4 className="text-xs font-black uppercase tracking-widest text-muted-foreground border-b border-border/10 pb-1.5">Tutor Check-In Audit</h4>
+                        <div className="p-3.5 bg-muted/10 rounded-2xl border border-border/10 flex items-center justify-between text-xs">
+                            <div>
+                                <span className="block text-[8px] uppercase font-black text-muted-foreground/60 tracking-wider">Logged Check-in Time</span>
+                                <span className="font-semibold text-foreground mt-0.5 block">
+                                    {classItem.tutor_joined_at ? (
+                                        format(new Date(classItem.tutor_joined_at), 'hh:mm a')
+                                    ) : (
+                                        <span className="text-rose-500 italic">No check-in recorded</span>
+                                    )}
+                                </span>
+                            </div>
+                            {classItem.tutor_joined_late && (
+                                <Badge className="bg-rose-500/15 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 border border-rose-500/30 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border-none">
+                                    Late Joined (5m+)
+                                </Badge>
+                            )}
                         </div>
                     </div>
 

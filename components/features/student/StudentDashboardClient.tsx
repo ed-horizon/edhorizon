@@ -72,6 +72,29 @@ interface StudentDetails {
     monthly_fee: number;
     classes_per_month?: number | null;
     status: string;
+    parent_email?: string | null;
+    subject_name_1?: string | null;
+    subject_name_2?: string | null;
+    monthly_fee_2?: number | null;
+    classes_per_month_2?: number | null;
+    assigned_teacher_id_2?: string | null;
+    subject_name_3?: string | null;
+    monthly_fee_3?: number | null;
+    classes_per_month_3?: number | null;
+    assigned_teacher_id_3?: string | null;
+    subject_name_4?: string | null;
+    monthly_fee_4?: number | null;
+    classes_per_month_4?: number | null;
+    assigned_teacher_id_4?: string | null;
+    subject_name_5?: string | null;
+    monthly_fee_5?: number | null;
+    classes_per_month_5?: number | null;
+    assigned_teacher_id_5?: string | null;
+    assigned_teacher?: { full_name: string | null } | null;
+    assigned_teacher_2?: { full_name: string | null } | null;
+    assigned_teacher_3?: { full_name: string | null } | null;
+    assigned_teacher_4?: { full_name: string | null } | null;
+    assigned_teacher_5?: { full_name: string | null } | null;
 }
 
 interface RescheduleRequest {
@@ -136,8 +159,57 @@ export function StudentDashboardClient({
     leaveRequests,
     initialPayments
 }: StudentDashboardClientProps) {
-    const rawFee = details?.monthly_fee;
-    const feeAmount = (rawFee !== undefined && rawFee !== null && Number(rawFee) > 0) ? Number(rawFee) : 4500;
+    // Build active subjects list
+    const activeSubjects: { name: string; fee: number; classesPerMonth: number; tutor: string }[] = [];
+    if (details) {
+        activeSubjects.push({
+            name: details.subject_name_1 || "Maths",
+            fee: Number(details.monthly_fee) || 4500,
+            classesPerMonth: Number(details.classes_per_month) || 12,
+            tutor: details.assigned_teacher?.full_name || "Unassigned"
+        });
+        if (details.subject_name_2) {
+            activeSubjects.push({
+                name: details.subject_name_2,
+                fee: Number(details.monthly_fee_2) || 0,
+                classesPerMonth: Number(details.classes_per_month_2) || 0,
+                tutor: details.assigned_teacher_2?.full_name || "Unassigned"
+            });
+        }
+        if (details.subject_name_3) {
+            activeSubjects.push({
+                name: details.subject_name_3,
+                fee: Number(details.monthly_fee_3) || 0,
+                classesPerMonth: Number(details.classes_per_month_3) || 0,
+                tutor: details.assigned_teacher_3?.full_name || "Unassigned"
+            });
+        }
+        if (details.subject_name_4) {
+            activeSubjects.push({
+                name: details.subject_name_4,
+                fee: Number(details.monthly_fee_4) || 0,
+                classesPerMonth: Number(details.classes_per_month_4) || 0,
+                tutor: details.assigned_teacher_4?.full_name || "Unassigned"
+            });
+        }
+        if (details.subject_name_5) {
+            activeSubjects.push({
+                name: details.subject_name_5,
+                fee: Number(details.monthly_fee_5) || 0,
+                classesPerMonth: Number(details.classes_per_month_5) || 0,
+                tutor: details.assigned_teacher_5?.full_name || "Unassigned"
+            });
+        }
+    } else {
+        activeSubjects.push({
+            name: "Maths",
+            fee: 4500,
+            classesPerMonth: 12,
+            tutor: "Unassigned"
+        });
+    }
+
+    const feeAmount = activeSubjects.reduce((sum, s) => sum + s.fee, 0);
 
     const [currentMonthDate, setCurrentMonthDate] = useState(new Date())
     const [selectedDate, setSelectedDate] = useState<Date>(new Date())
@@ -169,10 +241,30 @@ export function StudentDashboardClient({
 
     const currentMonth = new Date().getMonth()
     const currentYear = new Date().getFullYear()
-    const completedThisMonth = completedClasses.filter(c => {
-        const d = new Date(c.scheduled_at)
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear
-    }).length
+    
+    const completedClassesThisMonth = completedClasses.filter(c => {
+        const d = new Date(c.scheduled_at);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+
+    const subjectCompletions = activeSubjects.map(sub => ({ ...sub, completed: 0 }));
+    completedClassesThisMonth.forEach(cls => {
+        const titleLower = (cls.title || "").toLowerCase();
+        let matchedIndex = -1;
+        for (let i = 0; i < activeSubjects.length; i++) {
+            if (titleLower.includes(activeSubjects[i].name.toLowerCase())) {
+                matchedIndex = i;
+                break;
+            }
+        }
+        if (matchedIndex !== -1) {
+            subjectCompletions[matchedIndex].completed++;
+        } else if (subjectCompletions.length > 0) {
+            subjectCompletions[0].completed++;
+        }
+    });
+
+    const completedThisMonth = completedClassesThisMonth.length;
 
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
@@ -181,11 +273,14 @@ export function StudentDashboardClient({
         new Date(c.scheduled_at) >= sevenDaysAgo
     )
 
-    const monthlyClassesLimit = details?.classes_per_month || 12
-    const progressPercent = Math.min(100, Math.round((completedThisMonth / monthlyClassesLimit) * 100))
+    const monthlyClassesLimit = activeSubjects.reduce((sum, s) => sum + s.classesPerMonth, 0);
+    const progressPercent = Math.min(100, Math.round((completedThisMonth / (monthlyClassesLimit || 12)) * 100))
 
-    const showLimitReachedAlert = completedThisMonth >= monthlyClassesLimit && details?.status !== 'active'
-    const showOneRemainingReminder = (completedThisMonth === monthlyClassesLimit - 1) && details?.status !== 'active'
+    const isAnySubjectLimitReached = subjectCompletions.some(s => s.completed >= s.classesPerMonth && s.classesPerMonth > 0);
+    const isAnySubjectOneRemaining = subjectCompletions.some(s => s.completed === s.classesPerMonth - 1 && s.classesPerMonth > 0);
+
+    const showLimitReachedAlert = isAnySubjectLimitReached && details?.status !== 'active';
+    const showOneRemainingReminder = isAnySubjectOneRemaining && details?.status !== 'active';
 
     const todayStr = new Date().toDateString()
     const clientTodayClasses = allCalendarClasses.filter(c => 
@@ -881,10 +976,10 @@ export function StudentDashboardClient({
                             ) : (
                                 <div className="space-y-4">
                                     {/* Shared Worksheets */}
-                                    {materials.filter(m => m.teacher_id !== null && m.teacher_id !== undefined).length > 0 && (
+                                    {materials.filter(m => !m.title.startsWith('[Submitted Worksheet]') && !m.title.startsWith('[Study Material]')).length > 0 && (
                                         <div className="space-y-2">
                                             <span className="block text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Teacher's Worksheets</span>
-                                            {materials.filter(m => m.teacher_id !== null && m.teacher_id !== undefined).map(mat => (
+                                            {materials.filter(m => !m.title.startsWith('[Submitted Worksheet]') && !m.title.startsWith('[Study Material]')).map(mat => (
                                                 <div key={mat.id} className="p-4 rounded-xl border border-border/30 bg-muted/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-indigo-500/10 transition-all">
                                                     <div className="space-y-1 min-w-0 flex-1">
                                                         <p className="font-semibold text-sm text-foreground truncate">{mat.title}</p>
@@ -904,10 +999,10 @@ export function StudentDashboardClient({
                                     )}
 
                                     {/* Student Submitted Worksheets */}
-                                    {materials.filter(m => m.teacher_id === null || m.teacher_id === undefined).length > 0 && (
+                                    {materials.filter(m => m.title.startsWith('[Submitted Worksheet]') || m.title.startsWith('[Study Material]')).length > 0 && (
                                         <div className="space-y-2 pt-2 border-t border-border/10">
                                             <span className="block text-[9px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400">Your Submitted Worksheets</span>
-                                            {materials.filter(m => m.teacher_id === null || m.teacher_id === undefined).map(mat => (
+                                            {materials.filter(m => m.title.startsWith('[Submitted Worksheet]') || m.title.startsWith('[Study Material]')).map(mat => (
                                                 <div key={mat.id} className="p-4 rounded-xl border border-border/30 bg-muted/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-indigo-500/10 transition-all">
                                                     <div className="space-y-1 min-w-0 flex-1">
                                                         <p className="font-semibold text-sm text-foreground truncate">{mat.title}</p>
@@ -980,24 +1075,39 @@ export function StudentDashboardClient({
                                 </div>
                             </div>
 
-                            {/* Monthly Class Usage & Progress */}
-                            <div className="space-y-2 pt-2 border-t border-border/10">
-                                <div className="flex justify-between items-center text-xs">
-                                    <span className="text-muted-foreground font-semibold">Classes Completed This Month</span>
-                                    <span className="font-bold text-foreground">{completedThisMonth} / {monthlyClassesLimit} classes</span>
-                                </div>
-                                <div className="w-full bg-muted dark:bg-muted/30 h-2 rounded-full overflow-hidden">
-                                    <div 
-                                        className={cn("h-full rounded-full transition-all duration-500", 
-                                            showLimitReachedAlert 
-                                                ? "bg-rose-500" 
-                                                : showOneRemainingReminder 
-                                                ? "bg-amber-500" 
-                                                : "bg-indigo-600"
-                                        )}
-                                        style={{ width: `${progressPercent}%` }}
-                                    />
-                                </div>
+                            {/* Monthly Class Usage & Progress for each subject */}
+                            <div className="space-y-4 pt-2 border-t border-border/10">
+                                <span className="block text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Enrolled Subjects</span>
+                                {subjectCompletions.map((sub, idx) => {
+                                    const subProgressPercent = sub.classesPerMonth > 0 
+                                        ? Math.min(100, Math.round((sub.completed / sub.classesPerMonth) * 100))
+                                        : 0;
+                                    const isSubLimitReached = sub.completed >= sub.classesPerMonth && sub.classesPerMonth > 0;
+                                    
+                                    return (
+                                        <div key={idx} className="space-y-1.5 p-3 rounded-2xl bg-muted/20 border border-border/5">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <div>
+                                                    <span className="font-bold text-foreground">{sub.name}</span>
+                                                    <span className="block text-[9px] text-muted-foreground font-semibold">Tutor: {sub.tutor} (₹{sub.fee})</span>
+                                                </div>
+                                                <span className="font-extrabold text-[11px] text-foreground">{sub.completed} / {sub.classesPerMonth} classes</span>
+                                            </div>
+                                            <div className="w-full bg-muted dark:bg-muted/30 h-1.5 rounded-full overflow-hidden">
+                                                <div 
+                                                    className={cn("h-full rounded-full transition-all duration-500", 
+                                                        isSubLimitReached
+                                                            ? "bg-rose-500" 
+                                                            : sub.completed === sub.classesPerMonth - 1
+                                                            ? "bg-amber-500" 
+                                                            : "bg-indigo-600"
+                                                    )}
+                                                    style={{ width: `${subProgressPercent}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
 
                                 {showLimitReachedAlert && (
                                     <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-500/20 text-rose-700 dark:text-rose-400 rounded-xl text-xs space-y-1 mt-2 animate-in fade-in duration-300">
@@ -1006,19 +1116,19 @@ export function StudentDashboardClient({
                                             <span>Payment Alert</span>
                                         </p>
                                         <p className="text-[11px] leading-normal font-medium">
-                                            You have completed all {monthlyClassesLimit} classes for this billing cycle. Please renew your tuition subscription to continue scheduling classes.
+                                            You have completed all classes for one or more of your active billing cycles. Please renew your subscription to continue scheduling classes.
                                         </p>
                                     </div>
                                 )}
 
                                 {showOneRemainingReminder && (
-                                    <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-500/20 text-amber-700 dark:amber-400 rounded-xl text-xs space-y-1 mt-2 animate-in fade-in duration-300">
+                                    <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-500/20 text-amber-700 dark:text-amber-400 rounded-xl text-xs space-y-1 mt-2 animate-in fade-in duration-300">
                                         <p className="font-bold flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
                                             <AlertCircle size={14} className="shrink-0" />
                                             <span>Subscription Reminder</span>
                                         </p>
                                         <p className="text-[11px] leading-normal font-medium">
-                                            Only 1 class remaining in your monthly limit. Please plan your next payment cycle.
+                                            Only 1 class remaining in your limit for an active subject package. Please plan your next payment cycle.
                                         </p>
                                     </div>
                                 )}

@@ -183,7 +183,7 @@ export default function SuperAdminDashboard() {
         if (c.status !== 'scheduled' && c.status !== 'ongoing') return false;
         const startTime = new Date(c.scheduled_at).getTime();
         const elapsed = nowTime - startTime;
-        return elapsed > 10 * 60 * 1000 && elapsed < 24 * 60 * 60 * 1000 && !c.tutor_joined_at;
+        return elapsed > 5 * 60 * 1000 && elapsed < 24 * 60 * 60 * 1000 && !c.tutor_joined_at;
     });
 
     return (
@@ -517,7 +517,7 @@ export default function SuperAdminDashboard() {
                                 <AlertCircle className="text-rose-600 animate-pulse" size={18} />
                                 <span>Tutor Late & No-Show Alerts</span>
                             </CardTitle>
-                            <CardDescription className="text-xs">Tutors who have not joined classes 10+ minutes after scheduled start.</CardDescription>
+                            <CardDescription className="text-xs">Tutors who have not joined classes 5+ minutes after scheduled start.</CardDescription>
                         </CardHeader>
                         <CardContent className="p-5 space-y-3">
                             {lateTutorAlerts.map(c => (
@@ -528,7 +528,7 @@ export default function SuperAdminDashboard() {
                                             Student: {c.student?.full_name || 'Student'} • Scheduled: {format(new Date(c.scheduled_at), 'hh:mm a')} ({format(new Date(c.scheduled_at), 'MMM dd')})
                                         </p>
                                     </div>
-                                    <Badge className="bg-rose-600 text-white font-bold text-[9px] uppercase px-2.5 py-0.5 border-none">Late 10m+</Badge>
+                                    <Badge className="bg-rose-600 text-white font-bold text-[9px] uppercase px-2.5 py-0.5 border-none">Late 5m+</Badge>
                                 </div>
                             ))}
                         </CardContent>
