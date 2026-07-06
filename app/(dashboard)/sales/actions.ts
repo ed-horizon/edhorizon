@@ -19,8 +19,8 @@ export async function getLeads(showAll = false) {
     let query = supabase.from("leads").select("*, assigned_to(id, full_name, email)");
 
     // If NOT showAll and role is salesperson/sales, only show assigned leads
-    const isAdmin = profile?.role === "super_admin" || profile?.role === "admin";
-    if (!showAll && !isAdmin) {
+    const isAdminOrHead = profile?.role === "super_admin" || profile?.role === "admin" || profile?.role === "sales_head";
+    if (!showAll || !isAdminOrHead) {
         query = query.eq("assigned_to", user.id);
     }
 
@@ -266,7 +266,7 @@ export async function getSalesAgents() {
     const { data: agents, error } = await supabase
         .from("profiles")
         .select("id, full_name, email")
-        .in("role", ["sales", "admin", "super_admin"])
+        .in("role", ["sales", "sales_head", "admin", "super_admin"])
         .order("full_name", { ascending: true });
 
     if (error) {

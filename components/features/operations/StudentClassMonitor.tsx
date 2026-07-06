@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,12 +16,13 @@ import {
 import { 
     Users, Video, Clock, Share2, Plus, ChevronDown, ChevronUp, 
     Search, GraduationCap, DollarSign, UserCheck, Loader2, ExternalLink, Check, X,
-    BookOpen, Upload, FileText
+    BookOpen, Upload, FileText, Trash2, AlertTriangle
 } from "lucide-react";
 import { cn, formatClassTitle } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { assignTutorToStudent, cancelLiveClass } from "@/app/(dashboard)/attendance/actions";
+import { assignTutorToStudent, cancelLiveClass, deleteClassLogOrSession } from "@/app/(dashboard)/attendance/actions";
+import { createClient } from "@/lib/supabase/client";
 import { CreateLiveClassDialog } from "@/components/features/teacher/CreateLiveClassDialog";
 import { PostClassLogModal } from "@/components/features/teacher/PostClassLogModal";
 import { AssignHomeworkDialog, UploadMaterialDialog } from "@/components/features/teacher/StudentActionDialogs";
@@ -68,6 +69,26 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
     const [searchQuery, setSearchQuery] = useState("");
     const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
     const [updatingTutorId, setUpdatingTutorId] = useState<string | null>(null);
+    const [userRole, setUserRole] = useState<string>("");
+    const [deletingClassId, setDeletingClassId] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchRole = async () => {
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('role')
+                    .eq('id', user.id)
+                    .single();
+                if (profile?.role) {
+                    setUserRole(profile.role);
+                }
+            }
+        };
+        fetchRole();
+    }, []);
 
     const filteredStudents = students.filter(s => {
         const query = searchQuery.toLowerCase();
@@ -424,6 +445,17 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                                                         <Share2 size={10} />
                                                                         <span>Share Link</span>
                                                                     </Button>
+                                                                    {c.status === 'completed' && ['hr', 'operations', 'super_admin', 'admin'].includes(userRole) && (
+                                                                        <Button 
+                                                                            size="sm" 
+                                                                            variant="ghost" 
+                                                                            onClick={() => setDeletingClassId(c.id)}
+                                                                            className="h-8 text-[9px] font-bold uppercase tracking-wider rounded-lg border-2 border-rose-500/25 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 gap-1"
+                                                                        >
+                                                                            <Trash2 size={10} />
+                                                                            <span>Delete Log</span>
+                                                                        </Button>
+                                                                    )}
                                                                     {c.status === 'scheduled' && (
                                                                         <Button 
                                                                             size="sm" 
@@ -462,6 +494,71 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                     )}
                 </div>
             </CardContent>
+
+            {deletingClassId && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-300">
+                    <div className="bg-card border border-border/40 p-6 rounded-[2rem] max-w-md w-full mx-4 shadow-2xl space-y-6 text-left">
+                        <div className="space-y-2">
+                            <h3 className="text-lg font-bold text-rose-600 flex items-center gap-2">
+                                <AlertTriangle size={20} />
+                                <span>Manage Class Log / Session</span>
+                            </h3>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                You can either revert the post-class logs (restoring the scheduled session and clearing all logs/attendance) or completely delete the session row.
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-2.5">
+                            <Button 
+                                onClick={async () => {
+                                    const classId = deletingClassId;
+                                    setDeletingClassId(null);
+                                    try {
+                                        const res = await deleteClassLogOrSession(classId, 'revert');
+                                        if (res.success) {
+                                            toast.success("Class log reverted to scheduled successfully!");
+                                            window.location.reload();
+                                        } else {
+                                            toast.error(res.error || "Failed to revert log");
+                                        }
+                                    } catch (err) {
+                                        toast.error("Failed to revert log");
+                                    }
+                                }}
+                                className="w-full bg-amber-600 hover:bg-amber-700 text-white rounded-xl h-10 font-bold text-xs"
+                            >
+                                Revert Log to Scheduled (Clears logs & attendance)
+                            </Button>
+                            <Button 
+                                onClick={async () => {
+                                    const classId = deletingClassId;
+                                    setDeletingClassId(null);
+                                    try {
+                                        const res = await deleteClassLogOrSession(classId, 'delete');
+                                        if (res.success) {
+                                            toast.success("Class session deleted successfully!");
+                                            window.location.reload();
+                                        } else {
+                                            toast.error(res.error || "Failed to delete session");
+                                        }
+                                    } catch (err) {
+                                        toast.error("Failed to delete session");
+                                    }
+                                }}
+                                className="w-full bg-rose-600 hover:bg-rose-700 text-white rounded-xl h-10 font-bold text-xs"
+                            >
+                                Delete Class Session Completely
+                            </Button>
+                            <Button 
+                                variant="outline"
+                                onClick={() => setDeletingClassId(null)}
+                                className="w-full rounded-xl h-10 font-bold text-xs"
+                            >
+                                Cancel
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </Card>
     );
 }

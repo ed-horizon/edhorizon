@@ -29,6 +29,7 @@ export default function SalesDashboard() {
     const [selectedLead, setSelectedLead] = useState<any | null>(null);
     const [userName, setUserName] = useState("Sales");
     const [teachers, setTeachers] = useState<any[]>([]);
+    const [userRole, setUserRole] = useState<string>("sales");
 
     // Onboarding Form States
     const [showOnboard, setShowOnboard] = useState(false);
@@ -172,13 +173,22 @@ export default function SalesDashboard() {
             if (user) {
                 const { data: profile } = await supabase
                     .from('profiles')
-                    .select('full_name')
+                    .select('full_name, role')
                     .eq('id', user.id)
                     .single();
-                if (profile?.full_name) {
-                    setUserName(profile.full_name);
-                } else if (user.email) {
-                    setUserName(user.email.split('@')[0]);
+                if (profile) {
+                    if (profile.full_name) {
+                        setUserName(profile.full_name);
+                    } else if (user.email) {
+                        setUserName(user.email.split('@')[0]);
+                    }
+                    if (profile.role) {
+                        setUserRole(profile.role);
+                        // If they are sales_head or admin, default them to head view!
+                        if (profile.role === 'sales_head' || profile.role === 'admin' || profile.role === 'super_admin') {
+                            setIsHeadView(true);
+                        }
+                    }
                 }
             }
         };
@@ -276,23 +286,25 @@ export default function SalesDashboard() {
                 </div>
                 
                 <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 bg-muted/50 p-1.5 rounded-xl border border-border/30">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground pl-2">Mode Switcher:</span>
-                        <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => setIsHeadView(!isHeadView)}
-                            className={cn("h-8 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5",
-                                isHeadView 
-                                    ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow" 
-                                    : "bg-white hover:bg-muted text-foreground border border-border"
-                            )}
-                        >
-                            {isHeadView ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-                            <span>{isHeadView ? "Sales Head Mode" : "Salesperson Mode"}</span>
-                        </Button>
-                    </div>
-                    {isHeadView && (
+                    {["sales_head", "admin", "super_admin"].includes(userRole) && (
+                        <div className="flex items-center gap-2 bg-muted/50 p-1.5 rounded-xl border border-border/30">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground pl-2">Mode Switcher:</span>
+                            <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => setIsHeadView(!isHeadView)}
+                                className={cn("h-8 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5",
+                                    isHeadView 
+                                        ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow" 
+                                        : "bg-white hover:bg-muted text-foreground border border-border"
+                                )}
+                            >
+                                {isHeadView ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                                <span>{isHeadView ? "Sales Head Mode" : "Salesperson Mode"}</span>
+                            </Button>
+                        </div>
+                    )}
+                    {(isHeadView || ["sales_head", "admin", "super_admin"].includes(userRole)) && (
                         <Button 
                             onClick={() => {
                                 setOnboardName("");

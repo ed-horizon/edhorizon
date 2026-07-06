@@ -2714,3 +2714,73 @@ export async function modifyClassLog(
     revalidatePath('/(dashboard)', 'layout');
     return { success: true };
 }
+
+export async function deleteClassLogOrSession(classId: string, action: 'revert' | 'delete') {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Unauthorized: Please log in." };
+
+    // Get user role to authorize deletion
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    const isAuthorized = ['admin', 'super_admin', 'hr', 'operations'].includes(profile?.role || '');
+    if (!isAuthorized) {
+        return { success: false, error: "Unauthorized: Only admins, HR, and Operations can perform this action." };
+    }
+
+    if (action === 'revert') {
+        // Revert class to scheduled and clear completion fields
+        const { error: updateError } = await supabase
+            .from('live_classes')
+            .update({
+                status: 'scheduled',
+                topic_taught: null,
+                homework_given: null,
+                student_performance: null,
+                parent_note: null,
+                tutor_joined_at: null,
+                student_joined_at: null,
+                tutor_joined_late: null,
+                parent_verified: null,
+                parent_dispute_reason: null
+            })
+            .eq('id', classId);
+
+        if (updateError) {
+            console.error("deleteClassLogOrSession revert update error:", updateError);
+            return { success: false, error: updateError.message };
+        }
+
+        // Delete all matching student attendance records so it's removed from student portal/counts
+        const { error: deleteAttendanceError } = await supabase
+            .from('student_attendance')
+            .delete()
+            .eq('class_id', classId);
+
+        if (deleteAttendanceError) {
+            console.error("deleteClassLogOrSession revert delete attendance error:", deleteAttendanceError);
+            return { success: false, error: deleteAttendanceError.message };
+        }
+
+    } else if (action === 'delete') {
+        // Completely delete the class session
+        const { error: deleteError } = await supabase
+            .from('live_classes')
+            .delete()
+            .eq('id', classId);
+
+        if (deleteError) {
+            console.error("deleteClassLogOrSession delete class error:", deleteError);
+            return { success: false, error: deleteError.message };
+        }
+    } else {
+        return { success: false, error: "Invalid action specified." };
+    }
+
+    revalidatePath('/(dashboard)', 'layout');
+    return { success: true };
+}
