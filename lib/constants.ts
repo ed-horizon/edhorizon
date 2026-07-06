@@ -139,6 +139,6 @@ export const NAV_ITEMS = [
         title: "Monthly Class Logs",
         href: "/class-logs",
         icon: CalendarDays,
-        roles: ["student", "parent", "teacher", "hr", "super_admin", "operations", "admin", "sales", "sales_head"],
+        roles: ["student", "parent", "teacher", "hr", "super_admin", "operations", "admin", "sales_head"],
     },
 ];
