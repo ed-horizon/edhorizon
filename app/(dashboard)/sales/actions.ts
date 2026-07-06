@@ -45,7 +45,7 @@ export async function getPipelineStages() {
         console.error("Error fetching stages:", error);
         return [];
     }
-
+    console.log(">>> [DEBUG] getPipelineStages returned count:", stages?.length, "records:", stages);
     return stages;
 }
 
@@ -282,7 +282,7 @@ export async function getSalesAgents() {
 
     const { data: agents, error } = await supabase
         .from("profiles")
-        .select("id, full_name, email")
+        .select("id, full_name, email, role")
         .in("role", ["sales", "sales_head", "admin", "super_admin"])
         .order("full_name", { ascending: true });
 
