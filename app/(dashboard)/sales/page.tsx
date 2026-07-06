@@ -490,7 +490,7 @@ export default function SalesDashboard() {
                                                                     className="h-8 rounded-lg border border-input bg-background px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full max-w-[130px] font-semibold"
                                                                 >
                                                                     <option value="">Unassigned</option>
-                                                                    {agents.map(a => (
+                                                                    {agents.filter(a => a.role === 'sales').map(a => (
                                                                         <option key={a.id} value={a.id}>{a.full_name || a.email}</option>
                                                                     ))}
                                                                 </select>
