@@ -18,11 +18,7 @@ import {
     Search, GraduationCap, DollarSign, UserCheck, Loader2, ExternalLink, Check, X,
     BookOpen, Upload, FileText, Trash2, AlertTriangle
 } from "lucide-react";
-<<<<<<< HEAD
-import { cn, formatClassTitle, parseStudentIdAndMobile } from "@/lib/utils";
-=======
-import { cn, formatClassTitle, formatInIST } from "@/lib/utils";
->>>>>>> feature/student-billing-scheduling-fixes
+import { cn, formatClassTitle, parseStudentIdAndMobile, formatInIST } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { assignTutorToStudent, cancelLiveClass, deleteClassLogOrSession } from "@/app/(dashboard)/attendance/actions";
