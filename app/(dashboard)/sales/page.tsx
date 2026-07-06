@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { 
     DollarSign, Users, Briefcase, TrendingUp, AlertCircle, 
     MessageSquare, Calendar, Phone, CheckCircle, Clock, ToggleLeft, ToggleRight,
-    UserPlus, Star, Activity, Plus, X, Loader2
+    UserPlus, Star, Activity, Plus, X, Loader2, Search
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getLeads, getSalesAgents, updateLead } from "./actions";
@@ -30,6 +30,75 @@ export default function SalesDashboard() {
     const [userName, setUserName] = useState("Sales");
     const [teachers, setTeachers] = useState<any[]>([]);
     const [userRole, setUserRole] = useState<string>("sales");
+
+    // CRM Master Board Filter States
+    const [leadSearchText, setLeadSearchText] = useState("");
+    const [filterLatest2Days, setFilterLatest2Days] = useState(true);
+    const [filterStartDate, setFilterStartDate] = useState("");
+    const [filterEndDate, setFilterEndDate] = useState("");
+
+    const handleStartDateChange = (val: string) => {
+        setFilterStartDate(val);
+        if (val) {
+            setFilterLatest2Days(false);
+        }
+    };
+
+    const handleEndDateChange = (val: string) => {
+        setFilterEndDate(val);
+        if (val) {
+            setFilterLatest2Days(false);
+        }
+    };
+
+    const handleToggleLatest2Days = (checked: boolean) => {
+        setFilterLatest2Days(checked);
+        if (checked) {
+            setFilterStartDate("");
+            setFilterEndDate("");
+        }
+    };
+
+    const getFilteredLeads = () => {
+        return leads.filter(lead => {
+            if (leadSearchText.trim()) {
+                const searchLower = leadSearchText.toLowerCase();
+                const matchesName = lead.name?.toLowerCase().includes(searchLower);
+                const matchesParent = lead.parent_name?.toLowerCase().includes(searchLower);
+                const matchesEmail = lead.email?.toLowerCase().includes(searchLower);
+                const matchesPhone = lead.phone?.toLowerCase().includes(searchLower);
+                const matchesCourse = lead.required_course?.toLowerCase().includes(searchLower);
+                if (!matchesName && !matchesParent && !matchesEmail && !matchesPhone && !matchesCourse) {
+                    return false;
+                }
+            }
+
+            const leadDate = new Date(lead.created_at || lead.scheduled_at || Date.now());
+            
+            if (filterLatest2Days) {
+                const today = new Date();
+                const twoDaysAgo = new Date();
+                twoDaysAgo.setDate(today.getDate() - 1); // today + yesterday
+                twoDaysAgo.setHours(0, 0, 0, 0); // start of yesterday
+                
+                if (leadDate < twoDaysAgo) {
+                    return false;
+                }
+            }
+
+            if (filterStartDate) {
+                const start = new Date(filterStartDate + "T00:00:00");
+                if (leadDate < start) return false;
+            }
+
+            if (filterEndDate) {
+                const end = new Date(filterEndDate + "T23:59:59");
+                if (leadDate > end) return false;
+            }
+
+            return true;
+        });
+    };
 
     // Onboarding Form States
     const [showOnboard, setShowOnboard] = useState(false);
@@ -448,9 +517,77 @@ export default function SalesDashboard() {
                             {/* Right: Master Leads Directory Table & Reassignments (8 Cols) */}
                             <div className="lg:col-span-8">
                                 <Card className="rounded-2xl border-border/40 shadow-md bg-card overflow-hidden">
-                                    <CardHeader className="border-b border-border/10 pb-4">
-                                        <CardTitle className="text-base font-bold">CRM Master Leads Board</CardTitle>
-                                        <CardDescription className="text-xs">Assign incoming leads to salespeople and monitor follow-ups.</CardDescription>
+                                    <CardHeader className="border-b border-border/10 pb-4 space-y-4">
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                            <div>
+                                                <CardTitle className="text-base font-bold">CRM Master Leads Board</CardTitle>
+                                                <CardDescription className="text-xs">Assign incoming leads to salespeople and monitor follow-ups.</CardDescription>
+                                            </div>
+                                            
+                                            {/* Search bar inside header */}
+                                            <div className="relative w-full md:w-60">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-3.5 w-3.5" />
+                                                <Input 
+                                                    placeholder="Search by name, parent, email..."
+                                                    value={leadSearchText}
+                                                    onChange={(e) => setLeadSearchText(e.target.value)}
+                                                    className="pl-9 h-8 rounded-xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-[10px]"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Date Filter & 2-day Toggle Row */}
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1 text-xs">
+                                            <div className="flex items-center gap-4 flex-wrap">
+                                                {/* Latest 2 Days Checkbox */}
+                                                <label className="flex items-center gap-2 font-semibold text-[10px] text-indigo-600 dark:text-indigo-400 cursor-pointer select-none bg-indigo-500/5 border border-indigo-500/10 hover:bg-indigo-500/10 transition-colors px-3 py-1.5 rounded-xl">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={filterLatest2Days}
+                                                        onChange={(e) => handleToggleLatest2Days(e.target.checked)}
+                                                        className="rounded border-indigo-500/20 text-indigo-600 focus:ring-indigo-500 h-3 w-3"
+                                                    />
+                                                    <span>Latest 2 Days (Today & Yesterday)</span>
+                                                </label>
+
+                                                {/* Date Range Inputs */}
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[9px] font-bold text-muted-foreground uppercase">From:</span>
+                                                        <Input 
+                                                            type="date"
+                                                            value={filterStartDate}
+                                                            onChange={(e) => handleStartDateChange(e.target.value)}
+                                                            className="h-7 text-[10px] rounded-lg px-2 w-32 border border-muted/30"
+                                                        />
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[9px] font-bold text-muted-foreground uppercase">To:</span>
+                                                        <Input 
+                                                            type="date"
+                                                            value={filterEndDate}
+                                                            onChange={(e) => handleEndDateChange(e.target.value)}
+                                                            className="h-7 text-[10px] rounded-lg px-2 w-32 border border-muted/30"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Reset Button */}
+                                            {(filterStartDate || filterEndDate || !filterLatest2Days || leadSearchText) && (
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="sm" 
+                                                    onClick={() => {
+                                                        setLeadSearchText("");
+                                                        handleToggleLatest2Days(true);
+                                                    }}
+                                                    className="h-7 text-[9px] font-bold uppercase tracking-wider text-rose-600 hover:bg-rose-50 rounded-lg px-2.5"
+                                                >
+                                                    Clear Filters
+                                                </Button>
+                                            )}
+                                        </div>
                                     </CardHeader>
                                     <CardContent className="p-0">
                                         <div className="overflow-x-auto">
@@ -466,7 +603,7 @@ export default function SalesDashboard() {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-border/10">
-                                                    {leads.map(lead => (
+                                                    {getFilteredLeads().map(lead => (
                                                         <tr key={lead.id} className="hover:bg-muted/10 transition-colors">
                                                             <td className="p-4 pl-6 cursor-pointer" onClick={() => setSelectedLead(lead)}>
                                                                 <p className="font-bold text-indigo-950 dark:text-indigo-200 uppercase tracking-tight">{lead.name}</p>
@@ -519,9 +656,9 @@ export default function SalesDashboard() {
                                                             </td>
                                                         </tr>
                                                     ))}
-                                                    {leads.length === 0 && (
+                                                    {getFilteredLeads().length === 0 && (
                                                         <tr>
-                                                            <td colSpan={6} className="text-center py-10 text-muted-foreground italic">No leads found in CRM.</td>
+                                                            <td colSpan={6} className="text-center py-10 text-muted-foreground italic">No matching leads found in CRM.</td>
                                                         </tr>
                                                     )}
                                                 </tbody>
