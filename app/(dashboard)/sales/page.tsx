@@ -322,7 +322,7 @@ export default function SalesDashboard() {
                             Onboard Student
                         </Button>
                     )}
-                    <CreateLeadDialog onSuccess={() => loadData(isHeadView)} />
+                    <CreateLeadDialog onSuccess={() => loadData(isHeadView)} agents={agents} userRole={userRole} />
                     <ThemeToggle />
                 </div>
             </div>

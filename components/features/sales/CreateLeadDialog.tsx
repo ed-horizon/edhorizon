@@ -10,7 +10,7 @@ import { Plus, Loader2 } from "lucide-react";
 import { addLead, getUniqueCourses } from "@/app/(dashboard)/sales/actions";
 import { toast } from "sonner";
 
-export default function CreateLeadDialog({ onSuccess }: { onSuccess?: () => void }) {
+export default function CreateLeadDialog({ onSuccess, agents = [], userRole = "sales" }: { onSuccess?: () => void; agents?: any[]; userRole?: string }) {
     const [open, setOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -214,6 +214,24 @@ export default function CreateLeadDialog({ onSuccess }: { onSuccess?: () => void
                             />
                         </div>
                     </div>
+
+                    {["sales_head", "admin", "super_admin"].includes(userRole) && (
+                        <div className="space-y-1.5">
+                            <Label htmlFor="assigned_to" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Assigned Salesperson</Label>
+                            <select
+                                id="assigned_to"
+                                name="assigned_to"
+                                className="flex h-10 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-xs"
+                            >
+                                <option value="">Unassigned</option>
+                                {agents.map((agent) => (
+                                    <option key={agent.id} value={agent.id}>
+                                        {agent.full_name || agent.email}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     <div className="space-y-1.5">
                         <Label htmlFor="feedback" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Latest Feedback / Update</Label>

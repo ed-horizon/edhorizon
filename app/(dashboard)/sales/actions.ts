@@ -163,6 +163,23 @@ export async function addLead(formData: FormData) {
     const lostReason = formData.get("lost_reason") as string;
     const nextFollowUp = formData.get("next_follow_up") as string;
 
+    const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+    const isManager = profile?.role === "super_admin" || profile?.role === "admin" || profile?.role === "sales_head";
+    const formAssignedTo = formData.get("assigned_to") as string;
+    let assignedTo: string | null = user.id;
+    if (isManager) {
+        if (formAssignedTo === "") {
+            assignedTo = null;
+        } else if (formAssignedTo) {
+            assignedTo = formAssignedTo;
+        }
+    }
+
     const { error } = await supabase.from("leads").insert({
         name,
         email,
@@ -171,7 +188,7 @@ export async function addLead(formData: FormData) {
         notes,
         class: studentClass,
         feedback,
-        assigned_to: user.id, // Assign to creator by default
+        assigned_to: assignedTo,
         status: "new",
         parent_name: parentName || null,
         lead_source: leadSource || null,
