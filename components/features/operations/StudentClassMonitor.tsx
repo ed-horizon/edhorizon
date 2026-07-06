@@ -18,7 +18,7 @@ import {
     Search, GraduationCap, DollarSign, UserCheck, Loader2, ExternalLink, Check, X,
     BookOpen, Upload, FileText, Trash2, AlertTriangle
 } from "lucide-react";
-import { cn, formatClassTitle } from "@/lib/utils";
+import { cn, formatClassTitle, parseStudentIdAndMobile } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { assignTutorToStudent, cancelLiveClass, deleteClassLogOrSession } from "@/app/(dashboard)/attendance/actions";
@@ -214,11 +214,23 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                         <div>
                                             <h3 className="text-sm font-bold text-foreground flex items-center gap-2 flex-wrap">
                                                 <span>{student.full_name || 'No Name Set'}</span>
-                                                {student.custom_student_id && (
-                                                    <span className="font-mono text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded border border-border/40">
-                                                        {student.custom_student_id}
-                                                    </span>
-                                                )}
+                                                {student.custom_student_id && (() => {
+                                                    const { studentId, mobileNumber } = parseStudentIdAndMobile(student.custom_student_id);
+                                                    return (
+                                                        <>
+                                                            {studentId && (
+                                                                <span className="font-mono text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded border border-border/40">
+                                                                    ID: {studentId}
+                                                                </span>
+                                                            )}
+                                                            {mobileNumber && (
+                                                                <span className="font-mono text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded border border-border/40">
+                                                                    Mob: {mobileNumber}
+                                                                </span>
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
                                                 <Badge className="bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400 border-none font-bold text-[9px] px-2 py-0.5 rounded-full">
                                                     {student.grade_level}
                                                 </Badge>
@@ -387,6 +399,25 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                                                         <span className="text-rose-500 font-semibold italic">No Join Log</span>
                                                                     )}
                                                                 </div>
+                                                                {c.status === 'completed' && (
+                                                                    <div className="flex items-center gap-1 mt-1 border-t border-border/10 pt-1">
+                                                                        <span className="font-bold text-muted-foreground">Parent:</span>
+                                                                        {c.parent_verified === true ? (
+                                                                            <span className="text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/20 px-1.5 py-0.2 rounded-full text-[8px] scale-90">Verified</span>
+                                                                        ) : c.parent_verified === false ? (
+                                                                            <div className="flex flex-col gap-0.5">
+                                                                                <span className="text-rose-600 dark:text-rose-400 font-bold bg-rose-50 dark:bg-rose-950/20 px-1.5 py-0.2 rounded-full text-[8px] scale-90 w-max">Disputed</span>
+                                                                                {c.parent_dispute_reason && (
+                                                                                    <span className="text-[8px] text-rose-500 font-medium italic block max-w-[150px] truncate" title={c.parent_dispute_reason}>
+                                                                                        {c.parent_dispute_reason}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span className="text-amber-600 dark:text-amber-400 font-medium italic">Pending</span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                             </td>
                                                             <td className="p-4 text-right pr-6">
                                                                 <div className="flex items-center justify-end gap-2 flex-wrap">
