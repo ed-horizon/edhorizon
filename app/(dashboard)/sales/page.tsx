@@ -33,6 +33,7 @@ export default function SalesDashboard() {
 
     // CRM Master Board Filter States
     const [leadSearchText, setLeadSearchText] = useState("");
+    const [filterStatus, setFilterStatus] = useState("all");
     const [filterLatest2Days, setFilterLatest2Days] = useState(true);
     const [filterStartDate, setFilterStartDate] = useState("");
     const [filterEndDate, setFilterEndDate] = useState("");
@@ -61,6 +62,11 @@ export default function SalesDashboard() {
 
     const getFilteredLeads = () => {
         return leads.filter(lead => {
+            // Stage/Status filter
+            if (filterStatus !== "all" && lead.status !== filterStatus) {
+                return false;
+            }
+
             if (leadSearchText.trim()) {
                 const searchLower = leadSearchText.toLowerCase();
                 const matchesName = lead.name?.toLowerCase().includes(searchLower);
@@ -524,15 +530,32 @@ export default function SalesDashboard() {
                                                 <CardDescription className="text-xs">Assign incoming leads to salespeople and monitor follow-ups.</CardDescription>
                                             </div>
                                             
-                                            {/* Search bar inside header */}
-                                            <div className="relative w-full md:w-60">
-                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-3.5 w-3.5" />
-                                                <Input 
-                                                    placeholder="Search by name, parent, email..."
-                                                    value={leadSearchText}
-                                                    onChange={(e) => setLeadSearchText(e.target.value)}
-                                                    className="pl-9 h-8 rounded-xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-[10px]"
-                                                />
+                                            <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+                                                {/* Stage/Status dropdown filter */}
+                                                <select
+                                                    value={filterStatus}
+                                                    onChange={(e) => setFilterStatus(e.target.value)}
+                                                    className="h-8 rounded-xl border border-border/40 bg-background px-3 text-[10px] focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full md:w-36 font-semibold"
+                                                >
+                                                    <option value="all">All Stages</option>
+                                                    <option value="new">New</option>
+                                                    <option value="contacted">Contacted</option>
+                                                    <option value="demo_scheduled">Demo Scheduled</option>
+                                                    <option value="feedback">Feedback</option>
+                                                    <option value="converted">Converted (Won)</option>
+                                                    <option value="not_converted">Not Converted (Lost)</option>
+                                                </select>
+
+                                                {/* Search bar inside header */}
+                                                <div className="relative w-full md:w-60">
+                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-3.5 w-3.5" />
+                                                    <Input 
+                                                        placeholder="Search by name, parent, email..."
+                                                        value={leadSearchText}
+                                                        onChange={(e) => setLeadSearchText(e.target.value)}
+                                                        className="pl-9 h-8 rounded-xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-[10px]"
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
 
@@ -574,12 +597,13 @@ export default function SalesDashboard() {
                                             </div>
                                             
                                             {/* Reset Button */}
-                                            {(filterStartDate || filterEndDate || !filterLatest2Days || leadSearchText) && (
+                                            {(filterStartDate || filterEndDate || !filterLatest2Days || leadSearchText || filterStatus !== "all") && (
                                                 <Button 
                                                     variant="ghost" 
                                                     size="sm" 
                                                     onClick={() => {
                                                         setLeadSearchText("");
+                                                        setFilterStatus("all");
                                                         handleToggleLatest2Days(true);
                                                     }}
                                                     className="h-7 text-[9px] font-bold uppercase tracking-wider text-rose-600 hover:bg-rose-50 rounded-lg px-2.5"
@@ -633,26 +657,34 @@ export default function SalesDashboard() {
                                                                 </select>
                                                             </td>
                                                             <td className="p-4 text-right pr-6">
-                                                                {lead.status === 'converted' ? (
+                                                                <div className="flex items-center justify-end gap-2">
                                                                     <Button 
                                                                         size="sm"
-                                                                        onClick={() => {
-                                                                            setOnboardName(lead.name);
-                                                                            setOnboardEmail(lead.email || "");
-                                                                            setOnboardClass(lead.class || "");
-                                                                            setOnboardFee(lead.value ? String(lead.value) : "4500");
-                                                                            setOnboardClassesPerMonth("12");
-                                                                            setOnboardTeacherId("");
-                                                                            setOnboardStudentId("");
-                                                                            setShowOnboard(true);
-                                                                        }}
-                                                                        className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold uppercase tracking-wider px-3 rounded-lg shadow-sm"
+                                                                        variant="outline"
+                                                                        onClick={() => setSelectedLead(lead)}
+                                                                        className="h-8 text-[10px] font-bold uppercase tracking-wider px-3 rounded-lg border-indigo-500/30 text-indigo-600 hover:bg-indigo-50"
                                                                     >
-                                                                        Onboard
+                                                                        Edit
                                                                     </Button>
-                                                                ) : (
-                                                                    <span className="text-muted-foreground/30 italic text-[10px]">Pending</span>
-                                                                )}
+                                                                    {lead.status === 'converted' && (
+                                                                        <Button 
+                                                                            size="sm"
+                                                                            onClick={() => {
+                                                                                setOnboardName(lead.name);
+                                                                                setOnboardEmail(lead.email || "");
+                                                                                setOnboardClass(lead.class || "");
+                                                                                setOnboardFee(lead.value ? String(lead.value) : "4500");
+                                                                                setOnboardClassesPerMonth("12");
+                                                                                setOnboardTeacherId("");
+                                                                                setOnboardStudentId("");
+                                                                                setShowOnboard(true);
+                                                                            }}
+                                                                            className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold uppercase tracking-wider px-3 rounded-lg shadow-sm"
+                                                                        >
+                                                                            Onboard
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
                                                             </td>
                                                         </tr>
                                                     ))}
