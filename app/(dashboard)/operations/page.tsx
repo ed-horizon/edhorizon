@@ -88,7 +88,7 @@ export default function OperationsDashboard() {
     const [onboardFee, setOnboardFee] = useState("4500");
     const [onboardClassesPerMonth, setOnboardClassesPerMonth] = useState("12");
     const [onboardTeacherId, setOnboardTeacherId] = useState("");
-    const [onboardStudentId, setOnboardStudentId] = useState("");
+    const [onboardStudentId, setOnboardStudentId] = useState("EDH");
     const [onboardParentEmail, setOnboardParentEmail] = useState("");
     const [onboardSubject1Name, setOnboardSubject1Name] = useState("Maths");
     const [onboardSubject2Name, setOnboardSubject2Name] = useState("");
@@ -131,10 +131,19 @@ export default function OperationsDashboard() {
             setPendingPayments(fetchedPayments || []);
 
             
-            // Set complaints
+            // Set complaints from localStorage
+            let resolvedIds: string[] = [];
+            if (typeof window !== 'undefined') {
+                try {
+                    resolvedIds = JSON.parse(localStorage.getItem('resolved_complaints') || '[]');
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
             setComplaints([
-                { id: "c1", parent: "Rajesh Sharma", student: "Aarav", issue: "Parent reports audio lags in Hindi class", status: "pending", date: "Today" },
-                { id: "c2", parent: "Neha Patel", student: "Priya", issue: "Math homework link not loading", status: "pending", date: "Yesterday" }
+                { id: "c1", parent: "Rajesh Sharma", student: "Aarav", issue: "Parent reports audio lags in Hindi class", status: resolvedIds.includes("c1") ? "resolved" : "pending", date: "Today" },
+                { id: "c2", parent: "Neha Patel", student: "Priya", issue: "Math homework link not loading", status: resolvedIds.includes("c2") ? "resolved" : "pending", date: "Yesterday" }
             ]);
 
             // Set homework tracking logs
@@ -161,6 +170,17 @@ export default function OperationsDashboard() {
 
     const handleResolveComplaint = (id: string) => {
         setComplaints(prev => prev.map(c => c.id === id ? { ...c, status: "resolved" } : c));
+        if (typeof window !== 'undefined') {
+            try {
+                const resolved = JSON.parse(localStorage.getItem('resolved_complaints') || '[]');
+                if (!resolved.includes(id)) {
+                    resolved.push(id);
+                    localStorage.setItem('resolved_complaints', JSON.stringify(resolved));
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
         toast.success("Parent complaint marked as resolved!");
     };
 
@@ -302,7 +322,7 @@ export default function OperationsDashboard() {
                 setOnboardFee("4500");
                 setOnboardClassesPerMonth("12");
                 setOnboardTeacherId("");
-                setOnboardStudentId("");
+                setOnboardStudentId("EDH");
                 setOnboardParentEmail("");
                 setOnboardSubject1Name("Maths");
                 setOnboardSubject2Name("");

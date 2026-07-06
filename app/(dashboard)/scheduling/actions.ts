@@ -60,30 +60,9 @@ function computeDatesForPattern(
     return dates
 }
 
-/**
- * Helper to limit generated dates by a student's monthly opted class limit
- */
 function limitDatesByMonthlyMax(dates: string[], maxPerMonth: number) {
     if (maxPerMonth <= 0) return dates;
-    
-    // Group dates by YYYY-MM
-    const groups: Record<string, string[]> = {};
-    dates.forEach(d => {
-        const monthKey = d.substring(0, 7); // "YYYY-MM"
-        if (!groups[monthKey]) {
-            groups[monthKey] = [];
-        }
-        groups[monthKey].push(d);
-    });
-
-    // Limit each group to maxPerMonth
-    const limitedDates: string[] = [];
-    Object.keys(groups).sort().forEach(monthKey => {
-        const monthDates = groups[monthKey];
-        limitedDates.push(...monthDates.slice(0, maxPerMonth));
-    });
-
-    return limitedDates;
+    return dates.slice(0, maxPerMonth);
 }
 
 export async function createClassSchedule(payload: SchedulePayload) {
