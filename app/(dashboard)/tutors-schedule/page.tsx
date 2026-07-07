@@ -7,12 +7,30 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { 
-    CalendarDays, Clock, Users, ArrowLeft, Search, CheckCircle, AlertTriangle, 
-    ChevronRight, Eye, Grid, ListFilter, HelpCircle, Sparkles
+    CalendarDays, Clock, Users, ArrowLeft, Search, Grid, ListFilter, HelpCircle, Sparkles
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatTime12Hour } from "@/lib/utils";
+
+interface Teacher {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+}
+
+interface TutorSchedule {
+    id: string;
+    teacher_id: string;
+    student_id: string | null;
+    title: string | null;
+    pattern_days: number[];
+    time_of_day: string | null;
+    day_timings: Record<string, string> | null;
+    duration_hours: number | string | null;
+    status: string;
+    student?: { full_name: string | null } | null;
+}
 
 const DAYS = [
     { value: 1, label: 'Monday' },
@@ -30,8 +48,8 @@ const TIME_SLOTS = [
 ];
 
 export default function TutorsSchedulePage() {
-    const [teachers, setTeachers] = useState<any[]>([]);
-    const [schedules, setSchedules] = useState<any[]>([]);
+    const [teachers, setTeachers] = useState<Teacher[]>([]);
+    const [schedules, setSchedules] = useState<TutorSchedule[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
@@ -62,6 +80,7 @@ export default function TutorsSchedulePage() {
                         title,
                         pattern_days,
                         time_of_day,
+                        day_timings,
                         duration_hours,
                         status,
                         student:profiles!student_id(full_name)
@@ -71,7 +90,7 @@ export default function TutorsSchedulePage() {
                 if (schedErr) throw schedErr;
 
                 setTeachers(fetchedTeachers || []);
-                setSchedules(fetchedSchedules || []);
+                setSchedules((fetchedSchedules || []) as TutorSchedule[]);
                 
                 if (fetchedTeachers && fetchedTeachers.length > 0) {
                     setSelectedTeacherId(fetchedTeachers[0].id);
@@ -99,7 +118,10 @@ export default function TutorsSchedulePage() {
             if (s.teacher_id !== teacherId) return false;
             if (!s.pattern_days.includes(dayValue)) return false;
             
-            const [h, m] = s.time_of_day.split(":");
+            const scheduleTime = s.day_timings?.[dayValue] || s.day_timings?.[String(dayValue)] || s.time_of_day;
+            if (!scheduleTime) return false;
+
+            const [h, m] = scheduleTime.split(":");
             const startHour = parseFloat(h) + parseFloat(m) / 60;
             const duration = parseFloat(s.duration_hours) || 1.0;
             const endHour = startHour + duration;
@@ -227,7 +249,7 @@ export default function TutorsSchedulePage() {
                             <ul className="text-[10px] text-indigo-900/80 dark:text-indigo-400 mt-2.5 space-y-2 list-disc pl-4">
                                 <li><strong>Green slots</strong> indicate the tutor is fully available.</li>
                                 <li><strong>Rose slots</strong> show existing recurring classes (unavailable).</li>
-                                <li>Always confirm the slot aligns with the student's timezone.</li>
+                                <li>Always confirm the slot aligns with the student&apos;s timezone.</li>
                                 <li>Slots display in Indian Standard Time (IST).</li>
                             </ul>
                         </Card>

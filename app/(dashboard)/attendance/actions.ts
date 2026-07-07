@@ -2357,7 +2357,7 @@ export async function onboardStudent(payload: {
         .eq('id', user.id)
         .single();
 
-    const isAuthorized = ['admin', 'super_admin', 'hr', 'operations', 'sales'].includes(profile?.role || '');
+    const isAuthorized = ['admin', 'super_admin', 'hr', 'operations', 'sales', 'sales_head'].includes(profile?.role || '');
     if (!isAuthorized) {
         return { error: "Unauthorized" };
     }
