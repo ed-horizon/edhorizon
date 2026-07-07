@@ -111,6 +111,7 @@ export default function CreateUserModal() {
                                 <SelectItem value="admin">Admin</SelectItem>
                                 <SelectItem value="super_admin">Super Admin</SelectItem>
                                 <SelectItem value="sales">Sales</SelectItem>
+                                <SelectItem value="sales_head">Sales Head</SelectItem>
                                 <SelectItem value="hr">HR</SelectItem>
                                 <SelectItem value="operations">Operations</SelectItem>
                             </SelectContent>

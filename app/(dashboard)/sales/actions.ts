@@ -19,8 +19,8 @@ export async function getLeads(showAll = false) {
     let query = supabase.from("leads").select("*, assigned_to(id, full_name, email)");
 
     // If NOT showAll and role is salesperson/sales, only show assigned leads
-    const isAdmin = profile?.role === "super_admin" || profile?.role === "admin";
-    if (!showAll && !isAdmin) {
+    const isAdminOrHead = profile?.role === "super_admin" || profile?.role === "admin" || profile?.role === "sales_head";
+    if (!showAll || !isAdminOrHead) {
         query = query.eq("assigned_to", user.id);
     }
 
@@ -45,7 +45,7 @@ export async function getPipelineStages() {
         console.error("Error fetching stages:", error);
         return [];
     }
-
+    console.log(">>> [DEBUG] getPipelineStages returned count:", stages?.length, "records:", stages);
     return stages;
 }
 
@@ -163,6 +163,23 @@ export async function addLead(formData: FormData) {
     const lostReason = formData.get("lost_reason") as string;
     const nextFollowUp = formData.get("next_follow_up") as string;
 
+    const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+    const isManager = profile?.role === "super_admin" || profile?.role === "admin" || profile?.role === "sales_head";
+    const formAssignedTo = formData.get("assigned_to") as string;
+    let assignedTo: string | null = user.id;
+    if (isManager) {
+        if (formAssignedTo === "") {
+            assignedTo = null;
+        } else if (formAssignedTo) {
+            assignedTo = formAssignedTo;
+        }
+    }
+
     const { error } = await supabase.from("leads").insert({
         name,
         email,
@@ -171,7 +188,7 @@ export async function addLead(formData: FormData) {
         notes,
         class: studentClass,
         feedback,
-        assigned_to: user.id, // Assign to creator by default
+        assigned_to: assignedTo,
         status: "new",
         parent_name: parentName || null,
         lead_source: leadSource || null,
@@ -265,8 +282,8 @@ export async function getSalesAgents() {
 
     const { data: agents, error } = await supabase
         .from("profiles")
-        .select("id, full_name, email")
-        .in("role", ["sales", "admin", "super_admin"])
+        .select("id, full_name, email, role")
+        .in("role", ["sales", "sales_head", "admin", "super_admin"])
         .order("full_name", { ascending: true });
 
     if (error) {

@@ -854,7 +854,7 @@ export async function finalizeClassSession(
 
     const { data: classObj } = await supabase
         .from('live_classes')
-        .select('status, scheduled_at')
+        .select('status, scheduled_at, tutor_joined_at, student_joined_at')
         .eq('id', classId)
         .single();
 
@@ -894,6 +894,11 @@ export async function finalizeClassSession(
         }
     }
 
+    // Compute fallbacks for check-in logs if they are missing
+    const fallbackTime = classObj?.scheduled_at || new Date().toISOString();
+    const tutorJoinedAt = classObj?.tutor_joined_at || fallbackTime;
+    const studentJoinedAt = classObj?.student_joined_at || fallbackTime;
+
     // Update live_classes with status, verification_status and post-class logs
     const { error: updateError } = await supabase
         .from('live_classes')
@@ -903,7 +908,9 @@ export async function finalizeClassSession(
             topic_taught: topicTaught,
             homework_given: homeworkGiven,
             student_performance: studentPerformance,
-            parent_note: parentNote
+            parent_note: parentNote,
+            tutor_joined_at: tutorJoinedAt,
+            student_joined_at: studentJoinedAt
         })
         .eq('id', classId);
 
@@ -1853,11 +1860,11 @@ export async function getStudentDashboardData() {
         .from('student_details')
         .select(`
             *,
-            assigned_teacher:profiles!assigned_teacher_id(full_name),
-            assigned_teacher_2:profiles!assigned_teacher_id_2(full_name),
-            assigned_teacher_3:profiles!assigned_teacher_id_3(full_name),
-            assigned_teacher_4:profiles!assigned_teacher_id_4(full_name),
-            assigned_teacher_5:profiles!assigned_teacher_id_5(full_name)
+            assigned_teacher:profiles!student_details_assigned_teacher_id_fkey(full_name),
+            assigned_teacher_2:profiles!student_details_assigned_teacher_id_2_fkey(full_name),
+            assigned_teacher_3:profiles!student_details_assigned_teacher_id_3_fkey(full_name),
+            assigned_teacher_4:profiles!student_details_assigned_teacher_id_4_fkey(full_name),
+            assigned_teacher_5:profiles!student_details_assigned_teacher_id_5_fkey(full_name)
         `)
         .eq('id', user.id)
         .maybeSingle();
@@ -1893,6 +1900,16 @@ export async function getStudentDashboardData() {
         .eq('student_id', user.id)
         .order('created_at', { ascending: false });
 
+    // Fetch active class schedule(s) for the student
+    const { data: schedulesData } = await supabase
+        .from('class_schedules')
+        .select('*')
+        .eq('student_id', user.id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+
+    const activeSchedule = schedulesData && schedulesData.length > 0 ? schedulesData[0] : null;
+
     // Process classes: today's classes, next upcoming class, other classes
     const todayStr = new Date().toDateString();
     const now = new Date();
@@ -1918,7 +1935,8 @@ export async function getStudentDashboardData() {
         attendanceHistory: attendanceData || [],
         completedClasses,
         rescheduleRequests: rescheduleRequests || [],
-        leaveRequests: leaveRequests || []
+        leaveRequests: leaveRequests || [],
+        activeSchedule
     };
 }
 
@@ -2170,6 +2188,24 @@ export async function getStudentsWithClasses() {
 
     const teacherMap = Object.fromEntries(teachers?.map(t => [t.id, t.full_name]) || []);
 
+    // Fetch all active class schedules
+    const { data: schedulesData } = await supabase
+        .from('class_schedules')
+        .select('*')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+
+    // Group schedules by student_id
+    const schedulesByStudent: Record<string, any[]> = {};
+    (schedulesData || []).forEach(sch => {
+        if (sch.student_id) {
+            if (!schedulesByStudent[sch.student_id]) {
+                schedulesByStudent[sch.student_id] = [];
+            }
+            schedulesByStudent[sch.student_id].push(sch);
+        }
+    });
+
     // Group classes by student_id
     const classesByStudent: Record<string, any[]> = {};
     filteredClasses.forEach(c => {
@@ -2183,6 +2219,9 @@ export async function getStudentsWithClasses() {
 
     return filteredStudents.map((s: any) => {
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
+        const studentSchedules = schedulesByStudent[s.id] || [];
+        const activeSchedule = studentSchedules.length > 0 ? studentSchedules[0] : null;
+
         return {
             id: s.id,
             full_name: s.full_name,
@@ -2196,7 +2235,8 @@ export async function getStudentsWithClasses() {
             preferred_time: details?.preferred_time || '',
             classes_per_month: details?.classes_per_month || 12,
             custom_student_id: details?.custom_student_id || null,
-            classes: classesByStudent[s.id] || []
+            classes: classesByStudent[s.id] || [],
+            active_schedule: activeSchedule
         };
     });
 }
@@ -2317,7 +2357,7 @@ export async function onboardStudent(payload: {
         .eq('id', user.id)
         .single();
 
-    const isAuthorized = ['admin', 'super_admin', 'hr', 'operations', 'sales'].includes(profile?.role || '');
+    const isAuthorized = ['admin', 'super_admin', 'hr', 'operations', 'sales', 'sales_head'].includes(profile?.role || '');
     if (!isAuthorized) {
         return { error: "Unauthorized" };
     }
@@ -2709,6 +2749,76 @@ export async function modifyClassLog(
                 return { success: false, error: deleteError.message };
             }
         }
+    }
+
+    revalidatePath('/(dashboard)', 'layout');
+    return { success: true };
+}
+
+export async function deleteClassLogOrSession(classId: string, action: 'revert' | 'delete') {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Unauthorized: Please log in." };
+
+    // Get user role to authorize deletion
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    const isAuthorized = ['admin', 'super_admin', 'hr', 'operations'].includes(profile?.role || '');
+    if (!isAuthorized) {
+        return { success: false, error: "Unauthorized: Only admins, HR, and Operations can perform this action." };
+    }
+
+    if (action === 'revert') {
+        // Revert class to scheduled and clear completion fields
+        const { error: updateError } = await supabase
+            .from('live_classes')
+            .update({
+                status: 'scheduled',
+                topic_taught: null,
+                homework_given: null,
+                student_performance: null,
+                parent_note: null,
+                tutor_joined_at: null,
+                student_joined_at: null,
+                tutor_joined_late: null,
+                parent_verified: null,
+                parent_dispute_reason: null
+            })
+            .eq('id', classId);
+
+        if (updateError) {
+            console.error("deleteClassLogOrSession revert update error:", updateError);
+            return { success: false, error: updateError.message };
+        }
+
+        // Delete all matching student attendance records so it's removed from student portal/counts
+        const { error: deleteAttendanceError } = await supabase
+            .from('student_attendance')
+            .delete()
+            .eq('class_id', classId);
+
+        if (deleteAttendanceError) {
+            console.error("deleteClassLogOrSession revert delete attendance error:", deleteAttendanceError);
+            return { success: false, error: deleteAttendanceError.message };
+        }
+
+    } else if (action === 'delete') {
+        // Completely delete the class session
+        const { error: deleteError } = await supabase
+            .from('live_classes')
+            .delete()
+            .eq('id', classId);
+
+        if (deleteError) {
+            console.error("deleteClassLogOrSession delete class error:", deleteError);
+            return { success: false, error: deleteError.message };
+        }
+    } else {
+        return { success: false, error: "Invalid action specified." };
     }
 
     revalidatePath('/(dashboard)', 'layout');

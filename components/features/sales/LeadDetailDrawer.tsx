@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { updateLead, getLeadNotes, addLeadNote, getUniqueCourses } from "@/app/(dashboard)/sales/actions";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 
 interface LeadDetailDrawerProps {
     lead: any | null;
@@ -35,6 +36,25 @@ export default function LeadDetailDrawer({ lead, onClose, onUpdate, agents }: Le
     const [isAddingNote, setIsAddingNote] = useState(false);
     const [isLoadingNotes, setIsLoadingNotes] = useState(false);
     const [courses, setCourses] = useState<string[]>([]);
+    const [userRole, setUserRole] = useState<string>("sales");
+
+    useEffect(() => {
+        const fetchRole = async () => {
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('role')
+                    .eq('id', user.id)
+                    .single();
+                if (profile?.role) {
+                    setUserRole(profile.role);
+                }
+            }
+        };
+        fetchRole();
+    }, []);
 
     useEffect(() => {
         if (lead) {
@@ -326,7 +346,7 @@ export default function LeadDetailDrawer({ lead, onClose, onUpdate, agents }: Le
                                     )}
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className={`grid gap-4 ${["sales_head", "admin", "super_admin"].includes(userRole) ? "grid-cols-2" : "grid-cols-1"}`}>
                                     <div className="space-y-1.5">
                                         <Label htmlFor="drawer-status" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Status / Stage</Label>
                                         <select
@@ -342,22 +362,24 @@ export default function LeadDetailDrawer({ lead, onClose, onUpdate, agents }: Le
                                             ))}
                                         </select>
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="drawer-agent" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Assigned Salesperson</Label>
-                                        <select
-                                            id="drawer-agent"
-                                            value={editData.assigned_to || ""}
-                                            onChange={(e) => setEditData({ ...editData, assigned_to: e.target.value || null })}
-                                            className="flex h-9 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-xs"
-                                        >
-                                            <option value="">Unassigned</option>
-                                            {agents.map((agent) => (
-                                                <option key={agent.id} value={agent.id}>
-                                                    {agent.full_name || agent.email}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                    {["sales_head", "admin", "super_admin"].includes(userRole) && (
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="drawer-agent" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Assigned Salesperson</Label>
+                                            <select
+                                                id="drawer-agent"
+                                                value={editData.assigned_to || ""}
+                                                onChange={(e) => setEditData({ ...editData, assigned_to: e.target.value || null })}
+                                                className="flex h-9 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-xs"
+                                            >
+                                                <option value="">Unassigned</option>
+                                                {agents.filter((agent) => agent.role === 'sales').map((agent) => (
+                                                    <option key={agent.id} value={agent.id}>
+                                                        {agent.full_name || agent.email}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">

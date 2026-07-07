@@ -117,7 +117,7 @@ export default function UserTable({ users: initialUsers, currentUserRole }: { us
     // Filtering logic
     const filteredUsers = users.filter(user => {
         // Tab check
-        const isStaffRole = ['super_admin', 'admin', 'teacher', 'sales', 'hr', 'operations'].includes(user.role);
+        const isStaffRole = ['super_admin', 'admin', 'teacher', 'sales', 'sales_head', 'hr', 'operations'].includes(user.role);
         const isStudentRole = ['student', 'parent'].includes(user.role);
         
         if (activeTab === 'staff' && !isStaffRole) return false;
@@ -138,7 +138,7 @@ export default function UserTable({ users: initialUsers, currentUserRole }: { us
 
     // Render detailed user details view page
     if (selectedUser) {
-        const isStaff = ['super_admin', 'admin', 'teacher', 'sales', 'hr', 'operations'].includes(selectedUser.role);
+        const isStaff = ['super_admin', 'admin', 'teacher', 'sales', 'sales_head', 'hr', 'operations'].includes(selectedUser.role);
         const staffDetail = selectedUser.staff_details?.[0] || selectedUser.staff_details;
         const studentDetail = selectedUser.student_details?.[0] || selectedUser.student_details;
 
@@ -232,6 +232,7 @@ export default function UserTable({ users: initialUsers, currentUserRole }: { us
                                         <SelectItem value="admin">Admin</SelectItem>
                                         <SelectItem value="super_admin">Super Admin</SelectItem>
                                         <SelectItem value="sales">Sales</SelectItem>
+                                        <SelectItem value="sales_head">Sales Head</SelectItem>
                                         <SelectItem value="hr">HR</SelectItem>
                                         <SelectItem value="operations">Operations</SelectItem>
                                     </SelectContent>
@@ -497,6 +498,7 @@ export default function UserTable({ users: initialUsers, currentUserRole }: { us
                                     <SelectItem value="admin">Admin</SelectItem>
                                     <SelectItem value="super_admin">Super Admin</SelectItem>
                                     <SelectItem value="sales">Sales</SelectItem>
+                                    <SelectItem value="sales_head">Sales Head</SelectItem>
                                     <SelectItem value="hr">HR</SelectItem>
                                     <SelectItem value="operations">Operations</SelectItem>
                                 </>
@@ -596,6 +598,7 @@ export default function UserTable({ users: initialUsers, currentUserRole }: { us
                                                 <SelectItem value="admin">Admin</SelectItem>
                                                 <SelectItem value="super_admin">Super Admin</SelectItem>
                                                 <SelectItem value="sales">Sales</SelectItem>
+                                                <SelectItem value="sales_head">Sales Head</SelectItem>
                                                 <SelectItem value="hr">HR</SelectItem>
                                                 <SelectItem value="operations">Operations</SelectItem>
                                             </SelectContent>

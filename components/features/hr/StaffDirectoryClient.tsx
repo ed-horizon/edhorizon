@@ -48,7 +48,7 @@ export default function StaffDirectoryClient({
         full_name: "",
         email: "",
         role: "teacher",
-        employee_id: "",
+        employee_id: "EMP",
         mobile_number: ""
     });
 
@@ -75,7 +75,7 @@ export default function StaffDirectoryClient({
         setIsSubmitting(false);
         if (result.success) {
             setIsAddModalOpen(false);
-            setFormData({ full_name: "", email: "", role: "teacher", employee_id: "", mobile_number: "" });
+            setFormData({ full_name: "", email: "", role: "teacher", employee_id: "EMP", mobile_number: "" });
             toast.success("Staff member invited successfully");
         } else {
             toast.error(result.error);
