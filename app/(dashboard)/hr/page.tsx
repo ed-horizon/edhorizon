@@ -9,7 +9,7 @@ import { getPendingClassVerifications, getAllCompletedClassLogs } from "@/app/(d
 import { DashboardActions } from "@/components/features/hr/DashboardActions";
 import { SessionLogsHistory } from "@/components/features/hr/SessionLogsHistory";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { cn, formatInIST } from "@/lib/utils";
 import { CreateLiveClassDialog } from "@/components/features/teacher/CreateLiveClassDialog";
 import { ManageSchedulesDialog } from "@/components/features/teacher/ManageSchedulesDialog";
 import { PostClassLogModal } from "@/components/features/teacher/PostClassLogModal";
@@ -197,7 +197,7 @@ export default async function HRDashboard() {
                                         </span>
                                         <div className="flex items-center gap-2 shrink-0">
                                             <span className="text-[10px] bg-rose-100 dark:bg-rose-950 px-2 py-1 rounded font-bold">
-                                                Scheduled: {format(new Date(c.scheduled_at), 'MMM dd, hh:mm a')}
+                                                Scheduled: {formatInIST(c.scheduled_at)}
                                             </span>
                                             <PostClassLogModal 
                                                 classId={c.id}
@@ -237,7 +237,7 @@ export default async function HRDashboard() {
                                             Tutor <span className="font-bold text-foreground">{teacherName || 'N/A'}</span> has not logged in for student <span className="font-bold text-foreground">{studentName || 'N/A'}</span>.
                                         </span>
                                         <span className="text-[10px] bg-amber-100 dark:bg-amber-950 px-2 py-1 rounded font-bold shrink-0">
-                                            Scheduled: {format(new Date(c.scheduled_at), 'MMM dd, hh:mm a')}
+                                            Scheduled: {formatInIST(c.scheduled_at)}
                                         </span>
                                     </div>
                                 );

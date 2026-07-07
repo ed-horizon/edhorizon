@@ -142,6 +142,7 @@ interface StudentDashboardClientProps {
     rescheduleRequests: RescheduleRequest[];
     leaveRequests: LeaveRequest[];
     initialPayments: any[];
+    activeSchedule?: any;
 }
 
 export function StudentDashboardClient({
@@ -157,7 +158,8 @@ export function StudentDashboardClient({
     completedClasses,
     rescheduleRequests,
     leaveRequests,
-    initialPayments
+    initialPayments,
+    activeSchedule
 }: StudentDashboardClientProps) {
     // Build active subjects list
     const activeSubjects: { name: string; fee: number; classesPerMonth: number; tutor: string }[] = [];
@@ -244,6 +246,11 @@ export function StudentDashboardClient({
     
     const completedClassesThisMonth = completedClasses.filter(c => {
         const d = new Date(c.scheduled_at);
+        if (activeSchedule) {
+            const start = new Date(activeSchedule.start_date + "T00:00:00");
+            const end = new Date(activeSchedule.end_date + "T23:59:59");
+            return d >= start && d <= end;
+        }
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
 

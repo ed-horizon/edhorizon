@@ -20,6 +20,7 @@ export const ROLE_REDIRECTS = {
     student: "/student",
     parent: "/student", // Parents view student dashboard (read-only)
     sales: "/sales",
+    sales_head: "/sales",
     hr: "/hr",
     operations: "/operations",
 };
@@ -29,7 +30,7 @@ export const NAV_ITEMS = [
         title: "Operations",
         href: "/operations",
         icon: Settings,
-        roles: ["super_admin", "admin", "sales", "operations"],
+        roles: ["super_admin", "admin", "operations"],
     },
     {
         title: "Schedules Monitor",
@@ -55,6 +56,12 @@ export const NAV_ITEMS = [
         href: "/admin/schedules",
         icon: CalendarDays,
         roles: ["super_admin", "admin", "hr", "operations"],
+    },
+    {
+        title: "Tutor Schedules",
+        href: "/tutors-schedule",
+        icon: UsersRound,
+        roles: ["sales", "sales_head", "hr", "operations", "super_admin", "admin"],
     },
     {
         title: "Learn",
@@ -102,7 +109,7 @@ export const NAV_ITEMS = [
         title: "Pipeline",
         href: "/sales",
         icon: DollarSign,
-        roles: ["sales", "super_admin"],
+        roles: ["sales", "sales_head", "super_admin"],
     },
     {
         title: "Staff & Payroll",
@@ -132,6 +139,6 @@ export const NAV_ITEMS = [
         title: "Monthly Class Logs",
         href: "/class-logs",
         icon: CalendarDays,
-        roles: ["student", "parent", "teacher", "hr", "super_admin", "operations", "admin", "sales"],
+        roles: ["student", "parent", "teacher", "hr", "super_admin", "operations", "admin", "sales_head"],
     },
 ];

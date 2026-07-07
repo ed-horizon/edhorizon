@@ -24,6 +24,7 @@ export default async function StudentDashboard() {
                 rescheduleRequests={data.rescheduleRequests || []}
                 leaveRequests={data.leaveRequests || []}
                 initialPayments={payments}
+                activeSchedule={data.activeSchedule}
             />
         </div>
     );
