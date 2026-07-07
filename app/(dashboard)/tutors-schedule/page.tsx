@@ -29,7 +29,12 @@ interface TutorSchedule {
     day_timings: Record<string, string> | null;
     duration_hours: number | string | null;
     status: string;
-    student?: { full_name: string | null } | null;
+    student?: { full_name: string | null } | { full_name: string | null }[] | null;
+}
+
+function getStudentName(student: TutorSchedule["student"]) {
+    const record = Array.isArray(student) ? student[0] : student;
+    return record?.full_name || "N/A";
 }
 
 const DAYS = [
@@ -90,7 +95,7 @@ export default function TutorsSchedulePage() {
                 if (schedErr) throw schedErr;
 
                 setTeachers(fetchedTeachers || []);
-                setSchedules((fetchedSchedules || []) as TutorSchedule[]);
+                setSchedules((fetchedSchedules || []) as unknown as TutorSchedule[]);
 
                 if (fetchedTeachers && fetchedTeachers.length > 0) {
                     setSelectedTeacherId(fetchedTeachers[0].id);
@@ -123,7 +128,7 @@ export default function TutorsSchedulePage() {
 
             const [h, m] = scheduleTime.split(":");
             const startHour = parseFloat(h) + parseFloat(m) / 60;
-            const duration = parseFloat(s.duration_hours) || 1.0;
+            const duration = Number(s.duration_hours) || 1.0;
             const endHour = startHour + duration;
 
             // Check if slot falls inside startHour and endHour
@@ -301,7 +306,7 @@ export default function TutorsSchedulePage() {
                                                                         {booking ? (
                                                                             <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/20 text-rose-800 dark:text-rose-300 p-2 rounded-xl text-[10px] font-semibold flex flex-col justify-center items-center shadow-sm select-none">
                                                                                 <span className="truncate max-w-[110px] font-bold">{booking.title || 'Class'}</span>
-                                                                                <span className="text-[8px] opacity-80 mt-0.5 truncate max-w-[110px]">Student: {booking.student?.full_name || 'N/A'}</span>
+                                                                                <span className="text-[8px] opacity-80 mt-0.5 truncate max-w-[110px]">Student: {getStudentName(booking.student)}</span>
                                                                             </div>
                                                                         ) : (
                                                                             <div className="bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100/30 text-emerald-800 dark:text-emerald-400 p-2 rounded-xl text-[9px] font-medium flex justify-center items-center select-none opacity-60">
@@ -382,7 +387,7 @@ export default function TutorsSchedulePage() {
                                                                         {booking ? (
                                                                             <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-100/60 dark:border-rose-900/10 text-rose-800 dark:text-rose-400 p-1.5 rounded-lg text-[8px] font-bold text-center flex flex-col justify-center select-none leading-tight min-h-[40px] max-w-[85px] mx-auto shadow-sm">
                                                                                 <span className="truncate">{booking.title || 'Busy'}</span>
-                                                                                <span className="opacity-70 mt-0.5 truncate text-[7px]">S: {booking.student?.full_name || 'N/A'}</span>
+                                                                                <span className="opacity-70 mt-0.5 truncate text-[7px]">S: {getStudentName(booking.student)}</span>
                                                                             </div>
                                                                         ) : (
                                                                             <div className="bg-emerald-50/20 dark:bg-emerald-950/5 border border-emerald-100/10 text-emerald-700 dark:text-emerald-500/80 p-1.5 rounded-lg text-[8px] font-medium text-center flex items-center justify-center min-h-[40px] select-none opacity-40">
