@@ -2651,23 +2651,40 @@ export async function getClassLogsForMonth(year: number, month: number) {
     const startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
     const endDate = new Date(Date.UTC(year, month, 1, 0, 0, 0));
 
-    let query = supabase
-        .from('live_classes')
-        .select(`
-            *,
-            teacher:profiles!teacher_id(id, full_name, email),
-            student:profiles!student_id(id, full_name, email),
-            student_attendance(status, marked_by)
-        `)
+    const isStaffOrAdmin = ["hr", "super_admin", "operations", "admin", "sales_head"].includes(profile.role);
+    let query;
+
+    if (isStaffOrAdmin) {
+        const adminClient = createAdminClient();
+        query = adminClient
+            .from('live_classes')
+            .select(`
+                *,
+                teacher:profiles!teacher_id(id, full_name, email),
+                student:profiles!student_id(id, full_name, email),
+                student_attendance(status, marked_by)
+            `);
+    } else {
+        query = supabase
+            .from('live_classes')
+            .select(`
+                *,
+                teacher:profiles!teacher_id(id, full_name, email),
+                student:profiles!student_id(id, full_name, email),
+                student_attendance(status, marked_by)
+            `);
+
+        if (profile.role === 'teacher') {
+            query = query.eq('teacher_id', user.id);
+        } else if (profile.role === 'student' || profile.role === 'parent') {
+            query = query.eq('student_id', user.id);
+        }
+    }
+
+    query = query
         .gte('scheduled_at', startDate.toISOString())
         .lt('scheduled_at', endDate.toISOString())
         .order('scheduled_at', { ascending: true });
-
-    if (profile.role === 'teacher') {
-        query = query.eq('teacher_id', user.id);
-    } else if (profile.role === 'student' || profile.role === 'parent') {
-        query = query.eq('student_id', user.id);
-    }
 
     const { data: classes, error } = await query;
     if (error) {
