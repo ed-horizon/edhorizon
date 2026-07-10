@@ -108,6 +108,14 @@ export async function signup(formData: FormData) {
 
 export async function signOut() {
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+        await supabase
+            .from('staff_shifts')
+            .update({ clock_out: new Date().toISOString() })
+            .eq('profile_id', user.id)
+            .is('clock_out', null)
+    }
     await supabase.auth.signOut()
     revalidatePath('/', 'layout')
     redirect('/login')

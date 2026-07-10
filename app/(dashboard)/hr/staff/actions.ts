@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatStudentIdAndMobile } from "@/lib/utils";
+import { generateNextReceiptNumber } from "@/app/(dashboard)/payments/actions";
 
 type TeacherRelation = {
     staff_details?: { status?: string } | Array<{ status?: string }>;
@@ -54,7 +55,16 @@ async function containsLockedTeacher(
     return Boolean(data?.length);
 }
 
-export async function createStaffMember(data: { full_name: string; email: string; role: string; employee_id?: string; mobile_number: string }) {
+export async function createStaffMember(data: { 
+    full_name: string; 
+    email: string; 
+    role: string; 
+    employee_id?: string; 
+    mobile_number: string;
+    pay_basis?: string;
+    basic_salary?: number;
+    hourly_rate?: number;
+}) {
     const supabase = await createClient();
     const adminClient = createAdminClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -97,7 +107,10 @@ export async function createStaffMember(data: { full_name: string; email: string
                 employee_id: data.employee_id || null,
                 mobile_number: data.mobile_number || null,
                 status: 'active',
-                joining_date: new Date().toISOString().split('T')[0]
+                joining_date: new Date().toISOString().split('T')[0],
+                pay_basis: data.pay_basis || 'hourly',
+                basic_salary: data.basic_salary || 0,
+                hourly_rate: data.hourly_rate || 0
             });
             
         if (updateError) {
@@ -109,7 +122,16 @@ export async function createStaffMember(data: { full_name: string; email: string
     return { success: true };
 }
 
-export async function updateStaffMember(id: string, data: { full_name: string; email: string; role: string; hourly_rate?: number; employee_id?: string; mobile_number?: string }) {
+export async function updateStaffMember(id: string, data: { 
+    full_name: string; 
+    email: string; 
+    role: string; 
+    hourly_rate?: number; 
+    basic_salary?: number;
+    pay_basis?: string;
+    employee_id?: string; 
+    mobile_number?: string; 
+}) {
     const supabase = await createClient();
     const adminClient = createAdminClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -151,6 +173,12 @@ export async function updateStaffMember(id: string, data: { full_name: string; e
     const detailsUpdate: any = {};
     if (data.hourly_rate !== undefined) {
         detailsUpdate.hourly_rate = data.hourly_rate;
+    }
+    if (data.basic_salary !== undefined) {
+        detailsUpdate.basic_salary = data.basic_salary;
+    }
+    if (data.pay_basis !== undefined) {
+        detailsUpdate.pay_basis = data.pay_basis;
     }
     if (data.employee_id !== undefined) {
         detailsUpdate.employee_id = data.employee_id || null;
@@ -322,6 +350,45 @@ export async function createStudentMember(data: {
 
         if (updateError) {
             console.error("Error upserting student details:", updateError);
+        } else {
+            // Generate automated fee receipt
+            try {
+                const totalAmount = (data.monthly_fee !== undefined ? data.monthly_fee : 4500) +
+                                    (data.monthly_fee_2 || 0) +
+                                    (data.monthly_fee_3 || 0) +
+                                    (data.monthly_fee_4 || 0) +
+                                    (data.monthly_fee_5 || 0);
+
+                if (totalAmount > 0) {
+                    const receiptNumber = await generateNextReceiptNumber();
+                    const subjectsList = [
+                        data.subject_name_1 || 'Maths',
+                        data.subject_name_2,
+                        data.subject_name_3,
+                        data.subject_name_4,
+                        data.subject_name_5
+                    ].filter(Boolean).join(', ');
+
+                    const { error: paymentError } = await adminClient
+                        .from('payments')
+                        .insert({
+                            student_id: inviteData.user.id,
+                            amount: totalAmount,
+                            billing_month: new Date().getMonth() + 1,
+                            billing_year: new Date().getFullYear(),
+                            payment_method: 'upi_qr', // default convenient offline onboarding method
+                            status: 'completed',
+                            receipt_number: receiptNumber,
+                            subject_name: subjectsList
+                        });
+
+                    if (paymentError) {
+                        console.error("Error generating automated onboarding payment receipt:", paymentError);
+                    }
+                }
+            } catch (receiptErr) {
+                console.error("Failed to generate onboarding payment receipt:", receiptErr);
+            }
         }
     }
 

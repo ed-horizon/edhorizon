@@ -39,9 +39,10 @@ export function getRoleDisplayName(role: string | null | undefined, name?: strin
     admin: "Admin",
     super_admin: "Super Admin",
     student: "Student",
-    parent: "Parent"
+    parent: "Parent",
+    sales: "Sales"
   };
-  return mapping[role.toLowerCase()] || role;
+  return mapping[role.toLowerCase()] || (role.charAt(0).toUpperCase() + role.slice(1));
 }
 
 export function formatClassTitle(title: string | null | undefined): { title: string; isCompensation: boolean } {

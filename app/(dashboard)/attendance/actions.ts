@@ -408,9 +408,9 @@ export async function getLiveClasses() {
                 : c.student?.student_details;
             if (studentDetails?.status === 'inactive') return false;
 
-            // Hide locked teachers for non-super-admins
+            // Hide locked teachers for non-super-admins, EXCEPT when the locked teacher is the logged in user themselves viewing their own classes
             const currentUserRole = profile?.role || 'student';
-            if (currentUserRole !== 'super_admin') {
+            if (currentUserRole !== 'super_admin' && c.teacher_id !== user.id) {
                 const teacherDetails = Array.isArray(c.teacher?.staff_details)
                     ? c.teacher?.staff_details[0]
                     : c.teacher?.staff_details;
@@ -478,6 +478,7 @@ export async function getAssignedStudents() {
             id: d.id,
             full_name: profile?.full_name || 'Unknown Student',
             email: profile?.email || '',
+            custom_student_id: d.custom_student_id,
             preferred_meeting_link: preferredMeetingLink,
             preferred_time: preferredTime,
             day_timings: activeSch?.day_timings || null
@@ -676,6 +677,7 @@ export async function getAllStudentsAdmin() {
             full_name, 
             email,
             student_details!student_details_id_fkey (
+                custom_student_id,
                 assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (
                     staff_details (status)
                 )
@@ -697,11 +699,15 @@ export async function getAllStudentsAdmin() {
         return teacherDetails?.status !== 'locked';
     });
 
-    return filtered.map((s: any) => ({
-        id: s.id,
-        full_name: s.full_name,
-        email: s.email
-    }));
+    return filtered.map((s: any) => {
+        const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
+        return {
+            id: s.id,
+            full_name: s.full_name,
+            email: s.email,
+            custom_student_id: details?.custom_student_id || null
+        };
+    });
 }
 
 export async function getCurrentProfile() {
@@ -2236,7 +2242,8 @@ export async function getStudentsWithClasses() {
             classes_per_month: details?.classes_per_month || 12,
             custom_student_id: details?.custom_student_id || null,
             classes: classesByStudent[s.id] || [],
-            active_schedule: activeSchedule
+            active_schedule: activeSchedule,
+            active_schedules: studentSchedules
         };
     });
 }

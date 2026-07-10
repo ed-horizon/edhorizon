@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ interface StaffMember {
         joining_date: string;
         hourly_rate?: number;
         basic_salary?: number;
+        pay_basis?: 'hourly' | 'fixed';
         employee_id?: string | null;
         mobile_number?: string | null;
     } | null;
@@ -52,6 +53,38 @@ export default function StaffDirectoryClient({
         mobile_number: ""
     });
 
+    // Custom role states
+    const [createRoleType, setCreateRoleType] = useState("teacher");
+    const [customCreateRole, setCustomCreateRole] = useState("");
+    
+    // Pay Basis and Salary states
+    const [payBasis, setPayBasis] = useState<"hourly" | "fixed">("hourly");
+    const [basicSalary, setBasicSalary] = useState<string>("");
+    const [hourlyRate, setHourlyRate] = useState<string>("");
+
+    // Editing states
+    const [editRoleType, setEditRoleType] = useState("teacher");
+    const [customEditRole, setCustomEditRole] = useState("");
+    const [editPayBasis, setEditPayBasis] = useState<"hourly" | "fixed">("hourly");
+    const [editBasicSalary, setEditBasicSalary] = useState<string>("");
+    const [editHourlyRate, setEditHourlyRate] = useState<string>("");
+
+    useEffect(() => {
+        if (editingStaff) {
+            const role = editingStaff.role;
+            const isStandard = ['teacher', 'operations', 'hr', 'sales'].includes(role);
+            setEditRoleType(isStandard ? role : 'custom');
+            setCustomEditRole(isStandard ? '' : role);
+
+            // Pay basis fields
+            const details = editingStaff.staff_details;
+            const basis = (details as any)?.pay_basis || 'hourly';
+            setEditPayBasis(basis);
+            setEditBasicSalary((details as any)?.basic_salary ? String((details as any).basic_salary) : "");
+            setEditHourlyRate(details?.hourly_rate ? String(details.hourly_rate) : "");
+        }
+    }, [editingStaff]);
+
     const filteredStaff = initialStaff.filter(person => {
         const searchLower = searchQuery.toLowerCase();
         const matchesSearch = (
@@ -70,12 +103,28 @@ export default function StaffDirectoryClient({
             toast.error("Mobile number is mandatory");
             return;
         }
+        const finalRole = createRoleType === "custom" ? customCreateRole.trim() : createRoleType;
+        if (!finalRole) {
+            toast.error("Please enter a custom role name");
+            return;
+        }
         setIsSubmitting(true);
-        const result = await createStaffMember(formData);
+        const result = await createStaffMember({
+            ...formData,
+            role: finalRole,
+            pay_basis: payBasis,
+            basic_salary: payBasis === "fixed" ? parseFloat(basicSalary || "0") : 0,
+            hourly_rate: payBasis === "hourly" ? parseFloat(hourlyRate || "0") : 0
+        });
         setIsSubmitting(false);
         if (result.success) {
             setIsAddModalOpen(false);
             setFormData({ full_name: "", email: "", role: "teacher", employee_id: "EMP", mobile_number: "" });
+            setCreateRoleType("teacher");
+            setCustomCreateRole("");
+            setPayBasis("hourly");
+            setBasicSalary("");
+            setHourlyRate("");
             toast.success("Staff member invited successfully");
         } else {
             toast.error(result.error);
@@ -89,12 +138,19 @@ export default function StaffDirectoryClient({
             toast.error("Mobile number is mandatory");
             return;
         }
+        const finalRole = editRoleType === "custom" ? customEditRole.trim() : editRoleType;
+        if (!finalRole) {
+            toast.error("Please enter a custom role name");
+            return;
+        }
         setIsSubmitting(true);
         const result = await updateStaffMember(editingStaff.id, {
             full_name: editingStaff.full_name || "",
             email: editingStaff.email,
-            role: editingStaff.role,
-            hourly_rate: editingStaff.staff_details?.hourly_rate || 0,
+            role: finalRole,
+            pay_basis: editPayBasis,
+            basic_salary: editPayBasis === "fixed" ? parseFloat(editBasicSalary || "0") : 0,
+            hourly_rate: editPayBasis === "hourly" ? parseFloat(editHourlyRate || "0") : 0,
             employee_id: editingStaff.staff_details?.employee_id || "",
             mobile_number: editingStaff.staff_details?.mobile_number || ""
         });
@@ -209,14 +265,36 @@ export default function StaffDirectoryClient({
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Role</label>
                                 <select
-                                    value={formData.role}
-                                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                                    value={createRoleType}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setCreateRoleType(val);
+                                        if (val !== "custom") {
+                                            setFormData({ ...formData, role: val });
+                                        } else {
+                                            setFormData({ ...formData, role: customCreateRole });
+                                        }
+                                    }}
                                     className="w-full h-12 rounded-2xl bg-muted/20 border-none px-4 outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-sm font-medium"
                                 >
                                     <option value="teacher">Tutor</option>
                                     <option value="operations">Operations</option>
                                     <option value="hr">HR</option>
+                                    <option value="sales">Sales</option>
+                                    <option value="custom">Other / Custom...</option>
                                 </select>
+                                {createRoleType === "custom" && (
+                                    <Input
+                                        required
+                                        value={customCreateRole}
+                                        onChange={(e) => {
+                                            setCustomCreateRole(e.target.value);
+                                            setFormData({ ...formData, role: e.target.value });
+                                        }}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 mt-2"
+                                        placeholder="Enter custom role (e.g. Receptionist)"
+                                    />
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
@@ -238,6 +316,46 @@ export default function StaffDirectoryClient({
                                     placeholder="EMP001"
                                 />
                             </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Pay Basis</label>
+                                <select
+                                    value={payBasis}
+                                    onChange={(e) => setPayBasis(e.target.value as "hourly" | "fixed")}
+                                    className="w-full h-12 rounded-2xl bg-muted/20 border-none px-4 outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-sm font-medium"
+                                >
+                                    <option value="hourly">Hourly Pay</option>
+                                    <option value="fixed">Fixed Pay</option>
+                                </select>
+                            </div>
+                            {payBasis === "fixed" ? (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Basic Salary (₹)</label>
+                                    <Input
+                                        required
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={basicSalary}
+                                        onChange={(e) => setBasicSalary(e.target.value)}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                        placeholder="e.g. 25000"
+                                    />
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Hourly Rate (₹)</label>
+                                    <Input
+                                        required
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={hourlyRate}
+                                        onChange={(e) => setHourlyRate(e.target.value)}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                        placeholder="e.g. 200"
+                                    />
+                                </div>
+                            )}
                             <div className="pt-4 flex gap-3">
                                 <Button
                                     type="button"
@@ -342,12 +460,24 @@ export default function StaffDirectoryClient({
                                     <TableCell className="text-center">
                                         <div className="flex flex-col items-center justify-center gap-1">
                                             <div className="text-xs font-bold text-slate-700">
-                                                {person.staff_details?.hourly_rate ? `₹${person.staff_details.hourly_rate}/hr` : <span className="opacity-40 italic">No hourly</span>}
+                                                {((person.staff_details as any)?.pay_basis === 'fixed') ? (
+                                                    <span>₹{((person.staff_details as any)?.basic_salary || 0).toLocaleString()}/mo</span>
+                                                ) : (
+                                                    <span>{person.staff_details?.hourly_rate ? `₹${person.staff_details.hourly_rate}/hr` : <span className="opacity-40 italic">No rate</span>}</span>
+                                                )}
                                             </div>
-                                            {person.staff_details?.basic_salary && person.staff_details.basic_salary > 0 && (
-                                                <div className="text-[10px] font-medium text-muted-foreground">
-                                                    ₹{person.staff_details.basic_salary.toLocaleString()} base
-                                                </div>
+                                            {((person.staff_details as any)?.pay_basis === 'fixed') ? (
+                                                person.staff_details?.hourly_rate && person.staff_details.hourly_rate > 0 ? (
+                                                    <div className="text-[10px] font-medium text-muted-foreground">
+                                                        ₹{person.staff_details.hourly_rate}/hr
+                                                    </div>
+                                                ) : null
+                                            ) : (
+                                                (person.staff_details as any)?.basic_salary && (person.staff_details as any).basic_salary > 0 ? (
+                                                    <div className="text-[10px] font-medium text-muted-foreground">
+                                                        ₹{((person.staff_details as any)?.basic_salary || 0).toLocaleString()} base
+                                                    </div>
+                                                ) : null
                                             )}
                                         </div>
                                     </TableCell>
@@ -481,14 +611,36 @@ export default function StaffDirectoryClient({
                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Role</label>
                                                 <select
-                                                    value={editingStaff.role}
-                                                    onChange={(e) => setEditingStaff({ ...editingStaff, role: e.target.value })}
+                                                    value={editRoleType}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setEditRoleType(val);
+                                                        if (val !== "custom") {
+                                                            setEditingStaff({ ...editingStaff, role: val });
+                                                        } else {
+                                                            setEditingStaff({ ...editingStaff, role: customEditRole });
+                                                        }
+                                                    }}
                                                     className="w-full h-12 rounded-2xl bg-muted/20 border-none px-4 outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-sm font-medium"
                                                 >
                                                     <option value="teacher">Tutor</option>
                                                     <option value="operations">Operations</option>
                                                     <option value="hr">HR</option>
+                                                    <option value="sales">Sales</option>
+                                                    <option value="custom">Other / Custom...</option>
                                                 </select>
+                                                {editRoleType === "custom" && (
+                                                    <Input
+                                                        required
+                                                        value={customEditRole}
+                                                        onChange={(e) => {
+                                                            setCustomEditRole(e.target.value);
+                                                            setEditingStaff({ ...editingStaff, role: e.target.value });
+                                                        }}
+                                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 mt-2"
+                                                        placeholder="Enter custom role (e.g. Receptionist)"
+                                                    />
+                                                )}
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
@@ -527,27 +679,75 @@ export default function StaffDirectoryClient({
                                                 />
                                             </div>
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Hourly Rate (₹)</label>
-                                <Input
-                                    required
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={editingStaff.staff_details?.hourly_rate === 0 ? '' : (editingStaff.staff_details?.hourly_rate || '')}
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Pay Basis</label>
+                                <select
+                                    value={editPayBasis}
                                     onChange={(e) => {
-                                        const val = e.target.value;
-                                        setEditingStaff({ 
-                                            ...editingStaff, 
-                                            staff_details: { 
-                                                ...(editingStaff.staff_details || { status: 'active', joining_date: '' }), 
-                                                hourly_rate: val === '' ? 0 : parseFloat(val) 
-                                            } 
-                                        })
+                                        const val = e.target.value as "hourly" | "fixed";
+                                        setEditPayBasis(val);
+                                        setEditingStaff({
+                                            ...editingStaff,
+                                            staff_details: {
+                                                ...(editingStaff.staff_details || { status: 'active', joining_date: '' }),
+                                                pay_basis: val
+                                            }
+                                        });
                                     }}
-                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                                    placeholder="e.g. 100"
-                                />
+                                    className="w-full h-12 rounded-2xl bg-muted/20 border-none px-4 outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-sm font-medium"
+                                >
+                                    <option value="hourly">Hourly Pay</option>
+                                    <option value="fixed">Fixed Pay</option>
+                                </select>
                             </div>
+                            {editPayBasis === "fixed" ? (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Basic Salary (₹)</label>
+                                    <Input
+                                        required
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={editBasicSalary}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setEditBasicSalary(val);
+                                            setEditingStaff({
+                                                ...editingStaff,
+                                                staff_details: {
+                                                    ...(editingStaff.staff_details || { status: 'active', joining_date: '' }),
+                                                    basic_salary: val === '' ? 0 : parseFloat(val)
+                                                }
+                                            });
+                                        }}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                        placeholder="e.g. 25000"
+                                    />
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Hourly Rate (₹)</label>
+                                    <Input
+                                        required
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={editHourlyRate}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setEditHourlyRate(val);
+                                            setEditingStaff({
+                                                ...editingStaff,
+                                                staff_details: {
+                                                    ...(editingStaff.staff_details || { status: 'active', joining_date: '' }),
+                                                    hourly_rate: val === '' ? 0 : parseFloat(val)
+                                                }
+                                            });
+                                        }}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                        placeholder="e.g. 200"
+                                    />
+                                </div>
+                            )}
                             <div className="pt-4 flex gap-3">
                                 <Button
                                     type="button"

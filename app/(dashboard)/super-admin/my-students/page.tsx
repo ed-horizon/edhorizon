@@ -68,7 +68,8 @@ export default function PrivateStudentsDashboard() {
     });
     const [paymentFormData, setPaymentFormData] = useState({
         studentId: "", amount: "", month: new Date().getMonth() + 1,
-        year: new Date().getFullYear(), method: 'bank_transfer' as const, transactionId: ""
+        year: new Date().getFullYear(), method: 'bank_transfer' as const, transactionId: "",
+        subjectName: "Hindi", receiptDate: ""
     });
 
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -161,7 +162,9 @@ export default function PrivateStudentsDashboard() {
             month: Number(paymentFormData.month),
             year: Number(paymentFormData.year),
             method: paymentFormData.method,
-            transactionId: paymentFormData.transactionId
+            transactionId: paymentFormData.transactionId,
+            subjectName: paymentFormData.subjectName || undefined,
+            receiptDate: paymentFormData.receiptDate || undefined
         });
         setIsSubmitting(false);
         if (res.success) {
@@ -169,7 +172,8 @@ export default function PrivateStudentsDashboard() {
             setShowAddPayment(false);
             setPaymentFormData({
                 studentId: "", amount: "", month: new Date().getMonth() + 1,
-                year: new Date().getFullYear(), method: 'bank_transfer', transactionId: ""
+                year: new Date().getFullYear(), method: 'bank_transfer', transactionId: "",
+                subjectName: "Hindi", receiptDate: ""
             });
             await loadData();
         } else {
@@ -1258,6 +1262,50 @@ export default function PrivateStudentsDashboard() {
                                     <option value="other">Other</option>
                                 </select>
                             </div>
+                            {/* Subject Select */}
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Subject *</label>
+                                <select 
+                                    value={paymentFormData.subjectName === "Hindi" || paymentFormData.subjectName === "English" || paymentFormData.subjectName === "Math" || paymentFormData.subjectName === "Science" || paymentFormData.subjectName === "AI / Coding" ? paymentFormData.subjectName : "Other"}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val !== "Other") {
+                                            setPaymentFormData({ ...paymentFormData, subjectName: val });
+                                        } else {
+                                            setPaymentFormData({ ...paymentFormData, subjectName: "" });
+                                        }
+                                    }}
+                                    className="w-full h-12 rounded-2xl bg-muted/20 border-none px-4 outline-none focus-visible:ring-1 focus-visible:ring-purple-500 text-sm font-medium"
+                                >
+                                    <option value="Hindi">Hindi</option>
+                                    <option value="English">English</option>
+                                    <option value="Math">Math</option>
+                                    <option value="Science">Science</option>
+                                    <option value="AI / Coding">AI / Coding</option>
+                                    <option value="Other">Other / Custom...</option>
+                                </select>
+                                {!(paymentFormData.subjectName === "Hindi" || paymentFormData.subjectName === "English" || paymentFormData.subjectName === "Math" || paymentFormData.subjectName === "Science" || paymentFormData.subjectName === "AI / Coding") && (
+                                    <Input 
+                                        required
+                                        placeholder="Enter custom subject..."
+                                        value={paymentFormData.subjectName}
+                                        onChange={(e) => setPaymentFormData({ ...paymentFormData, subjectName: e.target.value })}
+                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-purple-500 mt-2"
+                                    />
+                                )}
+                            </div>
+
+                            {/* Receipt Date Picker */}
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Receipt Date (Optional, defaults to today)</label>
+                                <Input 
+                                    type="date"
+                                    value={paymentFormData.receiptDate}
+                                    onChange={(e) => setPaymentFormData({ ...paymentFormData, receiptDate: e.target.value })}
+                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-purple-500"
+                                />
+                            </div>
+
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Transaction ID / Reference (Optional)</label>
                                 <Input
