@@ -190,8 +190,10 @@ export async function updateStaffMember(id: string, data: {
     if (Object.keys(detailsUpdate).length > 0) {
         const { error: detailsError } = await adminClient
             .from("staff_details")
-            .update(detailsUpdate)
-            .eq("id", id);
+            .upsert({
+                id,
+                ...detailsUpdate
+            });
             
         if (detailsError) return { error: detailsError.message };
     }
