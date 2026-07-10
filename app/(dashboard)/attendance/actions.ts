@@ -2324,6 +2324,8 @@ export async function assignTutorToStudent(studentId: string, teacherId: string 
     return { success: true };
 }
 
+import { generateNextReceiptNumber } from "@/app/(dashboard)/payments/actions";
+
 export async function onboardStudent(payload: {
     fullName: string;
     email: string;
@@ -2350,6 +2352,7 @@ export async function onboardStudent(payload: {
     monthlyFee5?: number;
     classesPerMonth5?: number;
     assignedTeacherId5?: string;
+    leadId?: string;
 }) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -2449,6 +2452,60 @@ export async function onboardStudent(payload: {
     if (detailsError) {
         console.error("Student details creation failed during onboarding:", detailsError);
         return { error: detailsError.message };
+    }
+
+    // Generate automated fee receipt
+    try {
+        const totalAmount = (payload.monthlyFee !== undefined ? payload.monthlyFee : 4500) +
+                            (payload.monthlyFee2 || 0) +
+                            (payload.monthlyFee3 || 0) +
+                            (payload.monthlyFee4 || 0) +
+                            (payload.monthlyFee5 || 0);
+
+        if (totalAmount > 0) {
+            const receiptNumber = await generateNextReceiptNumber();
+            const subjectsList = [
+                payload.subjectName1 || 'Maths',
+                payload.subjectName2,
+                payload.subjectName3,
+                payload.subjectName4,
+                payload.subjectName5
+            ].filter(Boolean).join(', ');
+
+            const { error: paymentError } = await adminClient
+                .from('payments')
+                .insert({
+                    student_id: newStudentId,
+                    amount: totalAmount,
+                    billing_month: new Date().getMonth() + 1,
+                    billing_year: new Date().getFullYear(),
+                    payment_method: 'upi_qr', // default convenient offline onboarding method
+                    status: 'completed',
+                    receipt_number: receiptNumber,
+                    subject_name: subjectsList
+                });
+
+            if (paymentError) {
+                console.error("Error generating automated onboarding payment receipt:", paymentError);
+            }
+        }
+    } catch (receiptErr) {
+        console.error("Failed to generate onboarding payment receipt:", receiptErr);
+    }
+
+    // If onboarding a converted lead, mark the lead as onboarded
+    if (payload.leadId) {
+        const { error: leadUpdateError } = await adminClient
+            .from('leads')
+            .update({ 
+                is_onboarded: true,
+                status: 'converted' 
+            })
+            .eq('id', payload.leadId);
+
+        if (leadUpdateError) {
+            console.error("Failed to update lead onboarding status:", leadUpdateError);
+        }
     }
 
     revalidatePath('/(dashboard)', 'layout');

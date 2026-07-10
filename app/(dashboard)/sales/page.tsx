@@ -194,7 +194,8 @@ export default function SalesDashboard() {
                 subjectName5: onboardSubject5Name || undefined,
                 monthlyFee5: Number(onboardFee5) || 0,
                 classesPerMonth5: Number(onboardClassesPerMonth5) || 0,
-                assignedTeacherId5: onboardTeacherId5 === "none" || !onboardTeacherId5 ? undefined : onboardTeacherId5
+                assignedTeacherId5: onboardTeacherId5 === "none" || !onboardTeacherId5 ? undefined : onboardTeacherId5,
+                leadId: onboardLeadId || undefined
             });
 
             if (res.error) {
@@ -202,10 +203,6 @@ export default function SalesDashboard() {
             } else {
                 toast.success(`Student profile created for "${onboardName}"! Default password is 'password123'.`);
                 
-                if (onboardLeadId) {
-                    await updateLead(onboardLeadId, { is_onboarded: true });
-                }
-
                 setShowOnboard(false);
                 setOnboardLeadId(null);
                 setOnboardName("");
@@ -501,20 +498,24 @@ export default function SalesDashboard() {
                                                     <span className="text-foreground">{item.name}</span>
                                                     <span className="text-indigo-600">{item.conversion}% rate</span>
                                                 </div>
-                                                <div className="grid grid-cols-3 gap-2 text-[10px] text-muted-foreground font-semibold text-center border-t border-border/5 pt-1.5">
-                                                    <div>
-                                                        <span className="block text-[8px] uppercase">Assigned</span>
-                                                        <span className="font-bold text-foreground block">{item.assigned}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="block text-[8px] uppercase">Calls</span>
-                                                        <span className="font-bold text-foreground block">{item.calls}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="block text-[8px] uppercase">Demos</span>
-                                                        <span className="font-bold text-foreground block">{item.demos}</span>
-                                                    </div>
-                                                </div>
+                                                <div className="grid grid-cols-4 gap-2 text-[10px] text-muted-foreground font-semibold text-center border-t border-border/5 pt-1.5">
+                                                     <div>
+                                                         <span className="block text-[8px] uppercase">Assigned</span>
+                                                         <span className="font-bold text-foreground block">{item.assigned}</span>
+                                                     </div>
+                                                     <div>
+                                                         <span className="block text-[8px] uppercase">Calls</span>
+                                                         <span className="font-bold text-foreground block">{item.calls}</span>
+                                                     </div>
+                                                     <div>
+                                                         <span className="block text-[8px] uppercase">Demos</span>
+                                                         <span className="font-bold text-foreground block">{item.demos}</span>
+                                                     </div>
+                                                     <div>
+                                                         <span className="block text-[8px] uppercase">Converted</span>
+                                                         <span className="font-bold text-emerald-600 block">{item.won}</span>
+                                                     </div>
+                                                 </div>
                                             </div>
                                         ))}
                                     </CardContent>
