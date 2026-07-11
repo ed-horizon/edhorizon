@@ -344,8 +344,11 @@ export default function SalesDashboard() {
             };
         });
 
-    // Reminders for salesperson
-    const reminders = leads.filter(l => l.next_follow_up && new Date(l.next_follow_up) >= new Date() && l.status !== 'converted');
+    // Reminders for salesperson: include all active, pending leads (not converted, not lost) that have a follow-up scheduled.
+    // Sorted by next_follow_up ascending so overdue/nearest follow-ups appear first.
+    const reminders = leads
+        .filter(l => l.next_follow_up && l.status !== 'converted' && l.status !== 'not_converted')
+        .sort((a, b) => new Date(a.next_follow_up).getTime() - new Date(b.next_follow_up).getTime());
 
     return (
         <div className="space-y-8 max-w-[1600px] mx-auto animate-in fade-in duration-700">
