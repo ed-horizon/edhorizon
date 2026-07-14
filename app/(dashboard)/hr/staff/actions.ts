@@ -55,7 +55,7 @@ async function containsLockedTeacher(
     return Boolean(data?.length);
 }
 
-const NON_STAFF_ROLES = new Set(["student", "parent"]);
+const SUPPORTED_STAFF_ROLES = new Set(["teacher", "operations", "hr", "sales", "sales_head", "admin", "super_admin"]);
 const ELEVATED_STAFF_ROLES = new Set(["super_admin", "admin", "sales_head"]);
 
 function normalizeStaffRole(role: string) {
@@ -64,11 +64,8 @@ function normalizeStaffRole(role: string) {
 
 function validateStaffRole(role: string, requesterRole: string) {
     const normalizedRole = normalizeStaffRole(role);
-    if (!normalizedRole) {
-        return { error: "A valid staff role is required." } as const;
-    }
-    if (NON_STAFF_ROLES.has(normalizedRole)) {
-        return { error: "Student and parent roles cannot be assigned through staff management." } as const;
+    if (!SUPPORTED_STAFF_ROLES.has(normalizedRole)) {
+        return { error: "Select a supported staff role." } as const;
     }
     if (ELEVATED_STAFF_ROLES.has(normalizedRole) && requesterRole !== "super_admin") {
         return { error: "Only Super Admin can assign elevated staff roles." } as const;
