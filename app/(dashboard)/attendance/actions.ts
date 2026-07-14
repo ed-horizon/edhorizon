@@ -2372,6 +2372,23 @@ export async function onboardStudent(payload: {
         return { error: "Unauthorized" };
     }
 
+    const canOnboardAnyLead = ['admin', 'super_admin', 'sales_head'].includes(profile?.role || '');
+    if (payload.leadId) {
+        const { data: lead, error: leadError } = await adminClient
+            .from('leads')
+            .select('id, assigned_to')
+            .eq('id', payload.leadId)
+            .maybeSingle();
+
+        if (leadError || !lead) {
+            return { error: "Lead not found" };
+        }
+
+        if (!canOnboardAnyLead && (profile?.role !== 'sales' || lead.assigned_to !== user.id)) {
+            return { error: "Unauthorized: You can only onboard leads assigned to you." };
+        }
+    }
+
     if (
         profile?.role !== "super_admin" &&
         await containsLockedTeacher(adminClient, [
@@ -2495,13 +2512,19 @@ export async function onboardStudent(payload: {
 
     // If onboarding a converted lead, mark the lead as onboarded
     if (payload.leadId) {
-        const { error: leadUpdateError } = await adminClient
+        let leadUpdate = adminClient
             .from('leads')
             .update({ 
                 is_onboarded: true,
                 status: 'converted' 
             })
             .eq('id', payload.leadId);
+
+        if (!canOnboardAnyLead) {
+            leadUpdate = leadUpdate.eq('assigned_to', user.id);
+        }
+
+        const { error: leadUpdateError } = await leadUpdate;
 
         if (leadUpdateError) {
             console.error("Failed to update lead onboarding status:", leadUpdateError);

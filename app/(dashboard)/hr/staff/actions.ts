@@ -55,6 +55,27 @@ async function containsLockedTeacher(
     return Boolean(data?.length);
 }
 
+const NON_STAFF_ROLES = new Set(["student", "parent"]);
+const ELEVATED_STAFF_ROLES = new Set(["super_admin", "admin", "sales_head"]);
+
+function normalizeStaffRole(role: string) {
+    return role.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function validateStaffRole(role: string, requesterRole: string) {
+    const normalizedRole = normalizeStaffRole(role);
+    if (!normalizedRole) {
+        return { error: "A valid staff role is required." } as const;
+    }
+    if (NON_STAFF_ROLES.has(normalizedRole)) {
+        return { error: "Student and parent roles cannot be assigned through staff management." } as const;
+    }
+    if (ELEVATED_STAFF_ROLES.has(normalizedRole) && requesterRole !== "super_admin") {
+        return { error: "Only Super Admin can assign elevated staff roles." } as const;
+    }
+    return { role: normalizedRole } as const;
+}
+
 export async function createStaffMember(data: { 
     full_name: string; 
     email: string; 
@@ -82,6 +103,11 @@ export async function createStaffMember(data: {
         return { error: "Unauthorized" };
     }
 
+    const roleValidation = validateStaffRole(data.role, requesterProfile?.role || "");
+    if ("error" in roleValidation) {
+        return { error: roleValidation.error };
+    }
+
     // Create the user in Auth directly with password 'password123' and confirm email
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.createUser({
         email: data.email,
@@ -89,7 +115,7 @@ export async function createStaffMember(data: {
         email_confirm: true,
         user_metadata: {
             full_name: data.full_name,
-            role: data.role
+            role: roleValidation.role
         }
     });
 
@@ -148,6 +174,11 @@ export async function updateStaffMember(id: string, data: {
         return { error: "Unauthorized" };
     }
 
+    const roleValidation = validateStaffRole(data.role, requesterProfile?.role || "");
+    if ("error" in roleValidation) {
+        return { error: roleValidation.error };
+    }
+
     const { data: targetStaff } = await adminClient
         .from("staff_details")
         .select("status")
@@ -163,7 +194,7 @@ export async function updateStaffMember(id: string, data: {
         .update({
             full_name: data.full_name,
             email: data.email,
-            role: data.role
+            role: roleValidation.role
         })
         .eq("id", id);
 

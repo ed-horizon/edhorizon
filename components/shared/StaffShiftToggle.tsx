@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Clock, Play, Square, Loader2 } from "lucide-react";
-import { getCurrentShiftStatus, toggleShift } from "@/app/(dashboard)/staff-shifts/actions";
+import { clockOutShift, getCurrentShiftStatus, toggleShift } from "@/app/(dashboard)/staff-shifts/actions";
 import { toast } from "sonner";
 
 export default function StaffShiftToggle({ role, isSidebar = false }: { role: string; isSidebar?: boolean }) {
@@ -85,7 +85,7 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
 
         const autoClockOut = async () => {
             try {
-                const res = await toggleShift();
+                const res = await clockOutShift();
                 if (res.success) {
                     setIsActive(false);
                     setClockInTime(null);

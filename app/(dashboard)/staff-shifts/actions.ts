@@ -112,6 +112,34 @@ export async function toggleShift() {
 }
 
 /**
+ * Clock out all active shifts for the current user without ever creating a
+ * new shift. This is safe for idle timers and concurrent browser tabs.
+ */
+export async function clockOutShift() {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { error: "Not authenticated" };
+
+        const { error } = await supabase
+            .from('staff_shifts')
+            .update({ clock_out: new Date().toISOString() })
+            .eq('profile_id', user.id)
+            .is('clock_out', null);
+
+        if (error) {
+            return { error: error.message };
+        }
+
+        revalidatePath('/', 'layout');
+        return { success: true };
+    } catch (err: any) {
+        console.error("Exception in clockOutShift server action:", err);
+        return { error: err.message || "An unexpected error occurred." };
+    }
+}
+
+/**
  * Retrieves shifts analytics and logs of staff members for Super Admin tracking dashboard.
  * @param selectedMonth YYYY-MM format month string
  */
