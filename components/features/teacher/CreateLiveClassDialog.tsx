@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { parseStudentIdAndMobile } from "@/lib/utils"
 
 export function CreateLiveClassDialog({
     preselectedStudentId,
@@ -232,9 +233,15 @@ export function CreateLiveClassDialog({
                                 {students.length === 0 ? (
                                     <div className="p-4 text-center text-xs text-muted-foreground italic">No students available.</div>
                                 ) : (
-                                    students.map((s) => (
-                                        <SelectItem key={s.id} value={s.id} className="rounded-xl mt-1">{s.full_name}</SelectItem>
-                                    ))
+                                    students.map((s) => {
+                                        const { studentId } = parseStudentIdAndMobile(s.custom_student_id);
+                                        const displayId = studentId ? ` [ID: ${studentId}]` : "";
+                                        return (
+                                            <SelectItem key={s.id} value={s.id} className="rounded-xl mt-1">
+                                                {s.full_name}{displayId}
+                                            </SelectItem>
+                                        );
+                                    })
                                 )}
                             </SelectContent>
                         </Select>

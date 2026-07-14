@@ -94,6 +94,12 @@ export const NAV_ITEMS = [
         roles: ["super_admin"],
     },
     {
+        title: "Sales Leaderboard",
+        href: "/super-admin/sales-leaderboard",
+        icon: BarChart3,
+        roles: ["super_admin"],
+    },
+    {
         title: "Users",
         href: "/super-admin/users",
         icon: Users,
@@ -133,6 +139,12 @@ export const NAV_ITEMS = [
         title: "Payroll Pulse",
         href: "/hr/payroll",
         icon: DollarSign,
+        roles: ["hr", "super_admin"],
+    },
+    {
+        title: "Sales Performance",
+        href: "/hr/sales-performance",
+        icon: BarChart3,
         roles: ["hr", "super_admin"],
     },
     {

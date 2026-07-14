@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 
 export async function getLeads(showAll = false) {
@@ -16,11 +17,12 @@ export async function getLeads(showAll = false) {
         .eq("id", user.id)
         .single();
 
-    let query = supabase.from("leads").select("*, assigned_to(id, full_name, email)");
+    const canViewAllLeads = ["super_admin", "admin", "sales_head", "hr"].includes(profile?.role || "");
+    const shouldViewAllLeads = showAll && canViewAllLeads;
+    const queryClient = shouldViewAllLeads ? createAdminClient() : supabase;
+    let query = queryClient.from("leads").select("*, assigned_to(id, full_name, email)");
 
-    // If NOT showAll and role is salesperson/sales, only show assigned leads
-    const isAdminOrHead = profile?.role === "super_admin" || profile?.role === "admin" || profile?.role === "sales_head";
-    if (!showAll || !isAdminOrHead) {
+    if (!shouldViewAllLeads) {
         query = query.eq("assigned_to", user.id);
     }
 

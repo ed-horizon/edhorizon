@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { format, parseISO } from "date-fns"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
-import { formatTime12Hour } from "@/lib/utils"
+import { formatTime12Hour, parseStudentIdAndMobile } from "@/lib/utils"
 import {
   Select,
   SelectContent,
@@ -428,9 +428,15 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
                                         <SelectValue placeholder="Choose a student..." />
                                     </SelectTrigger>
                                     <SelectContent className="rounded-2xl border-2 border-border/40">
-                                        {assignedStudents.map((s) => (
-                                            <SelectItem key={s.id} value={s.id} className="rounded-xl mt-1">{s.full_name}</SelectItem>
-                                        ))}
+                                        {assignedStudents.map((s) => {
+                                            const { studentId } = parseStudentIdAndMobile(s.custom_student_id);
+                                            const displayId = studentId ? ` [ID: ${studentId}]` : "";
+                                            return (
+                                                <SelectItem key={s.id} value={s.id} className="rounded-xl mt-1">
+                                                    {s.full_name}{displayId}
+                                                </SelectItem>
+                                            );
+                                        })}
                                     </SelectContent>
                                 </Select>
                             </div>

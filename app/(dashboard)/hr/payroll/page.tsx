@@ -22,19 +22,24 @@ export default async function PayrollManagement() {
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    // Fetch all teachers
+    // Fetch all staff (except super_admin, student, parent)
     const { data: teachersData } = await supabase
         .from('profiles')
         .select(`
             id,
             full_name,
             email,
+            role,
             staff_details (
                 hourly_rate,
+                basic_salary,
+                pay_basis,
                 status
             )
         `)
-        .eq('role', 'teacher');
+        .neq('role', 'super_admin')
+        .neq('role', 'student')
+        .neq('role', 'parent');
 
     const teachers = (teachersData || []).map((t: any) => {
         const details = Array.isArray(t.staff_details) ? t.staff_details[0] : t.staff_details;
@@ -42,6 +47,9 @@ export default async function PayrollManagement() {
             id: t.id,
             full_name: t.full_name || t.email.split('@')[0],
             email: t.email,
+            role: t.role,
+            pay_basis: details?.pay_basis || 'hourly',
+            basic_salary: Number(details?.basic_salary || 0),
             hourly_rate: Number(details?.hourly_rate || 0),
             status: details?.status || 'active'
         };
@@ -91,11 +99,12 @@ export default async function PayrollManagement() {
 
     const teacherPayouts = teachers.map(t => {
         const stats = teacherStats[t.id] || { count: 0, hours: 0, payout: 0 };
+        const payout = t.pay_basis === 'fixed' ? t.basic_salary : stats.payout;
         return {
             ...t,
             classes_taken: stats.count,
             hours_taken: stats.hours,
-            total_payout: stats.payout
+            total_payout: payout
         };
     });
 
@@ -205,13 +214,17 @@ export default async function PayrollManagement() {
                                                 </Badge>
                                             </td>
                                             <td className="px-6 py-5 text-center font-bold text-slate-700 dark:text-slate-300">
-                                                ₹{t.hourly_rate}/hr
+                                                {t.pay_basis === 'fixed' ? (
+                                                    <span>₹{t.basic_salary.toLocaleString()}/mo (Fixed)</span>
+                                                ) : (
+                                                    <span>₹{t.hourly_rate}/hr</span>
+                                                )}
                                             </td>
                                             <td className="px-6 py-5 text-center font-bold text-indigo-600">
-                                                {t.classes_taken} classes
+                                                {t.role === 'teacher' ? `${t.classes_taken} classes` : 'N/A'}
                                             </td>
                                             <td className="px-6 py-5 text-center font-semibold text-muted-foreground">
-                                                {t.hours_taken}h
+                                                {t.role === 'teacher' ? `${t.hours_taken}h` : 'N/A'}
                                             </td>
                                             <td className="px-8 py-5 text-right font-extrabold text-foreground text-base">
                                                 ₹{t.total_payout.toLocaleString()}

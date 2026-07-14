@@ -58,6 +58,7 @@ interface StudentWithClasses {
     custom_student_id?: string | null;
     classes: LiveClass[];
     active_schedule?: any | null;
+    active_schedules?: any[];
 }
 
 interface StudentClassMonitorProps {
@@ -197,13 +198,16 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
 
                         // Filter classes by active schedule range or default to current calendar month
                         let filteredStudentClasses = student.classes;
-                        const hasActiveSchedule = !!student.active_schedule;
-                        if (hasActiveSchedule) {
-                            const start = new Date(student.active_schedule.start_date + "T00:00:00");
-                            const end = new Date(student.active_schedule.end_date + "T23:59:59");
+                        const studentSchedules = student.active_schedules || (student.active_schedule ? [student.active_schedule] : []);
+                        const hasActiveSchedules = studentSchedules.length > 0;
+                        if (hasActiveSchedules) {
                             filteredStudentClasses = student.classes.filter(c => {
                                 const d = new Date(c.scheduled_at);
-                                return d >= start && d <= end;
+                                return studentSchedules.some(sch => {
+                                    const start = new Date(sch.start_date + "T00:00:00");
+                                    const end = new Date(sch.end_date + "T23:59:59");
+                                    return d >= start && d <= end;
+                                });
                             });
                         } else {
                             const currentMonth = new Date().getMonth();
@@ -353,11 +357,19 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                         <div className="flex justify-between items-center mt-4">
                                             <div>
                                                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Class Schedule History</h4>
-                                                {student.active_schedule && (
-                                                    <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5">
-                                                        Active Cycle Range: {formatInIST(student.active_schedule.start_date)} to {formatInIST(student.active_schedule.end_date)}
-                                                    </p>
-                                                )}
+                                                {student.active_schedules && student.active_schedules.length > 0 ? (
+                                                     <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5 space-y-0.5">
+                                                         {student.active_schedules.map((sch, idx) => (
+                                                             <div key={sch.id || idx}>
+                                                                 Subject: <span className="font-bold">{sch.subject}</span> | Active Cycle Range: {formatInIST(sch.start_date)} to {formatInIST(sch.end_date)}
+                                                             </div>
+                                                         ))}
+                                                     </div>
+                                                 ) : student.active_schedule ? (
+                                                     <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5">
+                                                         Active Cycle Range: {formatInIST(student.active_schedule.start_date)} to {formatInIST(student.active_schedule.end_date)}
+                                                     </p>
+                                                 ) : null}
                                             </div>
                                             <CreateLiveClassDialog
                                                 preselectedStudentId={student.id}

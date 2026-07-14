@@ -224,7 +224,7 @@ export default function CreateLeadDialog({ onSuccess, agents = [], userRole = "s
                                 className="flex h-10 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-xs"
                             >
                                 <option value="">Unassigned</option>
-                                {agents.filter((agent) => agent.role === 'sales').map((agent) => (
+                                {agents.filter((agent) => agent.role === 'sales' || agent.role === 'sales_head').map((agent) => (
                                     <option key={agent.id} value={agent.id}>
                                         {agent.full_name || agent.email}
                                     </option>

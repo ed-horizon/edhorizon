@@ -8,8 +8,12 @@ export default async function ClassLogsPage() {
         redirect("/login");
     }
 
+    if (profile.role === "sales") {
+        redirect("/");
+    }
+
     // Only HR and Super Admin (or operations/admin) get dropdown filters. Let's fetch filters if applicable.
-    const isStaffOrAdmin = ["hr", "super_admin", "operations", "admin"].includes(profile.role);
+    const isStaffOrAdmin = ["hr", "super_admin", "operations", "admin", "sales_head"].includes(profile.role);
     let teachers: any[] = [];
     let students: any[] = [];
 

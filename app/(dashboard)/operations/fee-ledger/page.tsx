@@ -33,6 +33,8 @@ export default function FeeLedgerPage() {
     const [manualYear, setManualYear] = useState(new Date().getFullYear());
     const [manualMethod, setManualMethod] = useState<'bank_transfer' | 'cash' | 'other'>('bank_transfer');
     const [manualTxnId, setManualTxnId] = useState("");
+    const [manualSubjectName, setManualSubjectName] = useState("Hindi");
+    const [manualReceiptDate, setManualReceiptDate] = useState("");
     const [isSavingManualPayment, setIsSavingManualPayment] = useState(false);
 
     const loadData = async () => {
@@ -139,7 +141,9 @@ export default function FeeLedgerPage() {
                 month: manualMonth,
                 year: manualYear,
                 method: manualMethod,
-                transactionId: manualTxnId
+                transactionId: manualTxnId,
+                subjectName: manualSubjectName || undefined,
+                receiptDate: manualReceiptDate || undefined
             });
             if (res.success) {
                 const newPaymentId = res.payment?.id;
@@ -172,6 +176,8 @@ export default function FeeLedgerPage() {
                 setManualStudentId("");
                 setManualAmount("");
                 setManualTxnId("");
+                setManualSubjectName("Hindi");
+                setManualReceiptDate("");
                 await loadData();
             } else {
                 toast.error(res.error || "Failed to record manual payment.");
@@ -526,6 +532,52 @@ export default function FeeLedgerPage() {
                                         <SelectItem value="other" className="rounded-lg">Other Method</SelectItem>
                                     </SelectContent>
                                 </Select>
+                            </div>
+
+                            {/* Subject Select */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="manual-subject">Subject *</Label>
+                                <select 
+                                    id="manual-subject"
+                                    value={manualSubjectName === "Hindi" || manualSubjectName === "English" || manualSubjectName === "Math" || manualSubjectName === "Science" || manualSubjectName === "AI / Coding" ? manualSubjectName : "Other"}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val !== "Other") {
+                                            setManualSubjectName(val);
+                                        } else {
+                                            setManualSubjectName("");
+                                        }
+                                    }}
+                                    className="rounded-xl h-10 border border-muted/50 focus-visible:ring-indigo-500 text-xs px-3 w-full bg-background font-medium"
+                                >
+                                    <option value="Hindi">Hindi</option>
+                                    <option value="English">English</option>
+                                    <option value="Math">Math</option>
+                                    <option value="Science">Science</option>
+                                    <option value="AI / Coding">AI / Coding</option>
+                                    <option value="Other">Other / Custom...</option>
+                                </select>
+                                {!(manualSubjectName === "Hindi" || manualSubjectName === "English" || manualSubjectName === "Math" || manualSubjectName === "Science" || manualSubjectName === "AI / Coding") && (
+                                    <Input 
+                                        required
+                                        placeholder="Enter custom subject..."
+                                        value={manualSubjectName}
+                                        onChange={(e) => setManualSubjectName(e.target.value)}
+                                        className="rounded-xl h-10 text-xs mt-1.5"
+                                    />
+                                )}
+                            </div>
+
+                            {/* Receipt Date Picker */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="manual-receipt-date">Receipt Date (Optional, defaults to today)</Label>
+                                <Input 
+                                    id="manual-receipt-date"
+                                    type="date"
+                                    value={manualReceiptDate}
+                                    onChange={(e) => setManualReceiptDate(e.target.value)}
+                                    className="rounded-xl h-10 text-xs"
+                                />
                             </div>
 
                             <div className="space-y-1.5">
