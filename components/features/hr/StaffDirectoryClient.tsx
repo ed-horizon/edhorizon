@@ -53,29 +53,18 @@ export default function StaffDirectoryClient({
         mobile_number: ""
     });
 
-    // Custom role states
-    const [createRoleType, setCreateRoleType] = useState("teacher");
-    const [customCreateRole, setCustomCreateRole] = useState("");
-    
     // Pay Basis and Salary states
     const [payBasis, setPayBasis] = useState<"hourly" | "fixed">("hourly");
     const [basicSalary, setBasicSalary] = useState<string>("");
     const [hourlyRate, setHourlyRate] = useState<string>("");
 
     // Editing states
-    const [editRoleType, setEditRoleType] = useState("teacher");
-    const [customEditRole, setCustomEditRole] = useState("");
     const [editPayBasis, setEditPayBasis] = useState<"hourly" | "fixed">("hourly");
     const [editBasicSalary, setEditBasicSalary] = useState<string>("");
     const [editHourlyRate, setEditHourlyRate] = useState<string>("");
 
     useEffect(() => {
         if (editingStaff) {
-            const role = editingStaff.role;
-            const isStandard = ['teacher', 'operations', 'hr', 'sales'].includes(role);
-            setEditRoleType(isStandard ? role : 'custom');
-            setCustomEditRole(isStandard ? '' : role);
-
             // Pay basis fields
             const details = editingStaff.staff_details;
             const basis = (details as any)?.pay_basis || 'hourly';
@@ -103,15 +92,9 @@ export default function StaffDirectoryClient({
             toast.error("Mobile number is mandatory");
             return;
         }
-        const finalRole = createRoleType === "custom" ? customCreateRole.trim() : createRoleType;
-        if (!finalRole) {
-            toast.error("Please enter a custom role name");
-            return;
-        }
         setIsSubmitting(true);
         const result = await createStaffMember({
             ...formData,
-            role: finalRole,
             pay_basis: payBasis,
             basic_salary: payBasis === "fixed" ? parseFloat(basicSalary || "0") : 0,
             hourly_rate: payBasis === "hourly" ? parseFloat(hourlyRate || "0") : 0
@@ -120,8 +103,6 @@ export default function StaffDirectoryClient({
         if (result.success) {
             setIsAddModalOpen(false);
             setFormData({ full_name: "", email: "", role: "teacher", employee_id: "EMP", mobile_number: "" });
-            setCreateRoleType("teacher");
-            setCustomCreateRole("");
             setPayBasis("hourly");
             setBasicSalary("");
             setHourlyRate("");
@@ -138,16 +119,11 @@ export default function StaffDirectoryClient({
             toast.error("Mobile number is mandatory");
             return;
         }
-        const finalRole = editRoleType === "custom" ? customEditRole.trim() : editRoleType;
-        if (!finalRole) {
-            toast.error("Please enter a custom role name");
-            return;
-        }
         setIsSubmitting(true);
         const result = await updateStaffMember(editingStaff.id, {
             full_name: editingStaff.full_name || "",
             email: editingStaff.email,
-            role: finalRole,
+            role: editingStaff.role,
             pay_basis: editPayBasis,
             basic_salary: editPayBasis === "fixed" ? parseFloat(editBasicSalary || "0") : 0,
             hourly_rate: editPayBasis === "hourly" ? parseFloat(editHourlyRate || "0") : 0,
@@ -265,36 +241,18 @@ export default function StaffDirectoryClient({
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Role</label>
                                 <select
-                                    value={createRoleType}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        setCreateRoleType(val);
-                                        if (val !== "custom") {
-                                            setFormData({ ...formData, role: val });
-                                        } else {
-                                            setFormData({ ...formData, role: customCreateRole });
-                                        }
-                                    }}
+                                    value={formData.role}
+                                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                                     className="w-full h-12 rounded-2xl bg-muted/20 border-none px-4 outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-sm font-medium"
                                 >
                                     <option value="teacher">Tutor</option>
                                     <option value="operations">Operations</option>
                                     <option value="hr">HR</option>
                                     <option value="sales">Sales</option>
-                                    <option value="custom">Other / Custom...</option>
+                                    {currentUserRole === "super_admin" && <option value="sales_head">Sales Head</option>}
+                                    {currentUserRole === "super_admin" && <option value="admin">Admin</option>}
+                                    {currentUserRole === "super_admin" && <option value="super_admin">Super Admin</option>}
                                 </select>
-                                {createRoleType === "custom" && (
-                                    <Input
-                                        required
-                                        value={customCreateRole}
-                                        onChange={(e) => {
-                                            setCustomCreateRole(e.target.value);
-                                            setFormData({ ...formData, role: e.target.value });
-                                        }}
-                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 mt-2"
-                                        placeholder="Enter custom role (e.g. Receptionist)"
-                                    />
-                                )}
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
@@ -611,36 +569,18 @@ export default function StaffDirectoryClient({
                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Role</label>
                                                 <select
-                                                    value={editRoleType}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        setEditRoleType(val);
-                                                        if (val !== "custom") {
-                                                            setEditingStaff({ ...editingStaff, role: val });
-                                                        } else {
-                                                            setEditingStaff({ ...editingStaff, role: customEditRole });
-                                                        }
-                                                    }}
+                                                    value={editingStaff.role}
+                                                    onChange={(e) => setEditingStaff({ ...editingStaff, role: e.target.value })}
                                                     className="w-full h-12 rounded-2xl bg-muted/20 border-none px-4 outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-sm font-medium"
                                                 >
                                                     <option value="teacher">Tutor</option>
                                                     <option value="operations">Operations</option>
                                                     <option value="hr">HR</option>
                                                     <option value="sales">Sales</option>
-                                                    <option value="custom">Other / Custom...</option>
+                                                    {currentUserRole === "super_admin" && <option value="sales_head">Sales Head</option>}
+                                                    {currentUserRole === "super_admin" && <option value="admin">Admin</option>}
+                                                    {currentUserRole === "super_admin" && <option value="super_admin">Super Admin</option>}
                                                 </select>
-                                                {editRoleType === "custom" && (
-                                                    <Input
-                                                        required
-                                                        value={customEditRole}
-                                                        onChange={(e) => {
-                                                            setCustomEditRole(e.target.value);
-                                                            setEditingStaff({ ...editingStaff, role: e.target.value });
-                                                        }}
-                                                        className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 mt-2"
-                                                        placeholder="Enter custom role (e.g. Receptionist)"
-                                                    />
-                                                )}
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
