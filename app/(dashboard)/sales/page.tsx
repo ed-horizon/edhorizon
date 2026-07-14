@@ -27,6 +27,7 @@ export default function SalesDashboard() {
     const [agents, setAgents] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedLead, setSelectedLead] = useState<any | null>(null);
+    const [onboardLeadId, setOnboardLeadId] = useState<string | null>(null);
     const [userName, setUserName] = useState("Sales");
     const [teachers, setTeachers] = useState<any[]>([]);
     const [userRole, setUserRole] = useState<string>("sales");
@@ -193,14 +194,17 @@ export default function SalesDashboard() {
                 subjectName5: onboardSubject5Name || undefined,
                 monthlyFee5: Number(onboardFee5) || 0,
                 classesPerMonth5: Number(onboardClassesPerMonth5) || 0,
-                assignedTeacherId5: onboardTeacherId5 === "none" || !onboardTeacherId5 ? undefined : onboardTeacherId5
+                assignedTeacherId5: onboardTeacherId5 === "none" || !onboardTeacherId5 ? undefined : onboardTeacherId5,
+                leadId: onboardLeadId || undefined
             });
 
             if (res.error) {
                 toast.error(`Onboarding failed: ${res.error}`);
             } else {
                 toast.success(`Student profile created for "${onboardName}"! Default password is 'password123'.`);
+                
                 setShowOnboard(false);
+                setOnboardLeadId(null);
                 setOnboardName("");
                 setOnboardEmail("");
                 setOnboardMobile("");
@@ -319,30 +323,32 @@ export default function SalesDashboard() {
     }, { "Meta ad": 0, "WhatsApp": 0, "Referral": 0, "Website": 0, "Instagram": 0 });
 
     // Sales Representative Performance Summary
-    const salesPerformanceList = agents.map(agent => {
-        const agentLeads = leads.filter(l => l.assigned_to?.id === agent.id || l.assigned_to === agent.id);
-        const wonLeads = agentLeads.filter(l => l.status === 'converted');
-        const conversionRate = agentLeads.length > 0 ? Math.round((wonLeads.length / agentLeads.length) * 100) : 0;
-        const revenue = wonLeads.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
+    const salesPerformanceList = agents
+        .filter(agent => agent.role === 'sales' || agent.role === 'sales_head')
+        .map(agent => {
+            const agentLeads = leads.filter(l => l.assigned_to?.id === agent.id || l.assigned_to === agent.id);
+            const wonLeads = agentLeads.filter(l => l.status === 'converted');
+            const conversionRate = agentLeads.length > 0 ? Math.round((wonLeads.length / agentLeads.length) * 100) : 0;
 
-        // Mock calls done for richness
-        const callsDone = agentLeads.length * 4 + 5;
-        const demosBooked = agentLeads.filter(l => ['demo_scheduled', 'feedback', 'converted'].includes(l.status)).length;
+            const callsDone = agentLeads.filter(l => l.status !== 'new').length * 2;
+            const demosBooked = agentLeads.filter(l => ['demo_scheduled', 'feedback', 'converted'].includes(l.status)).length;
 
-        return {
-            id: agent.id,
-            name: agent.full_name || agent.email,
-            assigned: agentLeads.length || 8, // fallback
-            calls: callsDone || 32,
-            demos: demosBooked || 5,
-            won: wonLeads.length || 4,
-            conversion: conversionRate || 50,
-            revenue: revenue || 18000
-        };
-    });
+            return {
+                id: agent.id,
+                name: agent.full_name || agent.email,
+                assigned: agentLeads.length,
+                calls: callsDone,
+                demos: demosBooked,
+                won: wonLeads.length,
+                conversion: conversionRate
+            };
+        });
 
-    // Reminders for salesperson
-    const reminders = leads.filter(l => l.next_follow_up && new Date(l.next_follow_up) >= new Date() && l.status !== 'converted');
+    // Reminders for salesperson: include all active, pending leads (not converted, not lost) that have a follow-up scheduled.
+    // Sorted by next_follow_up ascending so overdue/nearest follow-ups appear first.
+    const reminders = leads
+        .filter(l => l.next_follow_up && l.status !== 'converted' && l.status !== 'not_converted')
+        .sort((a, b) => new Date(a.next_follow_up).getTime() - new Date(b.next_follow_up).getTime());
 
     return (
         <div className="space-y-8 max-w-[1600px] mx-auto animate-in fade-in duration-700">
@@ -496,23 +502,23 @@ export default function SalesDashboard() {
                                                     <span className="text-indigo-600">{item.conversion}% rate</span>
                                                 </div>
                                                 <div className="grid grid-cols-4 gap-2 text-[10px] text-muted-foreground font-semibold text-center border-t border-border/5 pt-1.5">
-                                                    <div>
-                                                        <span className="block text-[8px] uppercase">Assigned</span>
-                                                        <span className="font-bold text-foreground block">{item.assigned}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="block text-[8px] uppercase">Calls</span>
-                                                        <span className="font-bold text-foreground block">{item.calls}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="block text-[8px] uppercase">Demos</span>
-                                                        <span className="font-bold text-foreground block">{item.demos}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="block text-[8px] uppercase">Revenue</span>
-                                                        <span className="font-bold text-emerald-600 block">₹{item.revenue}</span>
-                                                    </div>
-                                                </div>
+                                                     <div>
+                                                         <span className="block text-[8px] uppercase">Assigned</span>
+                                                         <span className="font-bold text-foreground block">{item.assigned}</span>
+                                                     </div>
+                                                     <div>
+                                                         <span className="block text-[8px] uppercase">Calls</span>
+                                                         <span className="font-bold text-foreground block">{item.calls}</span>
+                                                     </div>
+                                                     <div>
+                                                         <span className="block text-[8px] uppercase">Demos</span>
+                                                         <span className="font-bold text-foreground block">{item.demos}</span>
+                                                     </div>
+                                                     <div>
+                                                         <span className="block text-[8px] uppercase">Converted</span>
+                                                         <span className="font-bold text-emerald-600 block">{item.won}</span>
+                                                     </div>
+                                                 </div>
                                             </div>
                                         ))}
                                     </CardContent>
@@ -622,6 +628,7 @@ export default function SalesDashboard() {
                                                         <th className="p-4">Source</th>
                                                         <th className="p-4">Expected Value</th>
                                                         <th className="p-4">Status</th>
+                                                        <th className="p-4">Latest Feedback / Update</th>
                                                         <th className="p-4">Assign Salesperson</th>
                                                         <th className="p-4 text-right pr-6">Action</th>
                                                     </tr>
@@ -644,6 +651,9 @@ export default function SalesDashboard() {
                                                                     {lead.status.replace("_", " ")}
                                                                 </Badge>
                                                             </td>
+                                                            <td className="p-4 max-w-[200px] truncate text-muted-foreground font-medium" title={lead.feedback || ""}>
+                                                                {lead.feedback || <span className="text-muted-foreground/30 italic">No feedback updated</span>}
+                                                            </td>
                                                             <td className="p-4">
                                                                 <select
                                                                     value={lead.assigned_to?.id || lead.assigned_to || ""}
@@ -651,7 +661,7 @@ export default function SalesDashboard() {
                                                                     className="h-8 rounded-lg border border-input bg-background px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full max-w-[130px] font-semibold"
                                                                 >
                                                                     <option value="">Unassigned</option>
-                                                                    {agents.filter(a => a.role === 'sales').map(a => (
+                                                                    {agents.filter(a => a.role === 'sales' || a.role === 'sales_head').map(a => (
                                                                         <option key={a.id} value={a.id}>{a.full_name || a.email}</option>
                                                                     ))}
                                                                 </select>
@@ -667,30 +677,37 @@ export default function SalesDashboard() {
                                                                         Edit
                                                                     </Button>
                                                                     {lead.status === 'converted' && (
-                                                                        <Button
-                                                                            size="sm"
-                                                                            onClick={() => {
-                                                                                setOnboardName(lead.name);
-                                                                                setOnboardEmail(lead.email || "");
-                                                                                setOnboardClass(lead.class || "");
-                                                                                setOnboardFee(lead.value ? String(lead.value) : "4500");
-                                                                                setOnboardClassesPerMonth("12");
-                                                                                setOnboardTeacherId("");
-                                                                                setOnboardStudentId("");
-                                                                                setShowOnboard(true);
-                                                                            }}
-                                                                            className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold uppercase tracking-wider px-3 rounded-lg shadow-sm"
-                                                                        >
-                                                                            Onboard
-                                                                        </Button>
-                                                                    )}
+                                                                         lead.is_onboarded ? (
+                                                                             <Badge className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-400 border-none rounded-full px-2.5 py-1">
+                                                                                 Onboarded
+                                                                             </Badge>
+                                                                         ) : (
+                                                                             <Button
+                                                                                 size="sm"
+                                                                                 onClick={() => {
+                                                                                     setOnboardLeadId(lead.id);
+                                                                                     setOnboardName(lead.name);
+                                                                                     setOnboardEmail(lead.email || "");
+                                                                                     setOnboardClass(lead.class || "");
+                                                                                     setOnboardFee(lead.value ? String(lead.value) : "4500");
+                                                                                     setOnboardClassesPerMonth("12");
+                                                                                     setOnboardTeacherId("");
+                                                                                     setOnboardStudentId("");
+                                                                                     setShowOnboard(true);
+                                                                                 }}
+                                                                                 className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold uppercase tracking-wider px-3 rounded-lg shadow-sm"
+                                                                             >
+                                                                                 Onboard
+                                                                             </Button>
+                                                                         )
+                                                                     )}
                                                                 </div>
                                                             </td>
                                                         </tr>
                                                     ))}
                                                     {getFilteredLeads().length === 0 && (
                                                         <tr>
-                                                            <td colSpan={6} className="text-center py-10 text-muted-foreground italic">No matching leads found in CRM.</td>
+                                                            <td colSpan={7} className="text-center py-10 text-muted-foreground italic">No matching leads found in CRM.</td>
                                                         </tr>
                                                     )}
                                                 </tbody>

@@ -89,7 +89,7 @@ export default async function PaymentReceiptPage({ params }: PaymentReceiptProps
         .eq('status', 'active')
         .limit(1);
 
-    let courseName = schedules?.[0]?.title;
+    let courseName = payment.subject_name || schedules?.[0]?.title;
 
     if (!courseName) {
         const { data: classes } = await supabase
@@ -134,7 +134,7 @@ export default async function PaymentReceiptPage({ params }: PaymentReceiptProps
                         <div>
                             <span className="text-zinc-500 uppercase tracking-widest text-[10px] block mb-0.5">Date</span>
                             <span className="text-zinc-900 font-mono text-xs">
-                                {format(new Date(payment.created_at), 'MMMM dd, yyyy')}
+                                {format(new Date(payment.receipt_date ? (payment.receipt_date + "T12:00:00") : payment.created_at), 'MMMM dd, yyyy')}
                             </span>
                         </div>
                         <div className="text-right">

@@ -88,12 +88,16 @@ export async function getTeacherStats() {
         .select('*', { count: 'exact', head: true })
         .eq('author_id', user.id);
 
-    // 3. Completed teaching hours
+    const now = new Date();
+    const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+    // 3. Completed teaching hours in current month
     const { data: classData } = await supabase
         .from('live_classes')
         .select('duration_hours, student_attendance(status)')
         .eq('teacher_id', user.id)
-        .eq('status', 'completed');
+        .eq('status', 'completed')
+        .gte('scheduled_at', startOfCurrentMonth);
 
     const validClassesForHours = (classData || []).filter((c: any) => {
         const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
@@ -103,8 +107,6 @@ export async function getTeacherStats() {
     const totalHours = validClassesForHours.reduce((acc, curr) => acc + Number(curr.duration_hours || 0), 0) || 0;
 
     // 4. Completed classes in current month
-    const now = new Date();
-    const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const { data: monthlyClassesData } = await supabase
         .from('live_classes')
         .select('id, student_attendance(status)')

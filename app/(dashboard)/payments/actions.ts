@@ -50,7 +50,7 @@ async function checkManagerRole() {
 }
 
 // Helper: Generate chronological sequential receipt number starting at EDH400
-async function generateNextReceiptNumber() {
+export async function generateNextReceiptNumber() {
     const adminClient = createAdminClient();
     const { data, error } = await adminClient
         .from('payments')
@@ -377,6 +377,8 @@ export async function recordManualPayment(payload: {
     year: number;
     method: 'bank_transfer' | 'cash' | 'other';
     transactionId?: string;
+    subjectName?: string;
+    receiptDate?: string;
 }) {
     const { isManager } = await checkManagerRole();
     if (!isManager) {
@@ -398,7 +400,9 @@ export async function recordManualPayment(payload: {
             payment_method: payload.method,
             transaction_id: payload.transactionId || null,
             status: 'completed',
-            receipt_number: receiptNumber
+            receipt_number: receiptNumber,
+            subject_name: payload.subjectName || 'Hindi',
+            receipt_date: payload.receiptDate || null
         })
         .select()
         .single();

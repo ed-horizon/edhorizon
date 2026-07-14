@@ -58,19 +58,24 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         (studentDetailsData || []).map((s: any) => [s.id, s.tutor_hourly_rate !== null ? Number(s.tutor_hourly_rate) : null])
     );
 
-    // 4. Fetch all teacher profiles
+    // 4. Fetch all staff profiles (except super_admin, student, parent)
     const { data: teachersData } = await supabase
         .from('profiles')
         .select(`
             id,
             full_name,
             email,
+            role,
             staff_details (
                 hourly_rate,
+                basic_salary,
+                pay_basis,
                 status
             )
         `)
-        .eq('role', 'teacher');
+        .neq('role', 'super_admin')
+        .neq('role', 'student')
+        .neq('role', 'parent');
 
     const teachers = (teachersData || []).map((t: any) => {
         const details = Array.isArray(t.staff_details) ? t.staff_details[0] : t.staff_details;
@@ -78,15 +83,18 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
             id: t.id,
             full_name: t.full_name || t.email.split('@')[0],
             email: t.email,
+            role: t.role,
+            pay_basis: details?.pay_basis || 'hourly',
+            basic_salary: Number(details?.basic_salary || 0),
             hourly_rate: Number(details?.hourly_rate || 0),
             status: details?.status || 'active'
         };
     }).filter((t: any) => t.status !== 'locked');
 
-    // 5. Calculate accrued payouts dynamically from live_classes
+    // 5. Calculate accrued payouts dynamically
     const calculatedPayouts: Record<string, number> = {};
     teachers.forEach(t => {
-        calculatedPayouts[t.id] = 0;
+        calculatedPayouts[t.id] = t.pay_basis === 'fixed' ? t.basic_salary : 0;
     });
 
     verifiedClasses?.forEach((c: any) => {
@@ -96,6 +104,9 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         }
         if (calculatedPayouts[c.teacher_id] !== undefined) {
             const teacher = teachers.find(t => t.id === c.teacher_id);
+            if (teacher?.pay_basis === 'fixed') {
+                return; // Fixed pay staff are paid basic_salary, not class hours
+            }
             const baseRate = teacher?.hourly_rate || 0;
             const customStudentRate = c.student_id ? studentRates[c.student_id] : null;
             const rate = (customStudentRate !== null && customStudentRate !== undefined && !isNaN(customStudentRate) && customStudentRate > 0)

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Clock, Play, Square, Loader2 } from "lucide-react";
-import { getCurrentShiftStatus, toggleShift } from "@/app/(dashboard)/staff-shifts/actions";
+import { clockOutShift, getCurrentShiftStatus, toggleShift } from "@/app/(dashboard)/staff-shifts/actions";
 import { toast } from "sonner";
 
 export default function StaffShiftToggle({ role, isSidebar = false }: { role: string; isSidebar?: boolean }) {
@@ -74,6 +74,57 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
             }
         };
     }, [isActive, clockInTime]);
+
+    // Idle Activity and Browser Close tracking
+    useEffect(() => {
+        if (!isActive) return;
+
+        // 1. Idle Auto Clock-out after 20 minutes
+        const IDLE_LIMIT = 20 * 60 * 1000; // 20 minutes
+        let idleTimer: NodeJS.Timeout;
+
+        const autoClockOut = async () => {
+            try {
+                const res = await clockOutShift();
+                if (res.success) {
+                    setIsActive(false);
+                    setClockInTime(null);
+                    toast.info("You have been automatically clocked out due to 20 minutes of inactivity.");
+                }
+            } catch (err) {
+                console.error("Auto clock-out error:", err);
+            }
+        };
+
+        const resetIdleTimer = () => {
+            if (idleTimer) clearTimeout(idleTimer);
+            idleTimer = setTimeout(autoClockOut, IDLE_LIMIT);
+        };
+
+        // Track user interaction events
+        const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart"];
+        events.forEach(event => {
+            window.addEventListener(event, resetIdleTimer);
+        });
+
+        // Initialize timer
+        resetIdleTimer();
+
+        // 2. Browser Close / Page Unload trigger
+        const handleUnload = () => {
+            // Send synchronous beacon request to ensure it reaches backend even during page unload
+            navigator.sendBeacon("/api/staff/clock-out");
+        };
+        window.addEventListener("beforeunload", handleUnload);
+
+        return () => {
+            if (idleTimer) clearTimeout(idleTimer);
+            events.forEach(event => {
+                window.removeEventListener(event, resetIdleTimer);
+            });
+            window.removeEventListener("beforeunload", handleUnload);
+        };
+    }, [isActive]);
 
     const handleToggle = async () => {
         setIsPending(true);

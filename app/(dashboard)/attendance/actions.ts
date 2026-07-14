@@ -408,9 +408,9 @@ export async function getLiveClasses() {
                 : c.student?.student_details;
             if (studentDetails?.status === 'inactive') return false;
 
-            // Hide locked teachers for non-super-admins
+            // Hide locked teachers for non-super-admins, EXCEPT when the locked teacher is the logged in user themselves viewing their own classes
             const currentUserRole = profile?.role || 'student';
-            if (currentUserRole !== 'super_admin') {
+            if (currentUserRole !== 'super_admin' && c.teacher_id !== user.id) {
                 const teacherDetails = Array.isArray(c.teacher?.staff_details)
                     ? c.teacher?.staff_details[0]
                     : c.teacher?.staff_details;
@@ -478,6 +478,7 @@ export async function getAssignedStudents() {
             id: d.id,
             full_name: profile?.full_name || 'Unknown Student',
             email: profile?.email || '',
+            custom_student_id: d.custom_student_id,
             preferred_meeting_link: preferredMeetingLink,
             preferred_time: preferredTime,
             day_timings: activeSch?.day_timings || null
@@ -676,6 +677,7 @@ export async function getAllStudentsAdmin() {
             full_name, 
             email,
             student_details!student_details_id_fkey (
+                custom_student_id,
                 assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (
                     staff_details (status)
                 )
@@ -697,11 +699,15 @@ export async function getAllStudentsAdmin() {
         return teacherDetails?.status !== 'locked';
     });
 
-    return filtered.map((s: any) => ({
-        id: s.id,
-        full_name: s.full_name,
-        email: s.email
-    }));
+    return filtered.map((s: any) => {
+        const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
+        return {
+            id: s.id,
+            full_name: s.full_name,
+            email: s.email,
+            custom_student_id: details?.custom_student_id || null
+        };
+    });
 }
 
 export async function getCurrentProfile() {
@@ -2236,7 +2242,8 @@ export async function getStudentsWithClasses() {
             classes_per_month: details?.classes_per_month || 12,
             custom_student_id: details?.custom_student_id || null,
             classes: classesByStudent[s.id] || [],
-            active_schedule: activeSchedule
+            active_schedule: activeSchedule,
+            active_schedules: studentSchedules
         };
     });
 }
@@ -2317,6 +2324,8 @@ export async function assignTutorToStudent(studentId: string, teacherId: string 
     return { success: true };
 }
 
+import { generateNextReceiptNumber } from "@/app/(dashboard)/payments/actions";
+
 export async function onboardStudent(payload: {
     fullName: string;
     email: string;
@@ -2343,6 +2352,7 @@ export async function onboardStudent(payload: {
     monthlyFee5?: number;
     classesPerMonth5?: number;
     assignedTeacherId5?: string;
+    leadId?: string;
 }) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -2360,6 +2370,23 @@ export async function onboardStudent(payload: {
     const isAuthorized = ['admin', 'super_admin', 'hr', 'operations', 'sales', 'sales_head'].includes(profile?.role || '');
     if (!isAuthorized) {
         return { error: "Unauthorized" };
+    }
+
+    const canOnboardAnyLead = ['admin', 'super_admin', 'sales_head'].includes(profile?.role || '');
+    if (payload.leadId) {
+        const { data: lead, error: leadError } = await adminClient
+            .from('leads')
+            .select('id, assigned_to')
+            .eq('id', payload.leadId)
+            .maybeSingle();
+
+        if (leadError || !lead) {
+            return { error: "Lead not found" };
+        }
+
+        if (!canOnboardAnyLead && (profile?.role !== 'sales' || lead.assigned_to !== user.id)) {
+            return { error: "Unauthorized: You can only onboard leads assigned to you." };
+        }
     }
 
     if (
@@ -2442,6 +2469,66 @@ export async function onboardStudent(payload: {
     if (detailsError) {
         console.error("Student details creation failed during onboarding:", detailsError);
         return { error: detailsError.message };
+    }
+
+    // Generate automated fee receipt
+    try {
+        const totalAmount = (payload.monthlyFee !== undefined ? payload.monthlyFee : 4500) +
+                            (payload.monthlyFee2 || 0) +
+                            (payload.monthlyFee3 || 0) +
+                            (payload.monthlyFee4 || 0) +
+                            (payload.monthlyFee5 || 0);
+
+        if (totalAmount > 0) {
+            const receiptNumber = await generateNextReceiptNumber();
+            const subjectsList = [
+                payload.subjectName1 || 'Maths',
+                payload.subjectName2,
+                payload.subjectName3,
+                payload.subjectName4,
+                payload.subjectName5
+            ].filter(Boolean).join(', ');
+
+            const { error: paymentError } = await adminClient
+                .from('payments')
+                .insert({
+                    student_id: newStudentId,
+                    amount: totalAmount,
+                    billing_month: new Date().getMonth() + 1,
+                    billing_year: new Date().getFullYear(),
+                    payment_method: 'upi_qr', // default convenient offline onboarding method
+                    status: 'completed',
+                    receipt_number: receiptNumber,
+                    subject_name: subjectsList
+                });
+
+            if (paymentError) {
+                console.error("Error generating automated onboarding payment receipt:", paymentError);
+            }
+        }
+    } catch (receiptErr) {
+        console.error("Failed to generate onboarding payment receipt:", receiptErr);
+    }
+
+    // If onboarding a converted lead, mark the lead as onboarded
+    if (payload.leadId) {
+        let leadUpdate = adminClient
+            .from('leads')
+            .update({ 
+                is_onboarded: true,
+                status: 'converted' 
+            })
+            .eq('id', payload.leadId);
+
+        if (!canOnboardAnyLead) {
+            leadUpdate = leadUpdate.eq('assigned_to', user.id);
+        }
+
+        const { error: leadUpdateError } = await leadUpdate;
+
+        if (leadUpdateError) {
+            console.error("Failed to update lead onboarding status:", leadUpdateError);
+        }
     }
 
     revalidatePath('/(dashboard)', 'layout');
@@ -2644,23 +2731,40 @@ export async function getClassLogsForMonth(year: number, month: number) {
     const startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
     const endDate = new Date(Date.UTC(year, month, 1, 0, 0, 0));
 
-    let query = supabase
-        .from('live_classes')
-        .select(`
-            *,
-            teacher:profiles!teacher_id(id, full_name, email),
-            student:profiles!student_id(id, full_name, email),
-            student_attendance(status, marked_by)
-        `)
+    const isStaffOrAdmin = ["hr", "super_admin", "operations", "admin", "sales_head"].includes(profile.role);
+    let query;
+
+    if (isStaffOrAdmin) {
+        const adminClient = createAdminClient();
+        query = adminClient
+            .from('live_classes')
+            .select(`
+                *,
+                teacher:profiles!teacher_id(id, full_name, email),
+                student:profiles!student_id(id, full_name, email),
+                student_attendance(status, marked_by)
+            `);
+    } else {
+        query = supabase
+            .from('live_classes')
+            .select(`
+                *,
+                teacher:profiles!teacher_id(id, full_name, email),
+                student:profiles!student_id(id, full_name, email),
+                student_attendance(status, marked_by)
+            `);
+
+        if (profile.role === 'teacher') {
+            query = query.eq('teacher_id', user.id);
+        } else if (profile.role === 'student' || profile.role === 'parent') {
+            query = query.eq('student_id', user.id);
+        }
+    }
+
+    query = query
         .gte('scheduled_at', startDate.toISOString())
         .lt('scheduled_at', endDate.toISOString())
         .order('scheduled_at', { ascending: true });
-
-    if (profile.role === 'teacher') {
-        query = query.eq('teacher_id', user.id);
-    } else if (profile.role === 'student' || profile.role === 'parent') {
-        query = query.eq('student_id', user.id);
-    }
 
     const { data: classes, error } = await query;
     if (error) {
