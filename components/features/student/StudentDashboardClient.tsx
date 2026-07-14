@@ -286,8 +286,8 @@ export function StudentDashboardClient({
     const isAnySubjectLimitReached = subjectCompletions.some(s => s.completed >= s.classesPerMonth && s.classesPerMonth > 0);
     const isAnySubjectOneRemaining = subjectCompletions.some(s => s.completed === s.classesPerMonth - 1 && s.classesPerMonth > 0);
 
-    const showLimitReachedAlert = isAnySubjectLimitReached && details?.status !== 'active';
-    const showOneRemainingReminder = isAnySubjectOneRemaining && details?.status !== 'active';
+    const showLimitReachedAlert = isAnySubjectLimitReached;
+    const showOneRemainingReminder = isAnySubjectOneRemaining;
 
     const todayStr = new Date().toDateString()
     const clientTodayClasses = allCalendarClasses.filter(c => 

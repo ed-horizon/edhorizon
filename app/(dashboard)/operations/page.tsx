@@ -457,7 +457,6 @@ export default function OperationsDashboard() {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     const feeReminderAlerts = students.filter(student => {
-        if (student.status === 'active') return false;
         const completedThisMonth = (student.classes || []).filter((c: any) => {
             if (c.status !== 'completed') return false;
             const d = new Date(c.scheduled_at);
