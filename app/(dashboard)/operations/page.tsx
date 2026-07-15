@@ -459,8 +459,10 @@ export default function OperationsDashboard() {
     const feeReminderAlerts = students.filter(student => {
         const completedThisMonth = (student.classes || []).filter((c: any) => {
             if (c.status !== 'completed') return false;
-            const d = new Date(c.scheduled_at);
-            return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+            const classDateStr = c.scheduled_at.substring(0, 10);
+            const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
+            const currentYearStr = String(currentYear);
+            return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
         }).length;
         const limit = student.classes_per_month || 12;
         return completedThisMonth >= limit - 1;
@@ -640,8 +642,10 @@ export default function OperationsDashboard() {
                                                     {feeReminderAlerts.map(student => {
                                                         const completedThisMonth = (student.classes || []).filter((c: any) => {
                                                             if (c.status !== 'completed') return false;
-                                                            const d = new Date(c.scheduled_at);
-                                                            return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+                                                            const classDateStr = c.scheduled_at.substring(0, 10);
+                                                            const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
+                                                            const currentYearStr = String(currentYear);
+                                                            return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
                                                         }).length;
                                                         const limit = student.classes_per_month || 12;
                                                         const isLimitReached = completedThisMonth >= limit;
