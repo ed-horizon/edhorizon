@@ -27,15 +27,18 @@ BEGIN
     -- Fetch definitions, names, and tables of all RLS policies
     FOR r IN 
         SELECT 
-            n.nspname || '.' || c.relname AS full_table_name,
-            p.polname,
-            pg_get_policydef(p.oid) AS def
-        FROM pg_policy p
-        JOIN pg_class c ON c.oid = p.polrelid
-        JOIN pg_namespace n ON n.oid = c.relnamespace
+            schemaname || '.' || tablename AS full_table_name,
+            policyname,
+            'CREATE POLICY ' || quote_ident(policyname) || 
+            ' ON ' || schemaname || '.' || tablename || 
+            ' FOR ' || cmd || 
+            ' TO ' || array_to_string(roles, ', ') || 
+            CASE WHEN qual IS NOT NULL THEN ' USING (' || qual || ')' ELSE '' END || 
+            CASE WHEN with_check IS NOT NULL THEN ' WITH CHECK (' || with_check || ')' ELSE '' END AS def
+        FROM pg_policies
     LOOP
         policy_defs := array_append(policy_defs, r.def);
-        policy_names := array_append(policy_names, r.polname);
+        policy_names := array_append(policy_names, r.policyname);
         policy_tables := array_append(policy_tables, r.full_table_name);
     END LOOP;
 
