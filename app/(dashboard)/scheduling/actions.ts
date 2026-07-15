@@ -71,6 +71,13 @@ export async function createClassSchedule(payload: SchedulePayload) {
 
     if (!user) return { success: false, error: "Unauthorized" }
 
+    // Server-side parameter validation to prevent anonymous/corrupt schedule configurations
+    if (!payload.student_id) return { success: false, error: "Student selection is required." }
+    if (!payload.title || !payload.title.trim()) return { success: false, error: "Subject title is required." }
+    if (!payload.pattern_days || payload.pattern_days.length === 0) return { success: false, error: "At least one pattern day is required." }
+    if (!payload.time_of_day) return { success: false, error: "Default time of day is required." }
+    if (!payload.start_date || !payload.end_date) return { success: false, error: "Start and end dates are required." }
+
     try {
         const adminClient = createAdminClient();
         // Check user's role to determine if they can override teacher_id
@@ -82,6 +89,10 @@ export async function createClassSchedule(payload: SchedulePayload) {
 
         const isAdminOrOps = ['admin', 'super_admin', 'hr', 'operations'].includes(profile?.role || '');
         const teacherId = (isAdminOrOps && payload.teacher_id) ? payload.teacher_id : user.id;
+
+        if (!teacherId) {
+            return { success: false, error: "Tutor assignment is required." }
+        }
 
         // 1. Insert into class_schedules
         const { data: schedule, error: scheduleError } = await supabase
@@ -139,6 +150,20 @@ export async function createClassSchedule(payload: SchedulePayload) {
 
         // Limit occurrences by student's monthly limit
         computedDates = limitDatesByMonthlyMax(computedDates, maxClasses);
+
+        // Filter out dates that already have a class scheduled for this student at that exact time to prevent duplicates
+        if (computedDates.length > 0) {
+            const { data: existingClasses, error: fetchClassesError } = await supabase
+                .from('live_classes')
+                .select('scheduled_at')
+                .eq('student_id', payload.student_id)
+                .in('scheduled_at', computedDates);
+
+            if (fetchClassesError) throw fetchClassesError;
+
+            const existingTimestamps = new Set(existingClasses?.map(c => new Date(c.scheduled_at).toISOString()) || []);
+            computedDates = computedDates.filter(date => !existingTimestamps.has(new Date(date).toISOString()));
+        }
 
         // 3. Bulk insert live_classes
         if (computedDates.length > 0) {
@@ -263,6 +288,20 @@ export async function updateClassSchedule(scheduleId: string, payload: Partial<S
 
         // Limit occurrences by student's monthly limit
         futureDates = limitDatesByMonthlyMax(futureDates, maxClasses);
+
+        // Filter out dates that already have a class scheduled for this student at that exact time to prevent duplicates
+        if (futureDates.length > 0) {
+            const { data: existingClasses, error: fetchClassesError } = await supabase
+                .from('live_classes')
+                .select('scheduled_at')
+                .eq('student_id', updatedSchedule.student_id)
+                .in('scheduled_at', futureDates);
+
+            if (fetchClassesError) throw fetchClassesError;
+
+            const existingTimestamps = new Set(existingClasses?.map(c => new Date(c.scheduled_at).toISOString()) || []);
+            futureDates = futureDates.filter(date => !existingTimestamps.has(new Date(date).toISOString()));
+        }
 
         if (futureDates.length > 0) {
             const classPayloads = futureDates.map(date => ({

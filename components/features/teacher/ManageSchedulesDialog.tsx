@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -39,6 +39,7 @@ interface ManageSchedulesDialogProps {
 
 export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedulesDialogProps = {}) {
     const [isOpen, setIsOpen] = useState(false)
+    const isSubmittingRef = useRef(false)
     const [isLoading, setIsLoading] = useState(false)
     const [view, setView] = useState<'list' | 'create' | 'edit'>('list')
     
@@ -228,6 +229,8 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         
+        if (isSubmittingRef.current) return
+        
         if (!selectedStudentId || !subject.trim() || patternDays.length === 0 || !startDate || !endDate || !scheduledTime) {
             toast.error("Please fill out all required schedule parameters.")
             return
@@ -238,6 +241,7 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
             return
         }
 
+        isSubmittingRef.current = true
         setIsLoading(true)
         
         const firstDayTime = patternDays.length > 0 ? (dayTimings[patternDays[0]] || scheduledTime) : scheduledTime;
@@ -275,12 +279,15 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
             toast.error(error.message || "Scheduling failure")
         } finally {
             setIsLoading(false)
+            isSubmittingRef.current = false
         }
     }
 
     const performCancel = async (id: string) => {
         if (!confirm("Are you sure you want to cancel this recurring schedule? All future generated classes will be deleted.")) return
         
+        if (isSubmittingRef.current) return
+        isSubmittingRef.current = true
         setIsLoading(true)
         try {
             const result = await cancelClassSchedule(id)
@@ -296,6 +303,7 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
             toast.error(err.message)
         } finally {
             setIsLoading(false)
+            isSubmittingRef.current = false
         }
     }
 

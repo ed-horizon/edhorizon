@@ -79,9 +79,10 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
     useEffect(() => {
         if (!isActive) return;
 
-        // 1. Idle Auto Clock-out after 20 minutes
+        // 1. Idle Auto Clock-out after 20 minutes for HR and Operations only
+        const isTargetRole = ['hr', 'operations'].includes(role);
+        let checkInterval: NodeJS.Timeout;
         const IDLE_LIMIT = 20 * 60 * 1000; // 20 minutes
-        let idleTimer: NodeJS.Timeout;
 
         const autoClockOut = async () => {
             try {
@@ -97,20 +98,34 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
         };
 
         const resetIdleTimer = () => {
-            if (idleTimer) clearTimeout(idleTimer);
-            idleTimer = setTimeout(autoClockOut, IDLE_LIMIT);
+            if (isTargetRole) {
+                localStorage.setItem('lastActivity', Date.now().toString());
+            }
         };
 
-        // Track user interaction events
         const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart"];
-        events.forEach(event => {
-            window.addEventListener(event, resetIdleTimer);
-        });
 
-        // Initialize timer
-        resetIdleTimer();
+        if (isTargetRole) {
+            if (typeof window !== "undefined") {
+                if (!localStorage.getItem('lastActivity')) {
+                    localStorage.setItem('lastActivity', Date.now().toString());
+                }
+            }
 
-        // 2. Browser Close / Page Unload trigger
+            checkInterval = setInterval(() => {
+                const lastActivity = Number(localStorage.getItem('lastActivity') || Date.now());
+                const elapsed = Date.now() - lastActivity;
+                if (elapsed >= IDLE_LIMIT) {
+                    autoClockOut();
+                }
+            }, 10000); // Check every 10 seconds
+
+            events.forEach(event => {
+                window.addEventListener(event, resetIdleTimer);
+            });
+        }
+
+        // 2. Browser Close / Page Unload trigger for everyone
         const handleUnload = () => {
             // Send synchronous beacon request to ensure it reaches backend even during page unload
             navigator.sendBeacon("/api/staff/clock-out");
@@ -118,13 +133,15 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
         window.addEventListener("beforeunload", handleUnload);
 
         return () => {
-            if (idleTimer) clearTimeout(idleTimer);
-            events.forEach(event => {
-                window.removeEventListener(event, resetIdleTimer);
-            });
+            if (isTargetRole) {
+                clearInterval(checkInterval);
+                events.forEach(event => {
+                    window.removeEventListener(event, resetIdleTimer);
+                });
+            }
             window.removeEventListener("beforeunload", handleUnload);
         };
-    }, [isActive]);
+    }, [isActive, role]);
 
     const handleToggle = async () => {
         setIsPending(true);
