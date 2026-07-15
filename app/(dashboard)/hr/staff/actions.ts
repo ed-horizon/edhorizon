@@ -64,8 +64,8 @@ function normalizeStaffRole(role: string) {
 
 function validateStaffRole(role: string, requesterRole: string) {
     const normalizedRole = normalizeStaffRole(role);
-    if (!SUPPORTED_STAFF_ROLES.has(normalizedRole)) {
-        return { error: "Select a supported staff role." } as const;
+    if (!normalizedRole) {
+        return { error: "A valid staff role is required." } as const;
     }
     if (ELEVATED_STAFF_ROLES.has(normalizedRole) && requesterRole !== "super_admin") {
         return { error: "Only Super Admin can assign elevated staff roles." } as const;

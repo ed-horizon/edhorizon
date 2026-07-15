@@ -677,6 +677,7 @@ export async function getAllStudentsAdmin() {
             full_name, 
             email,
             student_details!student_details_id_fkey (
+                status,
                 custom_student_id,
                 assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (
                     staff_details (status)
@@ -692,8 +693,9 @@ export async function getAllStudentsAdmin() {
     }
 
     const filtered = (data || []).filter((s: any) => {
-        if (currentUserRole === 'super_admin') return true;
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
+        if (details?.status === 'inactive') return false;
+        if (currentUserRole === 'super_admin') return true;
         const assignedTeacher = details?.assigned_teacher;
         const teacherDetails = Array.isArray(assignedTeacher?.staff_details) ? assignedTeacher?.staff_details[0] : assignedTeacher?.staff_details;
         return teacherDetails?.status !== 'locked';
@@ -2116,6 +2118,15 @@ export async function getStudentsWithClasses() {
                 preferred_time,
                 classes_per_month,
                 custom_student_id,
+                subject_name_1,
+                subject_name_2,
+                classes_per_month_2,
+                subject_name_3,
+                classes_per_month_3,
+                subject_name_4,
+                classes_per_month_4,
+                subject_name_5,
+                classes_per_month_5,
                 assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (
                     staff_details (status)
                 ),
@@ -2244,7 +2255,8 @@ export async function getStudentsWithClasses() {
             custom_student_id: details?.custom_student_id || null,
             classes: classesByStudent[s.id] || [],
             active_schedule: activeSchedule,
-            active_schedules: studentSchedules
+            active_schedules: studentSchedules,
+            details: details || null
         };
     });
 }

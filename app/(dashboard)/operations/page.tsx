@@ -457,16 +457,84 @@ export default function OperationsDashboard() {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     const feeReminderAlerts = students.filter(student => {
-        if (student.status === 'active') return false;
-        const completedThisMonth = (student.classes || []).filter((c: any) => {
-            if (c.status !== 'completed') return false;
-            const classDateStr = c.scheduled_at.substring(0, 10);
-            const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
-            const currentYearStr = String(currentYear);
-            return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
-        }).length;
-        const limit = student.classes_per_month || 12;
-        return completedThisMonth >= limit - 1;
+        // Build active subjects list for this student
+        const activeSubjects: { name: string; classesPerMonth: number }[] = [];
+        const details = student.details;
+        if (details) {
+            activeSubjects.push({
+                name: details.subject_name_1 || "Maths",
+                classesPerMonth: Number(details.classes_per_month) || 12
+            });
+            if (details.subject_name_2) {
+                activeSubjects.push({
+                    name: details.subject_name_2,
+                    classesPerMonth: Number(details.classes_per_month_2) || 0
+                });
+            }
+            if (details.subject_name_3) {
+                activeSubjects.push({
+                    name: details.subject_name_3,
+                    classesPerMonth: Number(details.classes_per_month_3) || 0
+                });
+            }
+            if (details.subject_name_4) {
+                activeSubjects.push({
+                    name: details.subject_name_4,
+                    classesPerMonth: Number(details.classes_per_month_4) || 0
+                });
+            }
+            if (details.subject_name_5) {
+                activeSubjects.push({
+                    name: details.subject_name_5,
+                    classesPerMonth: Number(details.classes_per_month_5) || 0
+                });
+            }
+        } else {
+            activeSubjects.push({
+                name: "Maths",
+                classesPerMonth: Number(student.classes_per_month) || 12
+            });
+        }
+
+        // Check if ANY subject meets the fee reminder alert threshold
+        const isAlertNeeded = activeSubjects.some(sub => {
+            if (sub.classesPerMonth <= 0) return false;
+
+            // Find matching schedule for this subject
+            const matchingSchedule = (student.active_schedules || []).find((sch: any) => 
+                sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
+            ) || student.active_schedule;
+
+            let startStr: string | null = null;
+            let endStr: string | null = null;
+            if (matchingSchedule) {
+                startStr = matchingSchedule.start_date;
+                endStr = matchingSchedule.end_date;
+            }
+
+            // Count completed classes for this subject within its specific cycle date range
+            const completedCount = (student.classes || []).filter((c: any) => {
+                if (c.status !== 'completed') return false;
+
+                const classTitleLower = (c.title || "").toLowerCase();
+                const matchesSubject = activeSubjects.length === 1 || classTitleLower.includes(sub.name.toLowerCase());
+                if (!matchesSubject) return false;
+
+                const classDateStr = c.scheduled_at.substring(0, 10);
+                if (startStr && endStr) {
+                    return classDateStr >= startStr && classDateStr <= endStr;
+                }
+                
+                // Fallback: current calendar month
+                const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
+                const currentYearStr = String(currentYear);
+                return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
+            }).length;
+
+            return completedCount >= sub.classesPerMonth - 1;
+        });
+
+        return isAlertNeeded;
     });
 
     return (
@@ -641,15 +709,53 @@ export default function OperationsDashboard() {
                                                 <span className="block text-[10px] font-black uppercase tracking-wider text-rose-600 dark:text-rose-400">💰 Fee Renewal Alerts ({feeReminderAlerts.length})</span>
                                                 <div className="space-y-2">
                                                     {feeReminderAlerts.map(student => {
-                                                        const completedThisMonth = (student.classes || []).filter((c: any) => {
-                                                            if (c.status !== 'completed') return false;
-                                                            const classDateStr = c.scheduled_at.substring(0, 10);
-                                                            const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
-                                                            const currentYearStr = String(currentYear);
-                                                            return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
-                                                        }).length;
-                                                        const limit = student.classes_per_month || 12;
-                                                        const isLimitReached = completedThisMonth >= limit;
+                                                        const details = student.details;
+                                                        const activeSubjects: { name: string; classesPerMonth: number }[] = [];
+                                                        if (details) {
+                                                            activeSubjects.push({ name: details.subject_name_1 || "Maths", classesPerMonth: Number(details.classes_per_month) || 12 });
+                                                            if (details.subject_name_2) activeSubjects.push({ name: details.subject_name_2, classesPerMonth: Number(details.classes_per_month_2) || 0 });
+                                                            if (details.subject_name_3) activeSubjects.push({ name: details.subject_name_3, classesPerMonth: Number(details.classes_per_month_3) || 0 });
+                                                            if (details.subject_name_4) activeSubjects.push({ name: details.subject_name_4, classesPerMonth: Number(details.classes_per_month_4) || 0 });
+                                                            if (details.subject_name_5) activeSubjects.push({ name: details.subject_name_5, classesPerMonth: Number(details.classes_per_month_5) || 0 });
+                                                        } else {
+                                                            activeSubjects.push({ name: "Maths", classesPerMonth: Number(student.classes_per_month) || 12 });
+                                                        }
+
+                                                        const subjectsWithStats = activeSubjects.map(sub => {
+                                                            const matchingSchedule = (student.active_schedules || []).find((sch: any) => 
+                                                                sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
+                                                            ) || student.active_schedule;
+
+                                                            let startStr: string | null = null;
+                                                            let endStr: string | null = null;
+                                                            if (matchingSchedule) {
+                                                                startStr = matchingSchedule.start_date;
+                                                                endStr = matchingSchedule.end_date;
+                                                            }
+
+                                                            const completedCount = (student.classes || []).filter((c: any) => {
+                                                                if (c.status !== 'completed') return false;
+                                                                const classTitleLower = (c.title || "").toLowerCase();
+                                                                const matchesSubject = activeSubjects.length === 1 || classTitleLower.includes(sub.name.toLowerCase());
+                                                                if (!matchesSubject) return false;
+                                                                const classDateStr = c.scheduled_at.substring(0, 10);
+                                                                if (startStr && endStr) {
+                                                                    return classDateStr >= startStr && classDateStr <= endStr;
+                                                                }
+                                                                const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
+                                                                const currentYearStr = String(currentYear);
+                                                                return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
+                                                            }).length;
+
+                                                            return {
+                                                                name: sub.name,
+                                                                completed: completedCount,
+                                                                limit: sub.classesPerMonth
+                                                            };
+                                                        });
+
+                                                        const alertingSubjects = subjectsWithStats.filter(s => s.limit > 0 && s.completed >= s.limit - 1);
+                                                        const isLimitReached = alertingSubjects.some(s => s.completed >= s.limit);
                                                         return (
                                                             <div key={student.id} className={cn("p-3 border rounded-xl text-xs flex justify-between items-center gap-4",
                                                                 isLimitReached 
@@ -658,9 +764,16 @@ export default function OperationsDashboard() {
                                                             )}>
                                                                 <div>
                                                                     <p className={cn("font-bold", isLimitReached ? "text-rose-950 dark:text-rose-200" : "text-amber-950 dark:text-amber-200")}>
-                                                                        {student.full_name} ({completedThisMonth}/{limit} Classes)
+                                                                        {student.full_name}
                                                                     </p>
-                                                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                                    <div className="mt-1 space-y-0.5">
+                                                                        {alertingSubjects.map((sub, idx) => (
+                                                                            <p key={idx} className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
+                                                                                {sub.name}: {sub.completed} / {sub.limit} classes completed
+                                                                            </p>
+                                                                        ))}
+                                                                    </div>
+                                                                    <p className="text-[10px] text-muted-foreground mt-1">
                                                                         {isLimitReached ? "Completed all classes. Needs tuition renewal." : "Only 1 class remaining. Needs renewal reminder."}
                                                                     </p>
                                                                 </div>
