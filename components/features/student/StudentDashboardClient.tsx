@@ -245,13 +245,14 @@ export function StudentDashboardClient({
     const currentYear = new Date().getFullYear()
     
     const completedClassesThisMonth = completedClasses.filter(c => {
-        const d = new Date(c.scheduled_at);
         if (activeSchedule) {
-            const start = new Date(activeSchedule.start_date + "T00:00:00");
-            const end = new Date(activeSchedule.end_date + "T23:59:59");
-            return d >= start && d <= end;
+            const classDateStr = c.scheduled_at.substring(0, 10);
+            return classDateStr >= activeSchedule.start_date && classDateStr <= activeSchedule.end_date;
         }
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        const classDateStr = c.scheduled_at.substring(0, 10);
+        const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
+        const currentYearStr = String(currentYear);
+        return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
     });
 
     const subjectCompletions = activeSubjects.map(sub => ({ ...sub, completed: 0 }));
