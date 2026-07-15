@@ -143,6 +143,7 @@ interface StudentDashboardClientProps {
     leaveRequests: LeaveRequest[];
     initialPayments: any[];
     activeSchedule?: any;
+    activeSchedules?: any[];
 }
 
 export function StudentDashboardClient({
@@ -159,7 +160,8 @@ export function StudentDashboardClient({
     rescheduleRequests,
     leaveRequests,
     initialPayments,
-    activeSchedule
+    activeSchedule,
+    activeSchedules = []
 }: StudentDashboardClientProps) {
     // Build active subjects list
     const activeSubjects: { name: string; fee: number; classesPerMonth: number; tutor: string }[] = [];
@@ -243,36 +245,49 @@ export function StudentDashboardClient({
 
     const currentMonth = new Date().getMonth()
     const currentYear = new Date().getFullYear()
-    
-    const completedClassesThisMonth = completedClasses.filter(c => {
-        if (activeSchedule) {
+
+    // Calculate completed classes for each active subject based on its own specific schedule/billing cycle
+    const subjectCompletions = activeSubjects.map(sub => {
+        // Find an active schedule that matches this subject name
+        const matchingSchedule = (activeSchedules || []).find(sch => 
+            sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
+        ) || activeSchedule;
+
+        let startStr: string | null = null;
+        let endStr: string | null = null;
+        if (matchingSchedule) {
+            startStr = matchingSchedule.start_date;
+            endStr = matchingSchedule.end_date;
+        }
+
+        const completedClassesForSubject = completedClasses.filter(c => {
+            const classTitleLower = (c.title || "").toLowerCase();
+            
+            // Check if class belongs to this subject
+            // If the student is only enrolled in 1 subject, all classes belong to it.
+            // If enrolled in multiple subjects, match by name.
+            const matchesSubject = activeSubjects.length === 1 || classTitleLower.includes(sub.name.toLowerCase());
+            if (!matchesSubject) return false;
+
+            // Date boundary checks
             const classDateStr = c.scheduled_at.substring(0, 10);
-            return classDateStr >= activeSchedule.start_date && classDateStr <= activeSchedule.end_date;
-        }
-        const classDateStr = c.scheduled_at.substring(0, 10);
-        const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
-        const currentYearStr = String(currentYear);
-        return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
-    });
-
-    const subjectCompletions = activeSubjects.map(sub => ({ ...sub, completed: 0 }));
-    completedClassesThisMonth.forEach(cls => {
-        const titleLower = (cls.title || "").toLowerCase();
-        let matchedIndex = -1;
-        for (let i = 0; i < activeSubjects.length; i++) {
-            if (titleLower.includes(activeSubjects[i].name.toLowerCase())) {
-                matchedIndex = i;
-                break;
+            if (startStr && endStr) {
+                return classDateStr >= startStr && classDateStr <= endStr;
             }
-        }
-        if (matchedIndex !== -1) {
-            subjectCompletions[matchedIndex].completed++;
-        } else if (subjectCompletions.length > 0) {
-            subjectCompletions[0].completed++;
-        }
+            
+            // Fallback: current calendar month
+            const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
+            const currentYearStr = String(currentYear);
+            return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
+        });
+
+        return {
+            ...sub,
+            completed: completedClassesForSubject.length
+        };
     });
 
-    const completedThisMonth = completedClassesThisMonth.length;
+    const completedThisMonth = subjectCompletions.reduce((sum, s) => sum + s.completed, 0);
 
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)

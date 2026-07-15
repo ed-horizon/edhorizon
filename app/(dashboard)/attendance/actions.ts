@@ -1942,7 +1942,8 @@ export async function getStudentDashboardData() {
         completedClasses,
         rescheduleRequests: rescheduleRequests || [],
         leaveRequests: leaveRequests || [],
-        activeSchedule
+        activeSchedule,
+        activeSchedules: schedulesData || []
     };
 }
 
