@@ -30,6 +30,9 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
                     setIsActive(true);
                     setClockInTime(res.shift.clock_in);
                     sessionStorage.setItem("wasClockedIn", "true");
+                    if (!sessionStorage.getItem("clockInTime")) {
+                        sessionStorage.setItem("clockInTime", res.shift.clock_in);
+                    }
                 } else {
                     // Check if they refreshed the page while active
                     const wasClockedIn = sessionStorage.getItem("wasClockedIn") === "true";
@@ -37,17 +40,22 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
                         const clockInRes = await toggleShift();
                         if (!clockInRes.error) {
                             setIsActive(true);
-                            setClockInTime(new Date().toISOString());
+                            const originalTime = sessionStorage.getItem("clockInTime") || new Date().toISOString();
+                            setClockInTime(originalTime);
                             sessionStorage.setItem("wasClockedIn", "true");
-                            toast.info("Resumed active shift following page refresh.");
+                            if (!sessionStorage.getItem("clockInTime")) {
+                                sessionStorage.setItem("clockInTime", originalTime);
+                            }
                         } else {
                             setIsActive(false);
                             setClockInTime(null);
                             sessionStorage.removeItem("wasClockedIn");
+                            sessionStorage.removeItem("clockInTime");
                         }
                     } else {
                         setIsActive(false);
                         setClockInTime(null);
+                        sessionStorage.removeItem("clockInTime");
                     }
                 }
             } catch (err) {
@@ -170,12 +178,15 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
                 const nowActive = !isActive;
                 setIsActive(nowActive);
                 if (nowActive) {
-                    setClockInTime(new Date().toISOString());
+                    const nowStr = new Date().toISOString();
+                    setClockInTime(nowStr);
                     sessionStorage.setItem("wasClockedIn", "true");
+                    sessionStorage.setItem("clockInTime", nowStr);
                     toast.success("Clocked in successfully!");
                 } else {
                     setClockInTime(null);
                     sessionStorage.removeItem("wasClockedIn");
+                    sessionStorage.removeItem("clockInTime");
                     toast.success(`Clocked out successfully! ${elapsedTime}`);
                 }
             }
