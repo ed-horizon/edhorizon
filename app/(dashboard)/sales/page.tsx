@@ -768,6 +768,7 @@ export default function SalesDashboard() {
                                                         <th className="p-4">Required Course</th>
                                                         <th className="p-4">Class</th>
                                                         <th className="p-4">Status</th>
+                                                        <th className="p-4">Latest Feedback / Update</th>
                                                         <th className="p-4 text-right pr-6">Instant Actions</th>
                                                     </tr>
                                                 </thead>
@@ -788,6 +789,9 @@ export default function SalesDashboard() {
                                                                 <Badge className={cn("text-[9px] font-black uppercase border-none rounded-full px-2.5 py-0.5", getStatusStyles(lead.status))}>
                                                                     {lead.status.replace("_", " ")}
                                                                 </Badge>
+                                                            </td>
+                                                            <td className="p-4 max-w-[200px] truncate text-muted-foreground font-medium" title={lead.feedback || ""}>
+                                                                {lead.feedback || <span className="text-muted-foreground/30 italic">No feedback updated</span>}
                                                             </td>
                                                             <td className="p-4 text-right pr-6">
                                                                 <div className="flex items-center justify-end gap-1.5">
@@ -819,7 +823,7 @@ export default function SalesDashboard() {
                                                     ))}
                                                     {leads.length === 0 && (
                                                         <tr>
-                                                            <td colSpan={5} className="text-center py-10 text-muted-foreground italic">No leads assigned to you. Add some leads above!</td>
+                                                            <td colSpan={6} className="text-center py-10 text-muted-foreground italic">No leads assigned to you. Add some leads above!</td>
                                                         </tr>
                                                     )}
                                                 </tbody>
