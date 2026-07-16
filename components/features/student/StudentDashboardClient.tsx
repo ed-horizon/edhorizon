@@ -36,6 +36,7 @@ interface LiveClass {
     student_joined_at?: string | null;
     parent_verified?: boolean | null;
     parent_dispute_reason?: string | null;
+    schedule_id?: string | null;
 }
 
 interface Homework {
@@ -261,13 +262,18 @@ export function StudentDashboardClient({
         }
 
         const completedClassesForSubject = completedClasses.filter(c => {
-            const classTitleLower = (c.title || "").toLowerCase();
-            
-            // Check if class belongs to this subject
-            // If the student is only enrolled in 1 subject, all classes belong to it.
-            // If enrolled in multiple subjects, match by name.
-            const matchesSubject = activeSubjects.length === 1 || classTitleLower.includes(sub.name.toLowerCase());
-            if (!matchesSubject) return false;
+            if (c.schedule_id && matchingSchedule) {
+                if (c.schedule_id !== matchingSchedule.id) {
+                    return false;
+                }
+            } else {
+                const classTitleLower = (c.title || "").toLowerCase();
+                const subjectLower = sub.name.toLowerCase();
+                const matchesSubject = activeSubjects.length === 1 || 
+                                       classTitleLower.includes(subjectLower) || 
+                                       subjectLower.includes(classTitleLower);
+                if (!matchesSubject) return false;
+            }
 
             // Date boundary checks
             const classDateStr = c.scheduled_at.substring(0, 10);
