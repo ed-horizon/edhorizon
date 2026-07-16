@@ -29,9 +29,26 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
                 if (res.active && res.shift) {
                     setIsActive(true);
                     setClockInTime(res.shift.clock_in);
+                    sessionStorage.setItem("wasClockedIn", "true");
                 } else {
-                    setIsActive(false);
-                    setClockInTime(null);
+                    // Check if they refreshed the page while active
+                    const wasClockedIn = sessionStorage.getItem("wasClockedIn") === "true";
+                    if (wasClockedIn) {
+                        const clockInRes = await toggleShift();
+                        if (!clockInRes.error) {
+                            setIsActive(true);
+                            setClockInTime(new Date().toISOString());
+                            sessionStorage.setItem("wasClockedIn", "true");
+                            toast.info("Resumed active shift following page refresh.");
+                        } else {
+                            setIsActive(false);
+                            setClockInTime(null);
+                            sessionStorage.removeItem("wasClockedIn");
+                        }
+                    } else {
+                        setIsActive(false);
+                        setClockInTime(null);
+                    }
                 }
             } catch (err) {
                 console.error("Failed to fetch shift status:", err);
@@ -154,9 +171,11 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
                 setIsActive(nowActive);
                 if (nowActive) {
                     setClockInTime(new Date().toISOString());
+                    sessionStorage.setItem("wasClockedIn", "true");
                     toast.success("Clocked in successfully!");
                 } else {
                     setClockInTime(null);
+                    sessionStorage.removeItem("wasClockedIn");
                     toast.success(`Clocked out successfully! ${elapsedTime}`);
                 }
             }
