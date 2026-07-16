@@ -65,6 +65,31 @@ function limitDatesByMonthlyMax(dates: string[], maxPerMonth: number) {
     return dates.slice(0, maxPerMonth);
 }
 
+function resolveMaxClassesForSubject(title: string, details: any): number {
+    if (!details) return 12;
+
+    const titleLower = (title || "").toLowerCase();
+    const sub1 = (details.subject_name_1 || "").toLowerCase();
+    const sub2 = (details.subject_name_2 || "").toLowerCase();
+    const sub3 = (details.subject_name_3 || "").toLowerCase();
+    const sub4 = (details.subject_name_4 || "").toLowerCase();
+    const sub5 = (details.subject_name_5 || "").toLowerCase();
+
+    if (sub1 && titleLower.includes(sub1)) {
+        return details.classes_per_month || 12;
+    } else if (sub2 && titleLower.includes(sub2)) {
+        return details.classes_per_month_2 || 12;
+    } else if (sub3 && titleLower.includes(sub3)) {
+        return details.classes_per_month_3 || 12;
+    } else if (sub4 && titleLower.includes(sub4)) {
+        return details.classes_per_month_4 || 12;
+    } else if (sub5 && titleLower.includes(sub5)) {
+        return details.classes_per_month_5 || 12;
+    }
+
+    return details.classes_per_month || 12;
+}
+
 export async function createClassSchedule(payload: SchedulePayload) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -129,14 +154,25 @@ export async function createClassSchedule(payload: SchedulePayload) {
             console.error("Error syncing student preferences in createClassSchedule:", studentUpdateError);
         }
 
-        // Fetch student's classes_per_month
+        // Fetch student details to get the exact class count config for this subject
         const { data: studentDetails } = await supabase
             .from('student_details')
-            .select('classes_per_month')
+            .select(`
+                classes_per_month,
+                subject_name_1,
+                classes_per_month_2,
+                subject_name_2,
+                classes_per_month_3,
+                subject_name_3,
+                classes_per_month_4,
+                subject_name_4,
+                classes_per_month_5,
+                subject_name_5
+            `)
             .eq('id', payload.student_id)
             .maybeSingle();
 
-        const maxClasses = studentDetails?.classes_per_month || 12;
+        const maxClasses = resolveMaxClassesForSubject(payload.title, studentDetails);
 
         // 2. Compute individual class dates
         let computedDates = computeDatesForPattern(
@@ -262,14 +298,25 @@ export async function updateClassSchedule(scheduleId: string, payload: Partial<S
 
         if (deleteErr) throw deleteErr
 
-        // Fetch student's classes_per_month
+        // Fetch student details to get the exact class count config for this subject
         const { data: studentDetails } = await supabase
             .from('student_details')
-            .select('classes_per_month')
+            .select(`
+                classes_per_month,
+                subject_name_1,
+                classes_per_month_2,
+                subject_name_2,
+                classes_per_month_3,
+                subject_name_3,
+                classes_per_month_4,
+                subject_name_4,
+                classes_per_month_5,
+                subject_name_5
+            `)
             .eq('id', updatedSchedule.student_id)
             .maybeSingle();
 
-        const maxClasses = studentDetails?.classes_per_month || 12;
+        const maxClasses = resolveMaxClassesForSubject(updatedSchedule.title, studentDetails);
 
         // 3. Regenerate future live_classes based on the new pattern
         // The effective start date for new calculations is Tomorrow (or Today if safe)
