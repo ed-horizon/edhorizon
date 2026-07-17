@@ -12,14 +12,15 @@ export async function getSuperAdminAnalytics() {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'active');
 
-    // 2. Total Leads Count
-    const { count: totalLeads } = await supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true });
-
     // 3. New Admissions This Month
     const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+
+    // 2. Total Leads Count (Filtered to current month)
+    const { count: totalLeads } = await supabase
+        .from('leads')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', firstDayThisMonth);
 
     const { count: newAdmissionsThisMonth } = await supabase
         .from('profiles')
@@ -34,16 +35,29 @@ export async function getSuperAdminAnalytics() {
         .gte('created_at', firstDayLastMonth)
         .lt('created_at', firstDayThisMonth);
 
-    // 4. Financial Metrics (Revenue Collected & Pending Payments)
-    const { data: studentFees } = await supabase
-        .from('student_details')
-        .select('monthly_fee, status');
+    // 4. Financial Metrics (Current Month's Revenue Collected & Pending Payments)
+    const currentMonthNum = now.getMonth() + 1;
+    const currentYearNum = now.getFullYear();
 
-    const activeFees = studentFees?.filter(s => s.status === 'active') || [];
-    const revenueCollected = activeFees.reduce((acc, curr) => acc + (Number(curr.monthly_fee) || 0), 0) || 0;
+    // Sum completed payments for the current month
+    const { data: monthCompletedPayments } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('status', 'completed')
+        .eq('billing_month', currentMonthNum)
+        .eq('billing_year', currentYearNum);
 
-    const pendingFeesList = studentFees?.filter(s => ['pending_payment', 'inactive'].includes(s.status || '')) || [];
-    const dbPendingFees = pendingFeesList.reduce((acc, curr) => acc + (Number(curr.monthly_fee) || 0), 0) || 0;
+    const revenueCollected = monthCompletedPayments?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0;
+
+    // Sum pending payments for the current month
+    const { data: monthPendingPayments } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('status', 'pending')
+        .eq('billing_month', currentMonthNum)
+        .eq('billing_year', currentYearNum);
+
+    const dbPendingFees = monthPendingPayments?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0;
     
     // If db pending fees is 0, provide a realistic 15% pending payment mock
     const pendingPayments = dbPendingFees > 0 ? dbPendingFees : Math.round(revenueCollected * 0.15);
@@ -227,5 +241,103 @@ export async function getSuperAdminAnalytics() {
         revenueTrend,
         systemHealth: 99.9,
         netRevenue
+    };
+}
+
+export async function getMonthlyReportData(year: number, month: number) {
+    const supabase = await createClient();
+
+    // 1. Calculate boundaries for that month (for leads and admissions)
+    const startDate = new Date(year, month - 1, 1).toISOString();
+    const endDate = new Date(year, month, 1).toISOString();
+
+    // 2. Fetch Admissions count for this month
+    const { count: admissionsCount } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('role', 'student')
+        .gte('created_at', startDate)
+        .lt('created_at', endDate);
+
+    // 3. Fetch Leads count created in this month
+    const { count: leadsCount } = await supabase
+        .from('leads')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', startDate)
+        .lt('created_at', endDate);
+
+    // 4. Fetch Completed Payments for this month with student profile details
+    const { data: completedPayments } = await supabase
+        .from('payments')
+        .select(`
+            *,
+            student:profiles!student_id(
+                full_name,
+                email
+            )
+        `)
+        .eq('status', 'completed')
+        .eq('billing_month', month)
+        .eq('billing_year', year);
+
+    const revenueCollected = completedPayments?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0;
+
+    // 5. Fetch Pending Payments for this month
+    const { data: pendingPaymentsData } = await supabase
+        .from('payments')
+        .select(`
+            *,
+            student:profiles!student_id(
+                full_name,
+                email
+            )
+        `)
+        .eq('status', 'pending')
+        .eq('billing_month', month)
+        .eq('billing_year', year);
+
+    const pendingPayments = pendingPaymentsData?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0;
+
+    // 6. Fetch Expenses: Active staff basic salaries
+    const { data: staffSalaries } = await supabase
+        .from('staff_details')
+        .select('basic_salary')
+        .eq('status', 'active');
+
+    const totalSalaries = staffSalaries?.reduce((acc, curr) => acc + (Number(curr.basic_salary) || 0), 0) || 0;
+
+    // 7. Expenses: Overhead (Marketing, Tech)
+    const monthStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const { data: overhead } = await supabase
+        .from('financial_overhead')
+        .select('amount')
+        .eq('month_date', monthStr);
+
+    const totalOverhead = overhead?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0;
+
+    const totalExpenses = totalSalaries + totalOverhead;
+    const netProfit = revenueCollected - totalExpenses;
+
+    // 8. Fetch detailed leads for this month
+    const { data: detailedLeads } = await supabase
+        .from('leads')
+        .select('*')
+        .gte('created_at', startDate)
+        .lt('created_at', endDate)
+        .order('created_at', { ascending: false });
+
+    return {
+        success: true,
+        admissionsCount: admissionsCount || 0,
+        leadsCount: leadsCount || 0,
+        revenueCollected,
+        pendingPayments,
+        totalSalaries,
+        totalOverhead,
+        totalExpenses,
+        netProfit,
+        payments: completedPayments || [],
+        pendingPaymentsList: pendingPaymentsData || [],
+        leads: detailedLeads || []
     };
 }

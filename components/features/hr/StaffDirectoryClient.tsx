@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ interface StaffMember {
         pay_basis?: 'hourly' | 'fixed';
         employee_id?: string | null;
         mobile_number?: string | null;
+        job_title?: string | null;
     } | null;
     student_count?: number;
 }
@@ -49,6 +50,7 @@ export default function StaffDirectoryClient({
         full_name: "",
         email: "",
         role: "teacher",
+        job_title: "Tutor",
         employee_id: "EMP",
         mobile_number: ""
     });
@@ -63,22 +65,20 @@ export default function StaffDirectoryClient({
     const [editBasicSalary, setEditBasicSalary] = useState<string>("");
     const [editHourlyRate, setEditHourlyRate] = useState<string>("");
 
-    useEffect(() => {
-        if (editingStaff) {
-            // Pay basis fields
-            const details = editingStaff.staff_details;
-            const basis = (details as any)?.pay_basis || 'hourly';
-            setEditPayBasis(basis);
-            setEditBasicSalary((details as any)?.basic_salary ? String((details as any).basic_salary) : "");
-            setEditHourlyRate(details?.hourly_rate ? String(details.hourly_rate) : "");
-        }
-    }, [editingStaff]);
+    const openEditStaff = (staff: StaffMember) => {
+        const details = staff.staff_details;
+        setEditPayBasis(details?.pay_basis || 'hourly');
+        setEditBasicSalary(details?.basic_salary ? String(details.basic_salary) : "");
+        setEditHourlyRate(details?.hourly_rate ? String(details.hourly_rate) : "");
+        setEditingStaff(staff);
+    };
 
     const filteredStaff = initialStaff.filter(person => {
         const searchLower = searchQuery.toLowerCase();
         const matchesSearch = (
             (person.full_name?.toLowerCase().includes(searchLower)) ||
-            (person.email?.toLowerCase().includes(searchLower))
+            (person.email?.toLowerCase().includes(searchLower)) ||
+            (person.staff_details?.job_title?.toLowerCase().includes(searchLower))
         );
         const matchesRole = selectedRole === "all" || person.role === selectedRole;
         return matchesSearch && matchesRole;
@@ -102,7 +102,7 @@ export default function StaffDirectoryClient({
         setIsSubmitting(false);
         if (result.success) {
             setIsAddModalOpen(false);
-            setFormData({ full_name: "", email: "", role: "teacher", employee_id: "EMP", mobile_number: "" });
+            setFormData({ full_name: "", email: "", role: "teacher", job_title: "Tutor", employee_id: "EMP", mobile_number: "" });
             setPayBasis("hourly");
             setBasicSalary("");
             setHourlyRate("");
@@ -124,6 +124,7 @@ export default function StaffDirectoryClient({
             full_name: editingStaff.full_name || "",
             email: editingStaff.email,
             role: editingStaff.role,
+            job_title: editingStaff.staff_details?.job_title || "",
             pay_basis: editPayBasis,
             basic_salary: editPayBasis === "fixed" ? parseFloat(editBasicSalary || "0") : 0,
             hourly_rate: editPayBasis === "hourly" ? parseFloat(editHourlyRate || "0") : 0,
@@ -239,7 +240,7 @@ export default function StaffDirectoryClient({
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Role</label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Access Role</label>
                                 <select
                                     value={formData.role}
                                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
@@ -249,10 +250,21 @@ export default function StaffDirectoryClient({
                                     <option value="operations">Operations</option>
                                     <option value="hr">HR</option>
                                     <option value="sales">Sales</option>
-                                    {currentUserRole === "super_admin" && <option value="sales_head">Sales Head</option>}
-                                    {currentUserRole === "super_admin" && <option value="admin">Admin</option>}
-                                    {currentUserRole === "super_admin" && <option value="super_admin">Super Admin</option>}
+                                    <option value="sales_head">Sales Head</option>
+                                    <option value="admin">Admin</option>
+                                    <option value="super_admin">Super Admin</option>
                                 </select>
+                                <p className="text-[10px] text-muted-foreground">Controls dashboard and data access.</p>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Job Title / Custom Role</label>
+                                <Input
+                                    required
+                                    value={formData.job_title}
+                                    onChange={(e) => setFormData({ ...formData, job_title: e.target.value })}
+                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                    placeholder="e.g. Receptionist"
+                                />
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>
@@ -363,7 +375,7 @@ export default function StaffDirectoryClient({
                                             <div>
                                                 <p className="font-bold text-foreground">{person.full_name || 'No Name Set'}</p>
                                                 <p className="text-[10px] text-indigo-600 font-black uppercase tracking-tighter">
-                                                    {getRoleDisplayName(person.role, person.full_name)}
+                                                    {person.staff_details?.job_title || getRoleDisplayName(person.role, person.full_name)}
                                                     {person.staff_details?.employee_id && (
                                                         <span className="text-muted-foreground ml-2 normal-case font-mono">({person.staff_details.employee_id})</span>
                                                     )}
@@ -418,22 +430,22 @@ export default function StaffDirectoryClient({
                                     <TableCell className="text-center">
                                         <div className="flex flex-col items-center justify-center gap-1">
                                             <div className="text-xs font-bold text-slate-700">
-                                                {((person.staff_details as any)?.pay_basis === 'fixed') ? (
-                                                    <span>₹{((person.staff_details as any)?.basic_salary || 0).toLocaleString()}/mo</span>
+                                                {person.staff_details?.pay_basis === 'fixed' ? (
+                                                    <span>₹{(person.staff_details.basic_salary || 0).toLocaleString()}/mo</span>
                                                 ) : (
                                                     <span>{person.staff_details?.hourly_rate ? `₹${person.staff_details.hourly_rate}/hr` : <span className="opacity-40 italic">No rate</span>}</span>
                                                 )}
                                             </div>
-                                            {((person.staff_details as any)?.pay_basis === 'fixed') ? (
+                                            {person.staff_details?.pay_basis === 'fixed' ? (
                                                 person.staff_details?.hourly_rate && person.staff_details.hourly_rate > 0 ? (
                                                     <div className="text-[10px] font-medium text-muted-foreground">
                                                         ₹{person.staff_details.hourly_rate}/hr
                                                     </div>
                                                 ) : null
                                             ) : (
-                                                (person.staff_details as any)?.basic_salary && (person.staff_details as any).basic_salary > 0 ? (
+                                                person.staff_details?.basic_salary && person.staff_details.basic_salary > 0 ? (
                                                     <div className="text-[10px] font-medium text-muted-foreground">
-                                                        ₹{((person.staff_details as any)?.basic_salary || 0).toLocaleString()} base
+                                                        ₹{(person.staff_details.basic_salary || 0).toLocaleString()} base
                                                     </div>
                                                 ) : null
                                             )}
@@ -485,7 +497,7 @@ export default function StaffDirectoryClient({
                                                             View Profile
                                                         </a>
                                                         <button
-                                                            onClick={() => { setEditingStaff(person); setOpenMenuId(null); }}
+                                                            onClick={() => { openEditStaff(person); setOpenMenuId(null); }}
                                                             className="w-full text-left px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-tighter hover:bg-muted/30 flex items-center gap-2"
                                                         >
                                                             Edit Profile
@@ -567,7 +579,7 @@ export default function StaffDirectoryClient({
                                 />
                             </div>
                             <div className="space-y-2">
-                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Role</label>
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Access Role</label>
                                                 <select
                                                     value={editingStaff.role}
                                                     onChange={(e) => setEditingStaff({ ...editingStaff, role: e.target.value })}
@@ -577,10 +589,27 @@ export default function StaffDirectoryClient({
                                                     <option value="operations">Operations</option>
                                                     <option value="hr">HR</option>
                                                     <option value="sales">Sales</option>
-                                                    {currentUserRole === "super_admin" && <option value="sales_head">Sales Head</option>}
-                                                    {currentUserRole === "super_admin" && <option value="admin">Admin</option>}
-                                                    {currentUserRole === "super_admin" && <option value="super_admin">Super Admin</option>}
+                                                    <option value="sales_head">Sales Head</option>
+                                                    <option value="admin">Admin</option>
+                                                    <option value="super_admin">Super Admin</option>
                                                 </select>
+                                                <p className="text-[10px] text-muted-foreground">Controls dashboard and data access.</p>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Job Title / Custom Role</label>
+                                                <Input
+                                                    required
+                                                    value={editingStaff.staff_details?.job_title || ""}
+                                                    onChange={(e) => setEditingStaff({
+                                                        ...editingStaff,
+                                                        staff_details: {
+                                                            ...(editingStaff.staff_details || { status: 'active', joining_date: '' }),
+                                                            job_title: e.target.value
+                                                        }
+                                                    })}
+                                                    className="h-12 rounded-2xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                                                    placeholder="e.g. Receptionist"
+                                                />
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Mobile Number</label>

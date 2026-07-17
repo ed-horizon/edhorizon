@@ -27,18 +27,33 @@ import { SessionLogsHistory } from "@/components/features/hr/SessionLogsHistory"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { getLocalDateKey } from "@/lib/date-keys";
+
+type LiveClass = Awaited<ReturnType<typeof getLiveClasses>>[number];
+type Lead = Awaited<ReturnType<typeof getLeads>>[number];
+type CompletedClass = Awaited<ReturnType<typeof getAllCompletedClassLogs>>[number];
+type StudentWithClasses = Awaited<ReturnType<typeof getStudentsWithClasses>>[number];
+type Teacher = Awaited<ReturnType<typeof getAllTeachers>>[number];
+type RequestsData = Awaited<ReturnType<typeof getAllRequestsData>>;
+type RescheduleRequest = RequestsData["rescheduleRequests"][number];
+type LeaveRequest = RequestsData["leaveRequests"][number];
+type PendingPayment = Awaited<ReturnType<typeof getPendingPayments>>[number];
+type Complaint = { id: string; parent: string; student: string; issue: string; status: string; date: string };
+type HomeworkLog = { id: string; student: string; title: string; status: string; fileUrl: string | null; date: string };
+type ScheduleSummary = { id: string; title?: string | null; start_date?: string | null; end_date?: string | null };
+type ClassSummary = { status?: string | null; schedule_id?: string | null; title?: string | null; scheduled_at: string };
 
 export default function OperationsDashboard() {
-    const [classes, setClasses] = useState<any[]>([]);
-    const [leads, setLeads] = useState<any[]>([]);
-    const [complaints, setComplaints] = useState<any[]>([]);
-    const [homeworkLogs, setHomeworkLogs] = useState<any[]>([]);
-    const [completedClasses, setCompletedClasses] = useState<any[]>([]);
-    const [students, setStudents] = useState<any[]>([]);
-    const [teachers, setTeachers] = useState<any[]>([]);
-    const [rescheduleRequests, setRescheduleRequests] = useState<any[]>([]);
-    const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
-    const [pendingPayments, setPendingPayments] = useState<any[]>([]);
+    const [classes, setClasses] = useState<LiveClass[]>([]);
+    const [leads, setLeads] = useState<Lead[]>([]);
+    const [complaints, setComplaints] = useState<Complaint[]>([]);
+    const [homeworkLogs, setHomeworkLogs] = useState<HomeworkLog[]>([]);
+    const [completedClasses, setCompletedClasses] = useState<CompletedClass[]>([]);
+    const [students, setStudents] = useState<StudentWithClasses[]>([]);
+    const [teachers, setTeachers] = useState<Teacher[]>([]);
+    const [rescheduleRequests, setRescheduleRequests] = useState<RescheduleRequest[]>([]);
+    const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+    const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
 
     const [isLoading, setIsLoading] = useState(true);
     const [userName, setUserName] = useState("Operations");
@@ -196,8 +211,8 @@ export default function OperationsDashboard() {
             } else {
                 toast.error(res.error || "Failed to update reschedule request.");
             }
-        } catch (error: any) {
-            toast.error(error.message || "An unexpected error occurred.");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "An unexpected error occurred.");
         } finally {
             setIsLoading(false);
         }
@@ -213,8 +228,8 @@ export default function OperationsDashboard() {
             } else {
                 toast.error(res.error || "Failed to update leave request.");
             }
-        } catch (error: any) {
-            toast.error(error.message || "An unexpected error occurred.");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "An unexpected error occurred.");
         } finally {
             setIsLoading(false);
         }
@@ -248,8 +263,8 @@ export default function OperationsDashboard() {
             } else {
                 toast.error(res.error || "Failed to approve payment.");
             }
-        } catch (err: any) {
-            toast.error(err.message || "An error occurred.");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "An error occurred.");
         } finally {
             setIsLoading(false);
         }
@@ -265,8 +280,8 @@ export default function OperationsDashboard() {
             } else {
                 toast.error(res.error || "Failed to reject payment.");
             }
-        } catch (err: any) {
-            toast.error(err.message || "An error occurred.");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "An error occurred.");
         } finally {
             setIsLoading(false);
         }
@@ -346,8 +361,8 @@ export default function OperationsDashboard() {
                 setVisibleSubjectsCount(1);
                 await loadData();
             }
-        } catch (err: any) {
-            toast.error(err.message || "Failed to onboard student");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "Failed to onboard student");
         } finally {
             setIsLoading(false);
         }
@@ -357,9 +372,7 @@ export default function OperationsDashboard() {
         setManualStudentId(studentId);
         const selectedStudent = students.find(s => s.id === studentId);
         if (selectedStudent) {
-            const details = Array.isArray(selectedStudent.student_details)
-                ? selectedStudent.student_details[0]
-                : selectedStudent.student_details;
+            const details = selectedStudent.details;
             if (details?.monthly_fee) {
                 setManualAmount(String(details.monthly_fee));
             } else {
@@ -423,8 +436,8 @@ export default function OperationsDashboard() {
             } else {
                 toast.error(res.error || "Failed to record manual payment.");
             }
-        } catch (err: any) {
-            toast.error(err.message || "An unexpected error occurred.");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "An unexpected error occurred.");
         } finally {
             setIsSavingManualPayment(false);
         }
@@ -457,14 +470,88 @@ export default function OperationsDashboard() {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     const feeReminderAlerts = students.filter(student => {
-        if (student.status === 'active') return false;
-        const completedThisMonth = (student.classes || []).filter((c: any) => {
-            if (c.status !== 'completed') return false;
-            const d = new Date(c.scheduled_at);
-            return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-        }).length;
-        const limit = student.classes_per_month || 12;
-        return completedThisMonth >= limit - 1;
+        // Build active subjects list for this student
+        const activeSubjects: { name: string; classesPerMonth: number }[] = [];
+        const details = student.details;
+        if (details) {
+            activeSubjects.push({
+                name: details.subject_name_1 || "Maths",
+                classesPerMonth: Number(details.classes_per_month) || 12
+            });
+            if (details.subject_name_2) {
+                activeSubjects.push({
+                    name: details.subject_name_2,
+                    classesPerMonth: Number(details.classes_per_month_2) || 0
+                });
+            }
+            if (details.subject_name_3) {
+                activeSubjects.push({
+                    name: details.subject_name_3,
+                    classesPerMonth: Number(details.classes_per_month_3) || 0
+                });
+            }
+            if (details.subject_name_4) {
+                activeSubjects.push({
+                    name: details.subject_name_4,
+                    classesPerMonth: Number(details.classes_per_month_4) || 0
+                });
+            }
+            if (details.subject_name_5) {
+                activeSubjects.push({
+                    name: details.subject_name_5,
+                    classesPerMonth: Number(details.classes_per_month_5) || 0
+                });
+            }
+        } else {
+            activeSubjects.push({
+                name: "Maths",
+                classesPerMonth: Number(student.classes_per_month) || 12
+            });
+        }
+
+        // Check if ANY subject meets the fee reminder alert threshold
+        const isAlertNeeded = activeSubjects.some(sub => {
+            if (sub.classesPerMonth <= 0) return false;
+
+            // Find matching schedule for this subject
+            const matchingSchedule = (student.active_schedules || []).find(sch =>
+                sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
+            ) || student.active_schedule;
+
+            let startStr: string | null = null;
+            let endStr: string | null = null;
+            if (matchingSchedule) {
+                startStr = matchingSchedule.start_date;
+                endStr = matchingSchedule.end_date;
+            }
+
+            // Count completed classes for this subject within its specific cycle date range
+            const completedCount = (student.classes || []).filter(c => {
+                if (c.status !== 'completed') return false;
+
+                if (c.schedule_id && matchingSchedule) {
+                    if (c.schedule_id !== matchingSchedule.id) return false;
+                } else {
+                    const classTitleLower = (c.title || "").toLowerCase();
+                    const matchesSubject = activeSubjects.length === 1 || classTitleLower.includes(sub.name.toLowerCase());
+                    if (!matchesSubject) return false;
+                }
+
+                const classDateStr = getLocalDateKey(c.scheduled_at);
+                if (startStr && endStr) {
+                    return classDateStr >= startStr && classDateStr <= endStr;
+                }
+                
+                // Fallback: current calendar month
+                const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
+                const currentYearStr = String(currentYear);
+                return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
+            }).length;
+
+            return completedCount >= sub.classesPerMonth - 1;
+        });
+
+        return isAlertNeeded;
     });
 
     return (
@@ -478,7 +565,7 @@ export default function OperationsDashboard() {
                         <span>Operations Hub Active</span>
                     </div>
                     <h1 className="text-4xl font-extrabold tracking-tight text-foreground mt-1">
-                        {userName}'s Control & QA
+                        {userName}&apos;s Control & QA
                     </h1>
                     <p className="text-xs text-muted-foreground italic font-medium">
                         Monitor live classes, verify attendance logs, process parent complaints, and track homework submissions.
@@ -533,7 +620,7 @@ export default function OperationsDashboard() {
                             <div>
                                 <span className="block text-[10px] font-bold text-muted-foreground uppercase">Class Not Marked</span>
                                 <span className="block text-2xl font-extrabold text-foreground mt-1">{classesNotMarked.length} classes</span>
-                                <p className="text-[9px] text-rose-500 mt-1 font-semibold">Tutors forgot to log yesterday's sessions.</p>
+                                <p className="text-[9px] text-rose-500 mt-1 font-semibold">Tutors forgot to log yesterday&apos;s sessions.</p>
                             </div>
                         </Card>
 
@@ -639,13 +726,57 @@ export default function OperationsDashboard() {
                                                 <span className="block text-[10px] font-black uppercase tracking-wider text-rose-600 dark:text-rose-400">💰 Fee Renewal Alerts ({feeReminderAlerts.length})</span>
                                                 <div className="space-y-2">
                                                     {feeReminderAlerts.map(student => {
-                                                        const completedThisMonth = (student.classes || []).filter((c: any) => {
-                                                            if (c.status !== 'completed') return false;
-                                                            const d = new Date(c.scheduled_at);
-                                                            return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-                                                        }).length;
-                                                        const limit = student.classes_per_month || 12;
-                                                        const isLimitReached = completedThisMonth >= limit;
+                                                        const details = student.details;
+                                                        const activeSubjects: { name: string; classesPerMonth: number }[] = [];
+                                                        if (details) {
+                                                            activeSubjects.push({ name: details.subject_name_1 || "Maths", classesPerMonth: Number(details.classes_per_month) || 12 });
+                                                            if (details.subject_name_2) activeSubjects.push({ name: details.subject_name_2, classesPerMonth: Number(details.classes_per_month_2) || 0 });
+                                                            if (details.subject_name_3) activeSubjects.push({ name: details.subject_name_3, classesPerMonth: Number(details.classes_per_month_3) || 0 });
+                                                            if (details.subject_name_4) activeSubjects.push({ name: details.subject_name_4, classesPerMonth: Number(details.classes_per_month_4) || 0 });
+                                                            if (details.subject_name_5) activeSubjects.push({ name: details.subject_name_5, classesPerMonth: Number(details.classes_per_month_5) || 0 });
+                                                        } else {
+                                                            activeSubjects.push({ name: "Maths", classesPerMonth: Number(student.classes_per_month) || 12 });
+                                                        }
+
+                                                        const subjectsWithStats = activeSubjects.map(sub => {
+                                                            const matchingSchedule = (student.active_schedules || []).find(sch =>
+                                                                sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
+                                                            ) || student.active_schedule;
+
+                                                            let startStr: string | null = null;
+                                                            let endStr: string | null = null;
+                                                            if (matchingSchedule) {
+                                                                startStr = matchingSchedule.start_date;
+                                                                endStr = matchingSchedule.end_date;
+                                                            }
+
+                                                            const completedCount = (student.classes || []).filter(c => {
+                                                                if (c.status !== 'completed') return false;
+                                                                if (c.schedule_id && matchingSchedule) {
+                                                                    if (c.schedule_id !== matchingSchedule.id) return false;
+                                                                } else {
+                                                                    const classTitleLower = (c.title || "").toLowerCase();
+                                                                    const matchesSubject = activeSubjects.length === 1 || classTitleLower.includes(sub.name.toLowerCase());
+                                                                    if (!matchesSubject) return false;
+                                                                }
+                                                                const classDateStr = getLocalDateKey(c.scheduled_at);
+                                                                if (startStr && endStr) {
+                                                                    return classDateStr >= startStr && classDateStr <= endStr;
+                                                                }
+                                                                const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
+                                                                const currentYearStr = String(currentYear);
+                                                                return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
+                                                            }).length;
+
+                                                            return {
+                                                                name: sub.name,
+                                                                completed: completedCount,
+                                                                limit: sub.classesPerMonth
+                                                            };
+                                                        });
+
+                                                        const alertingSubjects = subjectsWithStats.filter(s => s.limit > 0 && s.completed >= s.limit - 1);
+                                                        const isLimitReached = alertingSubjects.some(s => s.completed >= s.limit);
                                                         return (
                                                             <div key={student.id} className={cn("p-3 border rounded-xl text-xs flex justify-between items-center gap-4",
                                                                 isLimitReached 
@@ -654,9 +785,16 @@ export default function OperationsDashboard() {
                                                             )}>
                                                                 <div>
                                                                     <p className={cn("font-bold", isLimitReached ? "text-rose-950 dark:text-rose-200" : "text-amber-950 dark:text-amber-200")}>
-                                                                        {student.full_name} ({completedThisMonth}/{limit} Classes)
+                                                                        {student.full_name}
                                                                     </p>
-                                                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                                    <div className="mt-1 space-y-0.5">
+                                                                        {alertingSubjects.map((sub, idx) => (
+                                                                            <p key={idx} className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
+                                                                                {sub.name}: {sub.completed} / {sub.limit} classes completed
+                                                                            </p>
+                                                                        ))}
+                                                                    </div>
+                                                                    <p className="text-[10px] text-muted-foreground mt-1">
                                                                         {isLimitReached ? "Completed all classes. Needs tuition renewal." : "Only 1 class remaining. Needs renewal reminder."}
                                                                     </p>
                                                                 </div>
@@ -901,7 +1039,7 @@ export default function OperationsDashboard() {
                                                             Dates: {leave.start_date} to {leave.end_date}
                                                         </p>
                                                         {leave.reason && (
-                                                            <p className="text-muted-foreground mt-1.5 italic bg-background/50 p-2 rounded border border-border/10">"{leave.reason}"</p>
+                                                            <p className="text-muted-foreground mt-1.5 italic bg-background/50 p-2 rounded border border-border/10">&quot;{leave.reason}&quot;</p>
                                                         )}
                                                     </div>
                                                     <Badge className="bg-amber-600 text-white border-none font-bold text-[9px] uppercase px-2 py-0.5">On Leave</Badge>
@@ -943,7 +1081,7 @@ export default function OperationsDashboard() {
                                                         <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 border-none font-bold text-[9px] px-2 py-0.5">Pending</Badge>
                                                     </div>
                                                     {leave.reason && (
-                                                        <p className="text-muted-foreground italic leading-normal bg-background/50 p-2 rounded border border-border/10">"{leave.reason}"</p>
+                                                        <p className="text-muted-foreground italic leading-normal bg-background/50 p-2 rounded border border-border/10">&quot;{leave.reason}&quot;</p>
                                                     )}
                                                     {leave.teacher?.full_name && (
                                                         <p className="text-[10px] text-muted-foreground/60">Assigned Tutor: {leave.teacher.full_name}</p>
@@ -985,7 +1123,7 @@ export default function OperationsDashboard() {
                                                         <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 border-none font-bold text-[9px] px-2 py-0.5">Pending</Badge>
                                                     </div>
                                                     {req.reason && (
-                                                        <p className="text-muted-foreground italic leading-normal bg-background/50 p-2 rounded border border-border/10">Reason: "{req.reason}"</p>
+                                                        <p className="text-muted-foreground italic leading-normal bg-background/50 p-2 rounded border border-border/10">Reason: &quot;{req.reason}&quot;</p>
                                                     )}
                                                     {req.teacher?.full_name && (
                                                         <p className="text-[10px] text-muted-foreground/60">Assigned Tutor: {req.teacher.full_name}</p>
@@ -1515,7 +1653,7 @@ export default function OperationsDashboard() {
                             {/* Payment Method Select */}
                             <div className="space-y-1.5">
                                 <Label htmlFor="manual-payment-method">Payment Method *</Label>
-                                <Select onValueChange={(val: any) => setManualMethod(val)} value={manualMethod}>
+                                <Select onValueChange={(value) => setManualMethod(value as 'bank_transfer' | 'cash' | 'other')} value={manualMethod}>
                                     <SelectTrigger id="manual-payment-method" className="h-10 rounded-xl border border-muted/50 bg-background text-xs">
                                         <SelectValue placeholder="Select method..." />
                                     </SelectTrigger>
@@ -1664,8 +1802,8 @@ export default function OperationsDashboard() {
                                 } else {
                                     toast.error(res.error || "Failed to reset password.");
                                 }
-                            } catch (err: any) {
-                                toast.error(err.message || "An unexpected error occurred.");
+                            } catch (error: unknown) {
+                                toast.error(error instanceof Error ? error.message : "An unexpected error occurred.");
                             } finally {
                                 setIsResettingPassword(false);
                             }
