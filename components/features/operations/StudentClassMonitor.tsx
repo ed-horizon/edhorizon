@@ -41,6 +41,15 @@ interface LiveClass {
     parent_verified?: boolean | null;
     parent_dispute_reason?: string | null;
     tutor_joined_late?: boolean | null;
+    schedule_id?: string | null;
+}
+
+interface ClassSchedule {
+    id: string;
+    title?: string | null;
+    subject?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
 }
 
 interface StudentWithClasses {
@@ -57,8 +66,8 @@ interface StudentWithClasses {
     preferred_time: string;
     custom_student_id?: string | null;
     classes: LiveClass[];
-    active_schedule?: any | null;
-    active_schedules?: any[];
+    active_schedule?: ClassSchedule | null;
+    active_schedules?: ClassSchedule[];
 }
 
 interface StudentClassMonitorProps {
@@ -147,7 +156,7 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
         }
     };
 
-    const getScheduleStats = (sch: any, allClasses: any[]) => {
+    const getScheduleStats = (sch: ClassSchedule, allClasses: LiveClass[]) => {
         const classesForSch = allClasses.filter(c => {
             if (c.schedule_id === sch.id) return true;
             if (!c.schedule_id) {
@@ -355,7 +364,7 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                     <div className="flex items-center justify-between md:justify-end gap-3 flex-wrap md:col-span-2">
                                         <div className="flex flex-col gap-1 items-end pr-2 text-right">
                                             {studentSchedules.length > 0 ? (
-                                                studentSchedules.map((sch: any, idx: number) => {
+                                                studentSchedules.map((sch: ClassSchedule, idx: number) => {
                                                     const { schedCount, doneCount } = getScheduleStats(sch, student.classes);
                                                     return (
                                                         <div key={sch.id || idx} className="flex flex-col items-end">

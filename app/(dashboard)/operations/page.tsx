@@ -29,17 +29,31 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { getLocalDateKey } from "@/lib/date-keys";
 
+type LiveClass = Awaited<ReturnType<typeof getLiveClasses>>[number];
+type Lead = Awaited<ReturnType<typeof getLeads>>[number];
+type CompletedClass = Awaited<ReturnType<typeof getAllCompletedClassLogs>>[number];
+type StudentWithClasses = Awaited<ReturnType<typeof getStudentsWithClasses>>[number];
+type Teacher = Awaited<ReturnType<typeof getAllTeachers>>[number];
+type RequestsData = Awaited<ReturnType<typeof getAllRequestsData>>;
+type RescheduleRequest = RequestsData["rescheduleRequests"][number];
+type LeaveRequest = RequestsData["leaveRequests"][number];
+type PendingPayment = Awaited<ReturnType<typeof getPendingPayments>>[number];
+type Complaint = { id: string; parent: string; student: string; issue: string; status: string; date: string };
+type HomeworkLog = { id: string; student: string; title: string; status: string; fileUrl: string | null; date: string };
+type ScheduleSummary = { id: string; title?: string | null; start_date?: string | null; end_date?: string | null };
+type ClassSummary = { status?: string | null; schedule_id?: string | null; title?: string | null; scheduled_at: string };
+
 export default function OperationsDashboard() {
-    const [classes, setClasses] = useState<any[]>([]);
-    const [leads, setLeads] = useState<any[]>([]);
-    const [complaints, setComplaints] = useState<any[]>([]);
-    const [homeworkLogs, setHomeworkLogs] = useState<any[]>([]);
-    const [completedClasses, setCompletedClasses] = useState<any[]>([]);
-    const [students, setStudents] = useState<any[]>([]);
-    const [teachers, setTeachers] = useState<any[]>([]);
-    const [rescheduleRequests, setRescheduleRequests] = useState<any[]>([]);
-    const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
-    const [pendingPayments, setPendingPayments] = useState<any[]>([]);
+    const [classes, setClasses] = useState<LiveClass[]>([]);
+    const [leads, setLeads] = useState<Lead[]>([]);
+    const [complaints, setComplaints] = useState<Complaint[]>([]);
+    const [homeworkLogs, setHomeworkLogs] = useState<HomeworkLog[]>([]);
+    const [completedClasses, setCompletedClasses] = useState<CompletedClass[]>([]);
+    const [students, setStudents] = useState<StudentWithClasses[]>([]);
+    const [teachers, setTeachers] = useState<Teacher[]>([]);
+    const [rescheduleRequests, setRescheduleRequests] = useState<RescheduleRequest[]>([]);
+    const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+    const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
 
     const [isLoading, setIsLoading] = useState(true);
     const [userName, setUserName] = useState("Operations");
@@ -197,8 +211,8 @@ export default function OperationsDashboard() {
             } else {
                 toast.error(res.error || "Failed to update reschedule request.");
             }
-        } catch (error: any) {
-            toast.error(error.message || "An unexpected error occurred.");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "An unexpected error occurred.");
         } finally {
             setIsLoading(false);
         }
@@ -214,8 +228,8 @@ export default function OperationsDashboard() {
             } else {
                 toast.error(res.error || "Failed to update leave request.");
             }
-        } catch (error: any) {
-            toast.error(error.message || "An unexpected error occurred.");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "An unexpected error occurred.");
         } finally {
             setIsLoading(false);
         }
@@ -249,8 +263,8 @@ export default function OperationsDashboard() {
             } else {
                 toast.error(res.error || "Failed to approve payment.");
             }
-        } catch (err: any) {
-            toast.error(err.message || "An error occurred.");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "An error occurred.");
         } finally {
             setIsLoading(false);
         }
@@ -266,8 +280,8 @@ export default function OperationsDashboard() {
             } else {
                 toast.error(res.error || "Failed to reject payment.");
             }
-        } catch (err: any) {
-            toast.error(err.message || "An error occurred.");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "An error occurred.");
         } finally {
             setIsLoading(false);
         }
@@ -347,8 +361,8 @@ export default function OperationsDashboard() {
                 setVisibleSubjectsCount(1);
                 await loadData();
             }
-        } catch (err: any) {
-            toast.error(err.message || "Failed to onboard student");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "Failed to onboard student");
         } finally {
             setIsLoading(false);
         }
@@ -358,9 +372,7 @@ export default function OperationsDashboard() {
         setManualStudentId(studentId);
         const selectedStudent = students.find(s => s.id === studentId);
         if (selectedStudent) {
-            const details = Array.isArray(selectedStudent.student_details)
-                ? selectedStudent.student_details[0]
-                : selectedStudent.student_details;
+            const details = selectedStudent.details;
             if (details?.monthly_fee) {
                 setManualAmount(String(details.monthly_fee));
             } else {
@@ -424,8 +436,8 @@ export default function OperationsDashboard() {
             } else {
                 toast.error(res.error || "Failed to record manual payment.");
             }
-        } catch (err: any) {
-            toast.error(err.message || "An unexpected error occurred.");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "An unexpected error occurred.");
         } finally {
             setIsSavingManualPayment(false);
         }
@@ -502,7 +514,7 @@ export default function OperationsDashboard() {
             if (sub.classesPerMonth <= 0) return false;
 
             // Find matching schedule for this subject
-            const matchingSchedule = (student.active_schedules || []).find((sch: any) => 
+            const matchingSchedule = (student.active_schedules || []).find(sch =>
                 sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
             ) || student.active_schedule;
 
@@ -514,7 +526,7 @@ export default function OperationsDashboard() {
             }
 
             // Count completed classes for this subject within its specific cycle date range
-            const completedCount = (student.classes || []).filter((c: any) => {
+            const completedCount = (student.classes || []).filter(c => {
                 if (c.status !== 'completed') return false;
 
                 if (c.schedule_id && matchingSchedule) {
@@ -553,7 +565,7 @@ export default function OperationsDashboard() {
                         <span>Operations Hub Active</span>
                     </div>
                     <h1 className="text-4xl font-extrabold tracking-tight text-foreground mt-1">
-                        {userName}'s Control & QA
+                        {userName}&apos;s Control & QA
                     </h1>
                     <p className="text-xs text-muted-foreground italic font-medium">
                         Monitor live classes, verify attendance logs, process parent complaints, and track homework submissions.
@@ -608,7 +620,7 @@ export default function OperationsDashboard() {
                             <div>
                                 <span className="block text-[10px] font-bold text-muted-foreground uppercase">Class Not Marked</span>
                                 <span className="block text-2xl font-extrabold text-foreground mt-1">{classesNotMarked.length} classes</span>
-                                <p className="text-[9px] text-rose-500 mt-1 font-semibold">Tutors forgot to log yesterday's sessions.</p>
+                                <p className="text-[9px] text-rose-500 mt-1 font-semibold">Tutors forgot to log yesterday&apos;s sessions.</p>
                             </div>
                         </Card>
 
@@ -727,7 +739,7 @@ export default function OperationsDashboard() {
                                                         }
 
                                                         const subjectsWithStats = activeSubjects.map(sub => {
-                                                            const matchingSchedule = (student.active_schedules || []).find((sch: any) => 
+                                                            const matchingSchedule = (student.active_schedules || []).find(sch =>
                                                                 sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
                                                             ) || student.active_schedule;
 
@@ -738,7 +750,7 @@ export default function OperationsDashboard() {
                                                                 endStr = matchingSchedule.end_date;
                                                             }
 
-                                                            const completedCount = (student.classes || []).filter((c: any) => {
+                                                            const completedCount = (student.classes || []).filter(c => {
                                                                 if (c.status !== 'completed') return false;
                                                                 if (c.schedule_id && matchingSchedule) {
                                                                     if (c.schedule_id !== matchingSchedule.id) return false;
@@ -1027,7 +1039,7 @@ export default function OperationsDashboard() {
                                                             Dates: {leave.start_date} to {leave.end_date}
                                                         </p>
                                                         {leave.reason && (
-                                                            <p className="text-muted-foreground mt-1.5 italic bg-background/50 p-2 rounded border border-border/10">"{leave.reason}"</p>
+                                                            <p className="text-muted-foreground mt-1.5 italic bg-background/50 p-2 rounded border border-border/10">&quot;{leave.reason}&quot;</p>
                                                         )}
                                                     </div>
                                                     <Badge className="bg-amber-600 text-white border-none font-bold text-[9px] uppercase px-2 py-0.5">On Leave</Badge>
@@ -1069,7 +1081,7 @@ export default function OperationsDashboard() {
                                                         <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 border-none font-bold text-[9px] px-2 py-0.5">Pending</Badge>
                                                     </div>
                                                     {leave.reason && (
-                                                        <p className="text-muted-foreground italic leading-normal bg-background/50 p-2 rounded border border-border/10">"{leave.reason}"</p>
+                                                        <p className="text-muted-foreground italic leading-normal bg-background/50 p-2 rounded border border-border/10">&quot;{leave.reason}&quot;</p>
                                                     )}
                                                     {leave.teacher?.full_name && (
                                                         <p className="text-[10px] text-muted-foreground/60">Assigned Tutor: {leave.teacher.full_name}</p>
@@ -1111,7 +1123,7 @@ export default function OperationsDashboard() {
                                                         <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 border-none font-bold text-[9px] px-2 py-0.5">Pending</Badge>
                                                     </div>
                                                     {req.reason && (
-                                                        <p className="text-muted-foreground italic leading-normal bg-background/50 p-2 rounded border border-border/10">Reason: "{req.reason}"</p>
+                                                        <p className="text-muted-foreground italic leading-normal bg-background/50 p-2 rounded border border-border/10">Reason: &quot;{req.reason}&quot;</p>
                                                     )}
                                                     {req.teacher?.full_name && (
                                                         <p className="text-[10px] text-muted-foreground/60">Assigned Tutor: {req.teacher.full_name}</p>
@@ -1641,7 +1653,7 @@ export default function OperationsDashboard() {
                             {/* Payment Method Select */}
                             <div className="space-y-1.5">
                                 <Label htmlFor="manual-payment-method">Payment Method *</Label>
-                                <Select onValueChange={(val: any) => setManualMethod(val)} value={manualMethod}>
+                                <Select onValueChange={(value) => setManualMethod(value as 'bank_transfer' | 'cash' | 'other')} value={manualMethod}>
                                     <SelectTrigger id="manual-payment-method" className="h-10 rounded-xl border border-muted/50 bg-background text-xs">
                                         <SelectValue placeholder="Select method..." />
                                     </SelectTrigger>
@@ -1790,8 +1802,8 @@ export default function OperationsDashboard() {
                                 } else {
                                     toast.error(res.error || "Failed to reset password.");
                                 }
-                            } catch (err: any) {
-                                toast.error(err.message || "An unexpected error occurred.");
+                            } catch (error: unknown) {
+                                toast.error(error instanceof Error ? error.message : "An unexpected error occurred.");
                             } finally {
                                 setIsResettingPassword(false);
                             }

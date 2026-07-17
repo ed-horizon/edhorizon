@@ -15,6 +15,17 @@ import { getMonthlyReportData } from "../actions";
 import { toast } from "sonner";
 import Link from "next/link";
 
+type MonthlyReport = Awaited<ReturnType<typeof getMonthlyReportData>>;
+type HistorySummary = {
+    year: number;
+    month: number;
+    monthName: string;
+    revenue: number;
+    expenses: number;
+    profit: number;
+    admissions: number;
+};
+
 const MONTHS = [
     { value: 1, label: "January" },
     { value: 2, label: "February" },
@@ -33,8 +44,8 @@ const MONTHS = [
 export default function MonthlyReportPage() {
     const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
     const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
-    const [reportData, setReportData] = useState<any>(null);
-    const [historyList, setHistoryList] = useState<any[]>([]);
+    const [reportData, setReportData] = useState<MonthlyReport | null>(null);
+    const [historyList, setHistoryList] = useState<HistorySummary[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isHistoryLoading, setIsHistoryLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'completed' | 'pending' | 'leads'>('completed');
@@ -172,7 +183,7 @@ export default function MonthlyReportPage() {
                 </div>
             </div>
 
-            {isLoading ? (
+            {isLoading || !reportData ? (
                 <div className="flex items-center justify-center h-[40vh] animate-pulse">
                     <div className="flex flex-col items-center gap-3">
                         <Activity className="text-indigo-600 animate-spin" size={28} />
@@ -335,7 +346,7 @@ export default function MonthlyReportPage() {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-border/10">
-                                                    {reportData.payments.map((p: any) => (
+                                                    {reportData.payments.map((p) => (
                                                         <tr key={p.id} className="hover:bg-muted/10 transition-colors">
                                                             <td className="p-4 pl-6 font-bold text-indigo-600 dark:text-indigo-400">
                                                                 {p.receipt_number || "AUTO-GEN"}
@@ -378,7 +389,7 @@ export default function MonthlyReportPage() {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-border/10">
-                                                    {reportData.pendingPaymentsList.map((p: any) => (
+                                                    {reportData.pendingPaymentsList.map((p) => (
                                                         <tr key={p.id} className="hover:bg-muted/10 transition-colors">
                                                             <td className="p-4 pl-6">
                                                                 <p className="font-semibold text-foreground">{p.student?.full_name || "N/A"}</p>
@@ -419,7 +430,7 @@ export default function MonthlyReportPage() {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-border/10">
-                                                    {reportData.leads.map((l: any) => (
+                                                    {reportData.leads.map((l) => (
                                                         <tr key={l.id} className="hover:bg-muted/10 transition-colors">
                                                             <td className="p-4 pl-6">
                                                                 <p className="font-semibold text-foreground uppercase tracking-tight">{l.name}</p>

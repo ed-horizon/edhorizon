@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import { addDays, format, isAfter, isBefore, parseISO, startOfDay, endOfDay } from "date-fns"
+import { addDays, format, isAfter, parseISO, startOfDay, endOfDay } from "date-fns"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { canManageSchedule, SCHEDULE_MANAGER_ROLES } from "@/lib/schedule-authorization"
 
@@ -19,6 +19,35 @@ interface SchedulePayload {
     parent_note?: string;
     clientOffsetMinutes?: number;
     day_timings?: Record<number, string>; // Maps day of week (0-6) to "HH:mm"
+}
+
+type SubjectDetails = {
+    classes_per_month?: number | null;
+    subject_name_1?: string | null;
+    classes_per_month_2?: number | null;
+    subject_name_2?: string | null;
+    classes_per_month_3?: number | null;
+    subject_name_3?: string | null;
+    classes_per_month_4?: number | null;
+    subject_name_4?: string | null;
+    classes_per_month_5?: number | null;
+    subject_name_5?: string | null;
+};
+
+type LiveClassInsert = {
+    teacher_id: string;
+    student_id: string;
+    title: string;
+    meeting_link: string;
+    scheduled_at: string;
+    duration_hours: number;
+    schedule_id: string;
+    status: 'scheduled';
+    parent_note?: string;
+};
+
+function getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : "Unable to update the schedule.";
 }
 
 async function getScheduleActor(userId: string) {
@@ -82,7 +111,7 @@ function limitDatesByMonthlyMax(dates: string[], maxPerMonth: number) {
     return dates.slice(0, maxPerMonth);
 }
 
-function resolveMaxClassesForSubject(title: string, details: any): number {
+function resolveMaxClassesForSubject(title: string, details: SubjectDetails | null): number {
     if (!details) return 12;
 
     const titleLower = (title || "").toLowerCase();
@@ -217,7 +246,7 @@ export async function createClassSchedule(payload: SchedulePayload) {
         // 3. Bulk insert live_classes
         if (computedDates.length > 0) {
             const classPayloads = computedDates.map(date => {
-                const item: any = {
+                const item: LiveClassInsert = {
                     teacher_id: teacherId,
                     student_id: payload.student_id,
                     title: payload.title,
@@ -242,9 +271,9 @@ export async function createClassSchedule(payload: SchedulePayload) {
 
         revalidatePath('/(dashboard)', 'layout')
         return { success: true }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("createClassSchedule error:", error)
-        return { success: false, error: error.message }
+        return { success: false, error: getErrorMessage(error) }
     }
 }
 
@@ -289,7 +318,7 @@ export async function updateClassSchedule(scheduleId: string, payload: Partial<S
 
         // Sync to student_details
         if (payload.meeting_link || payload.time_of_day) {
-            const updateFields: any = {};
+            const updateFields: { preferred_meeting_link?: string; preferred_time?: string } = {};
             if (payload.meeting_link) updateFields.preferred_meeting_link = payload.meeting_link;
             if (payload.time_of_day) updateFields.preferred_time = payload.time_of_day.substring(0, 5);
 
@@ -388,9 +417,9 @@ export async function updateClassSchedule(scheduleId: string, payload: Partial<S
 
         revalidatePath('/(dashboard)', 'layout')
         return { success: true }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("updateClassSchedule error:", error)
-        return { success: false, error: error.message }
+        return { success: false, error: getErrorMessage(error) }
     }
 }
 
@@ -433,9 +462,9 @@ export async function cancelClassSchedule(scheduleId: string) {
 
         revalidatePath('/(dashboard)', 'layout')
         return { success: true }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("cancelClassSchedule error:", error)
-        return { success: false, error: error.message }
+        return { success: false, error: getErrorMessage(error) }
     }
 }
 

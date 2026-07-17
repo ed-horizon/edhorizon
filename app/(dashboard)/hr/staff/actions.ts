@@ -217,7 +217,7 @@ export async function updateStaffMember(id: string, data: {
     if (profileError) return { error: profileError.message };
 
     // Update staff_details
-    const detailsUpdate: any = {};
+    const detailsUpdate: Record<string, string | number | null | undefined> = {};
     if (data.hourly_rate !== undefined) {
         detailsUpdate.hourly_rate = data.hourly_rate;
     }
@@ -543,7 +543,7 @@ export async function updateStudentMember(id: string, data: {
 
     const serializedId = formatStudentIdAndMobile(data.custom_student_id, data.mobile_number);
 
-    const updateFields: any = {
+    const updateFields: Record<string, string | number | null | undefined> = {
         grade_level: data.grade_level,
         custom_student_id: serializedId,
         parent_email: data.parent_email !== undefined ? data.parent_email : null,

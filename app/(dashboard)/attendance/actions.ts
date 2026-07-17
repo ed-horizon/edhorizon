@@ -49,7 +49,43 @@ function getErrorMessage(error: unknown) {
 }
 
 type TeacherRelation = {
-    staff_details?: { status?: string } | Array<{ status?: string }>;
+    staff_details?: { status?: string };
+};
+
+type StaffDetails = { status?: string | null; hourly_rate?: number | string | null };
+type ProfileWithStaffDetails = {
+    id: string;
+    full_name?: string | null;
+    email?: string | null;
+    staff_details?: StaffDetails | null;
+};
+type StudentDetails = {
+    status?: string | null;
+    custom_student_id?: string | null;
+    grade_level?: string | null;
+    monthly_fee?: number | string | null;
+    preferred_meeting_link?: string | null;
+    preferred_time?: string | null;
+    classes_per_month?: number | string | null;
+    assigned_teacher_id?: string | null;
+    assigned_teacher?: TeacherRelation | TeacherRelation[] | null;
+    assigned_teacher_2?: TeacherRelation | TeacherRelation[] | null;
+    assigned_teacher_3?: TeacherRelation | TeacherRelation[] | null;
+    assigned_teacher_4?: TeacherRelation | TeacherRelation[] | null;
+    assigned_teacher_5?: TeacherRelation | TeacherRelation[] | null;
+};
+type StudentProfile = ProfileWithStaffDetails & {
+    student_details?: StudentDetails | null;
+};
+type ClassWithTeacher = {
+    student_id?: string | null;
+    teacher?: TeacherRelation | null;
+    duration_hours?: number | string | null;
+    scheduled_at?: string | null;
+};
+type RequestWithProfiles = {
+    student?: StudentProfile | null;
+    teacher?: ProfileWithStaffDetails | null;
 };
 
 function isLockedTeacherRelation(teacher: unknown) {
@@ -466,7 +502,12 @@ export async function getAssignedStudents() {
         activeSchedules?.map(s => [s.student_id, s]) || []
     );
 
-    return studentsData.map((d: any) => {
+    return studentsData.map((d: {
+        id: string;
+        custom_student_id?: string | null;
+        preferred_time?: string | null;
+        preferred_meeting_link?: string | null;
+    }) => {
         const profile = profileMap[d.id];
         const activeSch = scheduleMap[d.id];
         
@@ -543,7 +584,17 @@ export async function createLiveClass(payload: {
             }
         }
 
-        const insertPayload: any = {
+        const insertPayload: {
+            title: string;
+            meeting_link: string;
+            scheduled_at: string;
+            module_id: string | null;
+            course_id: string | null;
+            student_id: string;
+            duration_hours: number;
+            teacher_id: string;
+            parent_note?: string;
+        } = {
             title: payload.title,
             meeting_link: payload.meeting_link,
             scheduled_at: payload.scheduled_at,
@@ -569,9 +620,9 @@ export async function createLiveClass(payload: {
 
         revalidatePath('/(dashboard)', 'layout');
         return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Unexpected error in createLiveClass:", error);
-        return { error: error.message || "An unexpected error occurred" };
+        return { error: getErrorMessage(error) };
     }
 }
 
@@ -608,9 +659,9 @@ export async function cancelLiveClass(classId: string) {
 
         revalidatePath('/(dashboard)', 'layout');
         return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Unexpected error in cancelLiveClass:", error);
-        return { success: false, error: error.message || "An unexpected error occurred" };
+        return { success: false, error: getErrorMessage(error) };
     }
 }
 
@@ -645,13 +696,13 @@ export async function getAllTeachers() {
         return [];
     }
 
-    const filtered = (data || []).filter((t: any) => {
+    const filtered = (data || []).filter(t => {
         if (currentUserRole === 'super_admin') return true;
         const details = Array.isArray(t.staff_details) ? t.staff_details[0] : t.staff_details;
         return details?.status !== 'locked';
     });
 
-    return filtered.map((t: any) => ({
+    return filtered.map(t => ({
         id: t.id,
         full_name: t.full_name,
         email: t.email
@@ -692,16 +743,14 @@ export async function getAllStudentsAdmin() {
         return [];
     }
 
-    const filtered = (data || []).filter((s: any) => {
+    const filtered = (data || []).filter(s => {
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
         if (details?.status === 'inactive') return false;
         if (currentUserRole === 'super_admin') return true;
-        const assignedTeacher = details?.assigned_teacher;
-        const teacherDetails = Array.isArray(assignedTeacher?.staff_details) ? assignedTeacher?.staff_details[0] : assignedTeacher?.staff_details;
-        return teacherDetails?.status !== 'locked';
+        return !isLockedTeacherRelation(details?.assigned_teacher);
     });
 
-    return filtered.map((s: any) => {
+    return filtered.map(s => {
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
         return {
             id: s.id,
@@ -1160,12 +1209,12 @@ export async function getTeacherRequestsData() {
 
     if (leaveError) console.error("Error fetching teacher leave requests:", leaveError);
 
-    const filteredRescheduleRequests = (rescheduleRequests || []).filter((r: any) => {
+    const filteredRescheduleRequests = (rescheduleRequests || []).filter(r => {
         const studentDetails = Array.isArray(r.student?.student_details) ? r.student?.student_details[0] : r.student?.student_details;
         return studentDetails?.status !== 'inactive';
     });
 
-    const filteredLeaveRequests = (leaveRequests || []).filter((l: any) => {
+    const filteredLeaveRequests = (leaveRequests || []).filter(l => {
         const studentDetails = Array.isArray(l.student?.student_details) ? l.student?.student_details[0] : l.student?.student_details;
         return studentDetails?.status !== 'inactive';
     });
@@ -1226,7 +1275,7 @@ export async function getAllRequestsData() {
 
     if (leaveError) console.error("Error fetching all leave requests:", leaveError);
 
-    const filteredRescheduleRequests = (rescheduleRequests || []).filter((r: any) => {
+    const filteredRescheduleRequests = (rescheduleRequests || []).filter(r => {
         const studentDetails = Array.isArray(r.student?.student_details) ? r.student?.student_details[0] : r.student?.student_details;
         if (studentDetails?.status === 'inactive') return false;
 
@@ -1235,7 +1284,7 @@ export async function getAllRequestsData() {
         return teacherDetails?.status !== 'locked';
     });
 
-    const filteredLeaveRequests = (leaveRequests || []).filter((l: any) => {
+    const filteredLeaveRequests = (leaveRequests || []).filter(l => {
         const studentDetails = Array.isArray(l.student?.student_details) ? l.student?.student_details[0] : l.student?.student_details;
         if (studentDetails?.status === 'inactive') return false;
 
@@ -1301,8 +1350,8 @@ export async function updateRescheduleStatus(requestId: string, status: 'approve
                 console.error("updateRescheduleStatus live_classes update error:", classUpdateError);
                 return { success: false, error: classUpdateError.message };
             }
-        } catch (e: any) {
-            console.error("Error parsing date/time in updateRescheduleStatus:", e);
+        } catch (error: unknown) {
+            console.error("Error parsing date/time in updateRescheduleStatus:", error);
             return { success: false, error: "Invalid date or time format in request." };
         }
     }
@@ -1465,8 +1514,9 @@ export async function verifyClassAttendance(classId: string, verificationStatus:
 
     // 2. Automate Payroll Calculation if Verified
     if (verificationStatus === 'verified' && classData) {
-        const teacherProfile = classData.teacher as any;
-        const hourlyRate = teacherProfile?.staff_details?.hourly_rate || 0;
+        const teacherProfile = classData.teacher as unknown as { staff_details?: { hourly_rate?: number | string | null } | Array<{ hourly_rate?: number | string | null }> } | null;
+        const staffDetails = Array.isArray(teacherProfile?.staff_details) ? teacherProfile.staff_details[0] : teacherProfile?.staff_details;
+        const hourlyRate = Number(staffDetails?.hourly_rate) || 0;
         const duration = Number(classData.duration_hours) || 1.0;
 
         if (hourlyRate > 0) {
@@ -1553,7 +1603,7 @@ export async function getPendingClassVerifications() {
 
     if (error) throw error;
 
-    const filtered = (data || []).filter((c: any) => {
+    const filtered = (data || []).filter(c => {
         if (currentUserRole === 'super_admin') return true;
         const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
         return teacherDetails?.status !== 'locked';
@@ -1656,7 +1706,7 @@ export async function getAllCompletedClassLogs() {
         return [];
     }
 
-    const filtered = (data || []).filter((c: any) => {
+    const filtered = (data || []).filter(c => {
         if (currentUserRole === 'super_admin') return true;
         const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
         return teacherDetails?.status !== 'locked';
@@ -1796,7 +1846,7 @@ export async function getAttendanceHistory(teacherId?: string) {
         return [];
     }
 
-    return data.map((r: any) => ({
+    return data.map((r: { id: string; date: string; status: string; verification_status: string }) => ({
         id: r.id,
         date: r.date,
         status: r.status as 'present' | 'absent' | 'on_leave',
@@ -2152,7 +2202,7 @@ export async function getStudentsWithClasses() {
         return [];
     }
 
-    const filteredStudents = (students || []).filter((s: any) => {
+    const filteredStudents = (students || []).filter(s => {
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
         
         // Hide inactive students from all dashboards/places
@@ -2161,10 +2211,7 @@ export async function getStudentsWithClasses() {
         if (currentUserRole === 'super_admin') return true;
 
         // Hide students of locked tutors
-        const checkTeacherLocked = (teacher: any) => {
-            const details = Array.isArray(teacher?.staff_details) ? teacher.staff_details[0] : teacher?.staff_details;
-            return details?.status === 'locked';
-        };
+        const checkTeacherLocked = (teacher: unknown) => isLockedTeacherRelation(teacher);
         const isAnyTeacherLocked = 
             checkTeacherLocked(details?.assigned_teacher) ||
             checkTeacherLocked(details?.assigned_teacher_2) ||
@@ -2192,7 +2239,7 @@ export async function getStudentsWithClasses() {
         return [];
     }
 
-    const filteredClasses = (classes || []).filter((c: any) => {
+    const filteredClasses = (classes || []).filter(c => {
         if (currentUserRole === 'super_admin') return true;
         const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
         return teacherDetails?.status !== 'locked';
@@ -2214,7 +2261,7 @@ export async function getStudentsWithClasses() {
         .order('created_at', { ascending: false });
 
     // Group schedules by student_id
-    const schedulesByStudent: Record<string, any[]> = {};
+    const schedulesByStudent: Record<string, NonNullable<typeof schedulesData>> = {};
     (schedulesData || []).forEach(sch => {
         if (sch.student_id) {
             if (!schedulesByStudent[sch.student_id]) {
@@ -2225,7 +2272,7 @@ export async function getStudentsWithClasses() {
     });
 
     // Group classes by student_id
-    const classesByStudent: Record<string, any[]> = {};
+    const classesByStudent: Record<string, NonNullable<typeof classes>> = {};
     filteredClasses.forEach(c => {
         if (c.student_id) {
             if (!classesByStudent[c.student_id]) {
@@ -2235,7 +2282,7 @@ export async function getStudentsWithClasses() {
         }
     });
 
-    return filteredStudents.map((s: any) => {
+    return filteredStudents.map(s => {
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
         const studentSchedules = schedulesByStudent[s.id] || [];
         const activeSchedule = studentSchedules.length > 0 ? studentSchedules[0] : null;
@@ -2565,7 +2612,7 @@ export async function logTutorJoinClass(classId: string) {
         return { success: false, error: fetchError.message };
     }
 
-    const updates: any = {};
+    const updates: { tutor_joined_at?: string; tutor_joined_late?: boolean; status?: 'ongoing' } = {};
     if (!classData.tutor_joined_at) {
         const now = new Date();
         updates.tutor_joined_at = now.toISOString();
@@ -2845,7 +2892,7 @@ export async function modifyClassLog(
                 .upsert({
                     class_id: classId,
                     student_id: classObj.student_id,
-                    status: studentAttendanceStatus as any,
+                    status: studentAttendanceStatus as 'present' | 'absent' | 'late' | 'excused',
                     marked_by: user.id
                 }, { onConflict: 'class_id,student_id' });
 

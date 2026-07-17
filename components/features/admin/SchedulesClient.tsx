@@ -20,7 +20,18 @@ const DAYS = [
     { value: 0, label: 'Sun' },
 ]
 
-export function SchedulesClient({ initialSchedules }: { initialSchedules: any[] }) {
+type Schedule = {
+    id: string;
+    end_date: string;
+    pattern_days: number[];
+    day_timings?: Record<string, string> | null;
+    time_of_day: string;
+    duration_hours: number;
+    teacher?: { full_name?: string | null; email?: string | null } | null;
+    student?: { full_name?: string | null } | null;
+};
+
+export function SchedulesClient({ initialSchedules }: { initialSchedules: Schedule[] }) {
     const [searchQuery, setSearchQuery] = useState("")
     
     const todayStr = new Date().toISOString().split('T')[0]

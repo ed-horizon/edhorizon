@@ -190,8 +190,8 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
                     toast.success(`Clocked out successfully! ${elapsedTime}`);
                 }
             }
-        } catch (err: any) {
-            toast.error(err.message || "Failed to update shift status.");
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : "Failed to update shift status.");
         } finally {
             setIsPending(false);
         }

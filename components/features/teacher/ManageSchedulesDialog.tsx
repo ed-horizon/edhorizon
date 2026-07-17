@@ -33,9 +33,40 @@ const DAYS = [
 ]
 
 interface ManageSchedulesDialogProps {
-    initialSchedule?: any;
+    initialSchedule?: Partial<Schedule> & { id: string };
     trigger?: React.ReactNode;
 }
+
+type Schedule = {
+    id: string;
+    teacher_id: string;
+    student_id: string;
+    title: string;
+    meeting_link: string;
+    time_of_day: string;
+    duration_hours: number | string;
+    pattern_days: number[];
+    start_date: string;
+    end_date: string;
+    parent_note?: string | null;
+    day_timings?: Record<number, string> | null;
+    teacher?: { full_name?: string | null } | null;
+    student?: { full_name?: string | null } | null;
+};
+
+type Teacher = {
+    id: string;
+    full_name?: string | null;
+    email?: string | null;
+};
+
+type Student = {
+    id: string;
+    full_name: string;
+    custom_student_id?: string | null;
+    preferred_meeting_link?: string | null;
+    preferred_time?: string | null;
+};
 
 export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedulesDialogProps = {}) {
     const [isOpen, setIsOpen] = useState(false)
@@ -44,13 +75,12 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
     const [view, setView] = useState<'list' | 'create' | 'edit'>('list')
     
     // Auth & Role
-    const [profile, setProfile] = useState<any>(null)
     const [isAdminOrOps, setIsAdminOrOps] = useState(false)
 
     // Lists
-    const [teachers, setTeachers] = useState<any[]>([])
-    const [assignedStudents, setAssignedStudents] = useState<any[]>([])
-    const [schedules, setSchedules] = useState<any[]>([])
+    const [teachers, setTeachers] = useState<Teacher[]>([])
+    const [assignedStudents, setAssignedStudents] = useState<Student[]>([])
+    const [schedules, setSchedules] = useState<Schedule[]>([])
     
     // List Filtering (Admin/Ops only)
     const [filterTeacherId, setFilterTeacherId] = useState<string>("all")
@@ -76,15 +106,15 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
             loadInitialData()
             if (initialSchedule) {
                 setEditingScheduleId(initialSchedule.id)
-                setSelectedTeacherId(initialSchedule.teacher_id)
-                setSelectedStudentId(initialSchedule.student_id)
-                setSubject(initialSchedule.title)
-                setMeetingLink(initialSchedule.meeting_link)
-                setScheduledTime(initialSchedule.time_of_day.substring(0, 5))
-                setDurationPattern(Number(initialSchedule.duration_hours))
-                setPatternDays(initialSchedule.pattern_days)
-                setStartDate(initialSchedule.start_date)
-                setEndDate(initialSchedule.end_date)
+                setSelectedTeacherId(initialSchedule.teacher_id || "")
+                setSelectedStudentId(initialSchedule.student_id || "")
+                setSubject(initialSchedule.title || "")
+                setMeetingLink(initialSchedule.meeting_link || "")
+                setScheduledTime(initialSchedule.time_of_day?.substring(0, 5) || "")
+                setDurationPattern(Number(initialSchedule.duration_hours || 1))
+                setPatternDays(initialSchedule.pattern_days || [])
+                setStartDate(initialSchedule.start_date || "")
+                setEndDate(initialSchedule.end_date || "")
                 setNotes(initialSchedule.parent_note || "")
                 setDayTimings(initialSchedule.day_timings || {})
                 setView('edit')
@@ -117,8 +147,6 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
         setIsLoading(true)
         try {
             const currentProf = await getCurrentProfile()
-            setProfile(currentProf)
-
             const role = currentProf?.role || 'student'
             const adminRoles = ['admin', 'super_admin', 'hr', 'operations']
             const isStaff = adminRoles.includes(role)
@@ -129,16 +157,16 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
                     getAllTeachers(),
                     getAllStudentsAdmin()
                 ])
-                setTeachers(teachersData)
-                setAssignedStudents(studentsData)
+                setTeachers(teachersData as Teacher[])
+                setAssignedStudents(studentsData as Student[])
                 // Filtered schedules loaded by the useEffect hook
             } else {
                 const [studentsData, schedulesData] = await Promise.all([
                     getAssignedStudents(),
                     getTeacherSchedules()
                 ])
-                setAssignedStudents(studentsData)
-                setSchedules(schedulesData)
+                setAssignedStudents(studentsData as Student[])
+                setSchedules(schedulesData as Schedule[])
                 if (currentProf?.id) {
                     setSelectedTeacherId(currentProf.id)
                 }
@@ -155,10 +183,10 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
         try {
             if (filterTeacherId === "all") {
                 const data = await getAllActiveSchedules()
-                setSchedules(data)
+                setSchedules(data as Schedule[])
             } else {
                 const data = await getTeacherSchedules(filterTeacherId)
-                setSchedules(data)
+                setSchedules(data as Schedule[])
             }
         } catch (error) {
             toast.error("Failed to load schedules")
@@ -186,7 +214,7 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
         }
     }
 
-    const startEditing = (schedule: any) => {
+    const startEditing = (schedule: Schedule) => {
         setEditingScheduleId(schedule.id)
         setSelectedTeacherId(schedule.teacher_id)
         setSelectedStudentId(schedule.student_id)
@@ -275,8 +303,8 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
             if (isAdminOrOps) await loadSchedulesFiltered()
             resetForm(true)
             router.refresh()
-        } catch (error: any) {
-            toast.error(error.message || "Scheduling failure")
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "Scheduling failure")
         } finally {
             setIsLoading(false)
             isSubmittingRef.current = false
@@ -299,8 +327,8 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
                 setIsOpen(false)
             }
             router.refresh()
-        } catch (err: any) {
-            toast.error(err.message)
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "Unable to cancel schedule")
         } finally {
             setIsLoading(false)
             isSubmittingRef.current = false
@@ -315,7 +343,7 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
                         className="h-10 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest text-[10px] gap-2 shadow-lg shadow-indigo-600/20 transition-all hover:scale-105"
                     >
                         <Plus size={14} />
-                        <span>Schedule Month's Classes</span>
+                        <span>Schedule Month&apos;s Classes</span>
                     </Button>
                 )}
             </DialogTrigger>
