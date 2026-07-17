@@ -27,6 +27,7 @@ import { SessionLogsHistory } from "@/components/features/hr/SessionLogsHistory"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { getLocalDateKey } from "@/lib/date-keys";
 
 export default function OperationsDashboard() {
     const [classes, setClasses] = useState<any[]>([]);
@@ -516,11 +517,15 @@ export default function OperationsDashboard() {
             const completedCount = (student.classes || []).filter((c: any) => {
                 if (c.status !== 'completed') return false;
 
-                const classTitleLower = (c.title || "").toLowerCase();
-                const matchesSubject = activeSubjects.length === 1 || classTitleLower.includes(sub.name.toLowerCase());
-                if (!matchesSubject) return false;
+                if (c.schedule_id && matchingSchedule) {
+                    if (c.schedule_id !== matchingSchedule.id) return false;
+                } else {
+                    const classTitleLower = (c.title || "").toLowerCase();
+                    const matchesSubject = activeSubjects.length === 1 || classTitleLower.includes(sub.name.toLowerCase());
+                    if (!matchesSubject) return false;
+                }
 
-                const classDateStr = c.scheduled_at.substring(0, 10);
+                const classDateStr = getLocalDateKey(c.scheduled_at);
                 if (startStr && endStr) {
                     return classDateStr >= startStr && classDateStr <= endStr;
                 }
@@ -735,10 +740,14 @@ export default function OperationsDashboard() {
 
                                                             const completedCount = (student.classes || []).filter((c: any) => {
                                                                 if (c.status !== 'completed') return false;
-                                                                const classTitleLower = (c.title || "").toLowerCase();
-                                                                const matchesSubject = activeSubjects.length === 1 || classTitleLower.includes(sub.name.toLowerCase());
-                                                                if (!matchesSubject) return false;
-                                                                const classDateStr = c.scheduled_at.substring(0, 10);
+                                                                if (c.schedule_id && matchingSchedule) {
+                                                                    if (c.schedule_id !== matchingSchedule.id) return false;
+                                                                } else {
+                                                                    const classTitleLower = (c.title || "").toLowerCase();
+                                                                    const matchesSubject = activeSubjects.length === 1 || classTitleLower.includes(sub.name.toLowerCase());
+                                                                    if (!matchesSubject) return false;
+                                                                }
+                                                                const classDateStr = getLocalDateKey(c.scheduled_at);
                                                                 if (startStr && endStr) {
                                                                     return classDateStr >= startStr && classDateStr <= endStr;
                                                                 }

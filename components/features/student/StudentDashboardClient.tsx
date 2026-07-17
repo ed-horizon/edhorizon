@@ -21,6 +21,7 @@ import { createPaymentRecord } from "@/app/(dashboard)/payments/actions"
 import { deleteUploadedR2File, uploadFileDirectToR2 } from "@/lib/r2-upload-client"
 import { toast } from "sonner"
 import { ClassLogsCalendarClient } from "@/components/features/class-logs/ClassLogsCalendarClient"
+import { getLocalDateKey } from "@/lib/date-keys"
 
 interface LiveClass {
     id: string;
@@ -276,7 +277,7 @@ export function StudentDashboardClient({
             }
 
             // Date boundary checks
-            const classDateStr = c.scheduled_at.substring(0, 10);
+            const classDateStr = getLocalDateKey(c.scheduled_at);
             if (startStr && endStr) {
                 return classDateStr >= startStr && classDateStr <= endStr;
             }

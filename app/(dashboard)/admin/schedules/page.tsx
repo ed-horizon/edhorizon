@@ -6,9 +6,22 @@ import Link from "next/link"
 import { CreateLiveClassDialog } from "@/components/features/teacher/CreateLiveClassDialog"
 import { ManageSchedulesDialog } from "@/components/features/teacher/ManageSchedulesDialog"
 import { SchedulesClient } from "@/components/features/admin/SchedulesClient"
+import { redirect } from "next/navigation"
 
 export default async function AdminSchedulesManagement() {
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) redirect('/login')
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (!['admin', 'super_admin', 'hr', 'operations'].includes(profile?.role || '')) {
+        redirect('/')
+    }
 
     // Fetch all active schedules across the academy
     const { data: schedules } = await supabase

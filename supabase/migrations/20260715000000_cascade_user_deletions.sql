@@ -1,53 +1,63 @@
--- Migration: Cascade User Deletions
--- Adjust foreign key constraints on tables referencing profiles/users to support user deletion.
+-- Migration: Preserve audit and payroll history when users are deleted.
 
--- 1. Adjust payroll_items staff foreign key to delete items if the staff record is removed
--- Clean up any orphaned payroll items first to prevent constraint violations
-DELETE FROM public.payroll_items 
-WHERE staff_id IS NOT NULL 
-AND staff_id NOT IN (SELECT id FROM public.staff_details);
+-- Payroll is a financial ledger. Snapshot the staff identity on each item and
+-- retain the item after the corresponding account is removed.
+ALTER TABLE public.payroll_items
+ADD COLUMN IF NOT EXISTS staff_name TEXT,
+ADD COLUMN IF NOT EXISTS staff_email TEXT,
+ADD COLUMN IF NOT EXISTS staff_employee_id TEXT;
 
-ALTER TABLE public.payroll_items 
+UPDATE public.payroll_items AS item
+SET staff_name = COALESCE(item.staff_name, profile.full_name),
+    staff_email = COALESCE(item.staff_email, profile.email),
+    staff_employee_id = COALESCE(item.staff_employee_id, staff.employee_id)
+FROM public.profiles AS profile
+LEFT JOIN public.staff_details AS staff ON staff.id = profile.id
+WHERE item.staff_id = profile.id;
+
+ALTER TABLE public.payroll_items
+ALTER COLUMN staff_id DROP NOT NULL,
 DROP CONSTRAINT IF EXISTS payroll_items_staff_id_fkey,
-ADD CONSTRAINT payroll_items_staff_id_fkey 
-  FOREIGN KEY (staff_id) 
-  REFERENCES public.staff_details(id) 
-  ON DELETE CASCADE;
+ADD CONSTRAINT payroll_items_staff_id_fkey
+  FOREIGN KEY (staff_id)
+  REFERENCES public.profiles(id)
+  ON DELETE SET NULL;
 
--- 2. Adjust student_attendance marked_by foreign key to set null if the marking user is deleted
--- Clean up any orphaned marked_by references
-UPDATE public.student_attendance 
-SET marked_by = NULL 
-WHERE marked_by IS NOT NULL 
-AND marked_by NOT IN (SELECT id FROM public.profiles);
+-- Audit references are optional and should not prevent account removal.
+UPDATE public.student_attendance AS attendance
+SET marked_by = NULL
+WHERE marked_by IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM public.profiles AS profile WHERE profile.id = attendance.marked_by
+  );
 
-ALTER TABLE public.student_attendance 
+ALTER TABLE public.student_attendance
 DROP CONSTRAINT IF EXISTS student_attendance_marked_by_fkey,
-ADD CONSTRAINT student_attendance_marked_by_fkey 
-  FOREIGN KEY (marked_by) 
-  REFERENCES public.profiles(id) 
+ADD CONSTRAINT student_attendance_marked_by_fkey
+  FOREIGN KEY (marked_by)
+  REFERENCES public.profiles(id)
   ON DELETE SET NULL;
 
--- 3. Adjust teacher_attendance verified_by foreign key to set null if the verifying user is deleted
--- Clean up any orphaned verified_by references
-UPDATE public.teacher_attendance 
-SET verified_by = NULL 
-WHERE verified_by IS NOT NULL 
-AND verified_by NOT IN (SELECT id FROM public.profiles);
+UPDATE public.teacher_attendance AS attendance
+SET verified_by = NULL
+WHERE verified_by IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM public.profiles AS profile WHERE profile.id = attendance.verified_by
+  );
 
-ALTER TABLE public.teacher_attendance 
+ALTER TABLE public.teacher_attendance
 DROP CONSTRAINT IF EXISTS teacher_attendance_verified_by_fkey,
-ADD CONSTRAINT teacher_attendance_verified_by_fkey 
-  FOREIGN KEY (verified_by) 
-  REFERENCES public.profiles(id) 
+ADD CONSTRAINT teacher_attendance_verified_by_fkey
+  FOREIGN KEY (verified_by)
+  REFERENCES public.profiles(id)
   ON DELETE SET NULL;
 
--- 4. Adjust live_classes verified_by foreign key to set null if the auditor is deleted
--- Clean up any orphaned verified_by references
-UPDATE public.live_classes 
-SET verified_by = NULL 
-WHERE verified_by IS NOT NULL 
-AND verified_by NOT IN (SELECT id FROM public.profiles);
+UPDATE public.live_classes AS class
+SET verified_by = NULL
+WHERE verified_by IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM public.profiles AS profile WHERE profile.id = class.verified_by
+  );
 
 ALTER TABLE public.live_classes
 DROP CONSTRAINT IF EXISTS live_classes_verified_by_fkey,
@@ -56,12 +66,12 @@ ADD CONSTRAINT live_classes_verified_by_fkey
   REFERENCES public.profiles(id)
   ON DELETE SET NULL;
 
--- 5. Adjust capsules author_id foreign key to set null if the teacher is deleted
--- Clean up any orphaned author_id references
-UPDATE public.capsules 
-SET author_id = NULL 
-WHERE author_id IS NOT NULL 
-AND author_id NOT IN (SELECT id FROM auth.users);
+UPDATE public.capsules AS capsule
+SET author_id = NULL
+WHERE author_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM auth.users AS account WHERE account.id = capsule.author_id
+  );
 
 ALTER TABLE public.capsules
 DROP CONSTRAINT IF EXISTS capsules_author_id_fkey,

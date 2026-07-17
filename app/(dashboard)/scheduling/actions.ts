@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { addDays, format, isAfter, isBefore, parseISO, startOfDay, endOfDay } from "date-fns"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { canManageSchedule, SCHEDULE_MANAGER_ROLES } from "@/lib/schedule-authorization"
 
 interface SchedulePayload {
     student_id: string;
@@ -18,6 +19,22 @@ interface SchedulePayload {
     parent_note?: string;
     clientOffsetMinutes?: number;
     day_timings?: Record<number, string>; // Maps day of week (0-6) to "HH:mm"
+}
+
+async function getScheduleActor(userId: string) {
+    const adminClient = createAdminClient();
+    const { data: profile, error } = await adminClient
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
+
+    if (error || !profile?.role) return null;
+    return {
+        id: userId,
+        role: String(profile.role),
+        isManager: SCHEDULE_MANAGER_ROLES.has(String(profile.role))
+    };
 }
 
 /**
@@ -104,16 +121,12 @@ export async function createClassSchedule(payload: SchedulePayload) {
     if (!payload.start_date || !payload.end_date) return { success: false, error: "Start and end dates are required." }
 
     try {
-        const adminClient = createAdminClient();
-        // Check user's role to determine if they can override teacher_id
-        const { data: profile } = await adminClient
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single();
+        const actor = await getScheduleActor(user.id);
+        if (!actor || (!actor.isManager && actor.role !== 'teacher')) {
+            return { success: false, error: "Unauthorized" };
+        }
 
-        const isAdminOrOps = ['admin', 'super_admin', 'hr', 'operations'].includes(profile?.role || '');
-        const teacherId = (isAdminOrOps && payload.teacher_id) ? payload.teacher_id : user.id;
+        const teacherId = (actor.isManager && payload.teacher_id) ? payload.teacher_id : user.id;
 
         if (!teacherId) {
             return { success: false, error: "Tutor assignment is required." }
@@ -242,14 +255,18 @@ export async function updateClassSchedule(scheduleId: string, payload: Partial<S
     if (!user) return { success: false, error: "Unauthorized" }
 
     try {
-        // Validate access
-        const { data: existing, error: fetchErr } = await supabase
+        const actor = await getScheduleActor(user.id);
+        const adminClient = createAdminClient();
+        const { data: existing, error: fetchErr } = await adminClient
             .from('class_schedules')
-            .select('*')
+            .select('id, teacher_id')
             .eq('id', scheduleId)
             .single()
 
         if (fetchErr || !existing) throw new Error("Schedule not found")
+        if (!canManageSchedule(actor, existing.teacher_id)) {
+            return { success: false, error: "Unauthorized" };
+        }
 
         // 1. Update schedule parent
         const { data: updatedSchedule, error: updateErr } = await supabase
@@ -384,6 +401,19 @@ export async function cancelClassSchedule(scheduleId: string) {
     if (!user) return { success: false, error: "Unauthorized" }
 
     try {
+        const actor = await getScheduleActor(user.id);
+        const adminClient = createAdminClient();
+        const { data: existing, error: fetchErr } = await adminClient
+            .from('class_schedules')
+            .select('id, teacher_id')
+            .eq('id', scheduleId)
+            .single();
+
+        if (fetchErr || !existing) throw new Error("Schedule not found");
+        if (!canManageSchedule(actor, existing.teacher_id)) {
+            return { success: false, error: "Unauthorized" };
+        }
+
         const { error: cancelErr } = await supabase
             .from('class_schedules')
             .update({ status: 'cancelled' })
@@ -411,6 +441,11 @@ export async function cancelClassSchedule(scheduleId: string) {
 
 export async function getAllActiveSchedules() {
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error("Unauthorized")
+
+    const actor = await getScheduleActor(user.id)
+    if (!actor?.isManager) throw new Error("Unauthorized")
     
     // Admin query pulls all
     const { data, error } = await supabase
@@ -431,8 +466,12 @@ export async function getTeacherSchedules(teacherId?: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     
-    const targetId = teacherId || user?.id
-    if (!targetId) return []
+    if (!user) return []
+
+    const actor = await getScheduleActor(user.id)
+    if (!actor || (!actor.isManager && actor.role !== 'teacher')) return []
+
+    const targetId = actor.isManager ? (teacherId || user.id) : user.id
 
     const { data, error } = await supabase
         .from('class_schedules')

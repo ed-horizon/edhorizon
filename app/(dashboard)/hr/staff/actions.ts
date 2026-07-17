@@ -64,8 +64,8 @@ function normalizeStaffRole(role: string) {
 
 function validateStaffRole(role: string, requesterRole: string) {
     const normalizedRole = normalizeStaffRole(role);
-    if (!normalizedRole) {
-        return { error: "A valid staff role is required." } as const;
+    if (!SUPPORTED_STAFF_ROLES.has(normalizedRole)) {
+        return { error: "A supported access role is required." } as const;
     }
     if (ELEVATED_STAFF_ROLES.has(normalizedRole) && requesterRole !== "super_admin") {
         return { error: "Only Super Admin can assign elevated staff roles." } as const;
@@ -73,10 +73,19 @@ function validateStaffRole(role: string, requesterRole: string) {
     return { role: normalizedRole } as const;
 }
 
+function validateJobTitle(jobTitle: string | undefined) {
+    const normalizedTitle = jobTitle?.trim().replace(/\s+/g, " ") || "";
+    if (!normalizedTitle || normalizedTitle.length > 80) {
+        return { error: "Job title must be between 1 and 80 characters." } as const;
+    }
+    return { jobTitle: normalizedTitle } as const;
+}
+
 export async function createStaffMember(data: { 
     full_name: string; 
     email: string; 
     role: string; 
+    job_title?: string;
     employee_id?: string; 
     mobile_number: string;
     pay_basis?: string;
@@ -104,6 +113,10 @@ export async function createStaffMember(data: {
     if ("error" in roleValidation) {
         return { error: roleValidation.error };
     }
+    const jobTitleValidation = validateJobTitle(data.job_title);
+    if ("error" in jobTitleValidation) {
+        return { error: jobTitleValidation.error };
+    }
 
     // Create the user in Auth directly with password 'password123' and confirm email
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.createUser({
@@ -129,6 +142,7 @@ export async function createStaffMember(data: {
                 id: inviteData.user.id,
                 employee_id: data.employee_id || null,
                 mobile_number: data.mobile_number || null,
+                job_title: jobTitleValidation.jobTitle,
                 status: 'active',
                 joining_date: new Date().toISOString().split('T')[0],
                 pay_basis: data.pay_basis || 'hourly',
@@ -149,6 +163,7 @@ export async function updateStaffMember(id: string, data: {
     full_name: string; 
     email: string; 
     role: string; 
+    job_title?: string;
     hourly_rate?: number; 
     basic_salary?: number;
     pay_basis?: string;
@@ -174,6 +189,10 @@ export async function updateStaffMember(id: string, data: {
     const roleValidation = validateStaffRole(data.role, requesterProfile?.role || "");
     if ("error" in roleValidation) {
         return { error: roleValidation.error };
+    }
+    const jobTitleValidation = validateJobTitle(data.job_title);
+    if ("error" in jobTitleValidation) {
+        return { error: jobTitleValidation.error };
     }
 
     const { data: targetStaff } = await adminClient
@@ -214,6 +233,7 @@ export async function updateStaffMember(id: string, data: {
     if (data.mobile_number !== undefined) {
         detailsUpdate.mobile_number = data.mobile_number || null;
     }
+    detailsUpdate.job_title = jobTitleValidation.jobTitle;
 
     if (Object.keys(detailsUpdate).length > 0) {
         const { error: detailsError } = await adminClient

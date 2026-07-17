@@ -142,6 +142,8 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
                     .insert({
                         run_id: id,
                         staff_id: teacher.id,
+                        staff_name: teacher.full_name,
+                        staff_email: teacher.email,
                         basic_amount: calculatedAmount,
                         payout_status: 'pending',
                         deductions_amount: 0,
@@ -170,6 +172,9 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
             deduction_reason,
             bonus_amount,
             net_amount,
+            staff_name,
+            staff_email,
+            staff_employee_id,
             profile:profiles!staff_id (
                 id,
                 full_name,
@@ -187,6 +192,13 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         const lateCount = teacherId ? (lateJoiningsCount[teacherId] || 0) : 0;
         return {
             ...item,
+            profile: item.profile || {
+                id: null,
+                full_name: item.staff_name || "Former staff member",
+                email: item.staff_email || null,
+                role: "former_staff",
+                staff_details: null
+            },
             lateJoinings: lateCount
         };
     }).filter((item: any) => {
