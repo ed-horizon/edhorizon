@@ -108,7 +108,14 @@ function computeDatesForPattern(
 
 function limitDatesByMonthlyMax(dates: string[], maxPerMonth: number) {
     if (maxPerMonth <= 0) return dates;
-    return dates.slice(0, maxPerMonth);
+    const counts = new Map<string, number>();
+    return dates.filter((date) => {
+        const month = date.slice(0, 7);
+        const count = counts.get(month) || 0;
+        if (count >= maxPerMonth) return false;
+        counts.set(month, count + 1);
+        return true;
+    });
 }
 
 function resolveMaxClassesForSubject(title: string, details: SubjectDetails | null): number {
