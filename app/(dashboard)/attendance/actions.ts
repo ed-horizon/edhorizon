@@ -2877,6 +2877,7 @@ export async function modifyClassLog(
 
 export async function deleteClassLogOrSession(classId: string, action: 'revert' | 'delete') {
     const supabase = await createClient();
+    const adminClient = createAdminClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Unauthorized: Please log in." };
 
@@ -2893,6 +2894,16 @@ export async function deleteClassLogOrSession(classId: string, action: 'revert' 
     }
 
     if (action === 'revert') {
+        const { data: classToRevert, error: classLookupError } = await adminClient
+            .from('live_classes')
+            .select('teacher_id, scheduled_at, duration_hours')
+            .eq('id', classId)
+            .single();
+
+        if (classLookupError || !classToRevert) {
+            return { success: false, error: classLookupError?.message || "Class session not found." };
+        }
+
         // Revert class to scheduled and clear completion fields
         const { error: updateError } = await supabase
             .from('live_classes')
@@ -2905,6 +2916,8 @@ export async function deleteClassLogOrSession(classId: string, action: 'revert' 
                 tutor_joined_at: null,
                 student_joined_at: null,
                 tutor_joined_late: null,
+                verification_status: null,
+                verified_by: null,
                 parent_verified: null,
                 parent_dispute_reason: null
             })
@@ -2924,6 +2937,46 @@ export async function deleteClassLogOrSession(classId: string, action: 'revert' 
         if (deleteAttendanceError) {
             console.error("deleteClassLogOrSession revert delete attendance error:", deleteAttendanceError);
             return { success: false, error: deleteAttendanceError.message };
+        }
+
+        // Verification-created payroll items are aggregated by teacher/month. Recalculate
+        // this teacher's total from the remaining verified sessions after the revert.
+        if (classToRevert.teacher_id && classToRevert.scheduled_at) {
+            const scheduledDate = new Date(classToRevert.scheduled_at);
+            const month = scheduledDate.getMonth() + 1;
+            const year = scheduledDate.getFullYear();
+            const monthStart = new Date(year, month - 1, 1).toISOString();
+            const monthEnd = new Date(year, month, 1).toISOString();
+
+            const [{ data: payrollRun }, { data: staffDetails }, { data: verifiedClasses }] = await Promise.all([
+                adminClient.from('payroll_runs').select('id').eq('month', month).eq('year', year).maybeSingle(),
+                adminClient.from('staff_details').select('hourly_rate').eq('id', classToRevert.teacher_id).maybeSingle(),
+                adminClient
+                    .from('live_classes')
+                    .select('duration_hours')
+                    .eq('teacher_id', classToRevert.teacher_id)
+                    .eq('verification_status', 'verified')
+                    .gte('scheduled_at', monthStart)
+                    .lt('scheduled_at', monthEnd),
+            ]);
+
+            if (payrollRun) {
+                const hourlyRate = Number(staffDetails?.hourly_rate) || 0;
+                const recalculatedAmount = (verifiedClasses || []).reduce(
+                    (sum, liveClass) => sum + (Number(liveClass.duration_hours) || 1) * hourlyRate,
+                    0,
+                );
+                const payrollItem = adminClient
+                    .from('payroll_items')
+                    .update({ amount: recalculatedAmount })
+                    .eq('payroll_run_id', payrollRun.id)
+                    .eq('staff_id', classToRevert.teacher_id);
+                const { error: payrollError } = await payrollItem;
+                if (payrollError) {
+                    console.error("deleteClassLogOrSession payroll reconciliation error:", payrollError);
+                    return { success: false, error: "Class was reverted, but payroll reconciliation failed. Please retry." };
+                }
+            }
         }
 
     } else if (action === 'delete') {
