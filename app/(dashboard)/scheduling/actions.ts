@@ -106,9 +106,19 @@ function computeDatesForPattern(
     return dates
 }
 
-function limitDatesByMonthlyMax(dates: string[], maxPerMonth: number) {
+function limitDatesByMonthlyMax(dates: string[], maxPerMonth: number, clientOffsetMinutes = 0) {
     if (maxPerMonth <= 0) return dates;
-    return dates.slice(0, maxPerMonth);
+    const counts = new Map<string, number>();
+    return dates.filter((date) => {
+        // Dates are stored in UTC; derive the bucket in the schedule creator's local time.
+        const month = new Date(new Date(date).getTime() - clientOffsetMinutes * 60 * 1000)
+            .toISOString()
+            .slice(0, 7);
+        const count = counts.get(month) || 0;
+        if (count >= maxPerMonth) return false;
+        counts.set(month, count + 1);
+        return true;
+    });
 }
 
 function resolveMaxClassesForSubject(title: string, details: SubjectDetails | null): number {
@@ -227,7 +237,7 @@ export async function createClassSchedule(payload: SchedulePayload) {
         )
 
         // Limit occurrences by student's monthly limit
-        computedDates = limitDatesByMonthlyMax(computedDates, maxClasses);
+        computedDates = limitDatesByMonthlyMax(computedDates, maxClasses, payload.clientOffsetMinutes || 0);
 
         // Filter out dates that already have a class scheduled for this student at that exact time to prevent duplicates
         if (computedDates.length > 0) {
@@ -380,7 +390,7 @@ export async function updateClassSchedule(scheduleId: string, payload: Partial<S
         let futureDates = computedDates.filter(d => isAfter(parseISO(d), new Date()))
 
         // Limit occurrences by student's monthly limit
-        futureDates = limitDatesByMonthlyMax(futureDates, maxClasses);
+        futureDates = limitDatesByMonthlyMax(futureDates, maxClasses, payload.clientOffsetMinutes || 0);
 
         // Filter out dates that already have a class scheduled for this student at that exact time to prevent duplicates
         if (futureDates.length > 0) {

@@ -34,29 +34,10 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
                         sessionStorage.setItem("clockInTime", res.shift.clock_in);
                     }
                 } else {
-                    // Check if they refreshed the page while active
-                    const wasClockedIn = sessionStorage.getItem("wasClockedIn") === "true";
-                    if (wasClockedIn) {
-                        const clockInRes = await toggleShift();
-                        if (!clockInRes.error) {
-                            setIsActive(true);
-                            const originalTime = sessionStorage.getItem("clockInTime") || new Date().toISOString();
-                            setClockInTime(originalTime);
-                            sessionStorage.setItem("wasClockedIn", "true");
-                            if (!sessionStorage.getItem("clockInTime")) {
-                                sessionStorage.setItem("clockInTime", originalTime);
-                            }
-                        } else {
-                            setIsActive(false);
-                            setClockInTime(null);
-                            sessionStorage.removeItem("wasClockedIn");
-                            sessionStorage.removeItem("clockInTime");
-                        }
-                    } else {
-                        setIsActive(false);
-                        setClockInTime(null);
-                        sessionStorage.removeItem("clockInTime");
-                    }
+                    setIsActive(false);
+                    setClockInTime(null);
+                    sessionStorage.removeItem("wasClockedIn");
+                    sessionStorage.removeItem("clockInTime");
                 }
             } catch (err) {
                 console.error("Failed to fetch shift status:", err);
@@ -150,13 +131,6 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
             });
         }
 
-        // 2. Browser Close / Page Unload trigger for everyone
-        const handleUnload = () => {
-            // Send synchronous beacon request to ensure it reaches backend even during page unload
-            navigator.sendBeacon("/api/staff/clock-out");
-        };
-        window.addEventListener("beforeunload", handleUnload);
-
         return () => {
             if (isTargetRole) {
                 clearInterval(checkInterval);
@@ -164,7 +138,6 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
                     window.removeEventListener(event, resetIdleTimer);
                 });
             }
-            window.removeEventListener("beforeunload", handleUnload);
         };
     }, [isActive, role]);
 

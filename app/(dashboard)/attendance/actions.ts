@@ -951,11 +951,6 @@ export async function finalizeClassSession(
         }
     }
 
-    // Compute fallbacks for check-in logs if they are missing
-    const fallbackTime = classObj?.scheduled_at || new Date().toISOString();
-    const tutorJoinedAt = classObj?.tutor_joined_at || fallbackTime;
-    const studentJoinedAt = classObj?.student_joined_at || fallbackTime;
-
     // Update live_classes with status, verification_status and post-class logs
     const { error: updateError } = await supabase
         .from('live_classes')
@@ -966,8 +961,9 @@ export async function finalizeClassSession(
             homework_given: homeworkGiven,
             student_performance: studentPerformance,
             parent_note: parentNote,
-            tutor_joined_at: tutorJoinedAt,
-            student_joined_at: studentJoinedAt
+            // Join timestamps are populated only by an actual check-in.
+            tutor_joined_at: classObj?.tutor_joined_at || null,
+            student_joined_at: classObj?.student_joined_at || null
         })
         .eq('id', classId);
 
@@ -2384,7 +2380,6 @@ export async function assignTutorToStudent(studentId: string, teacherId: string 
     return { success: true };
 }
 
-import { generateNextReceiptNumber } from "@/app/(dashboard)/payments/actions";
 
 export async function onboardStudent(payload: {
     fullName: string;
@@ -2529,45 +2524,6 @@ export async function onboardStudent(payload: {
     if (detailsError) {
         console.error("Student details creation failed during onboarding:", detailsError);
         return { error: detailsError.message };
-    }
-
-    // Generate automated fee receipt
-    try {
-        const totalAmount = (payload.monthlyFee !== undefined ? payload.monthlyFee : 4500) +
-                            (payload.monthlyFee2 || 0) +
-                            (payload.monthlyFee3 || 0) +
-                            (payload.monthlyFee4 || 0) +
-                            (payload.monthlyFee5 || 0);
-
-        if (totalAmount > 0) {
-            const receiptNumber = await generateNextReceiptNumber();
-            const subjectsList = [
-                payload.subjectName1 || 'Maths',
-                payload.subjectName2,
-                payload.subjectName3,
-                payload.subjectName4,
-                payload.subjectName5
-            ].filter(Boolean).join(', ');
-
-            const { error: paymentError } = await adminClient
-                .from('payments')
-                .insert({
-                    student_id: newStudentId,
-                    amount: totalAmount,
-                    billing_month: new Date().getMonth() + 1,
-                    billing_year: new Date().getFullYear(),
-                    payment_method: 'upi_qr', // default convenient offline onboarding method
-                    status: 'completed',
-                    receipt_number: receiptNumber,
-                    subject_name: subjectsList
-                });
-
-            if (paymentError) {
-                console.error("Error generating automated onboarding payment receipt:", paymentError);
-            }
-        }
-    } catch (receiptErr) {
-        console.error("Failed to generate onboarding payment receipt:", receiptErr);
     }
 
     // If onboarding a converted lead, mark the lead as onboarded

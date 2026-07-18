@@ -6,7 +6,6 @@ import { revalidatePath } from "next/cache";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatStudentIdAndMobile } from "@/lib/utils";
-import { generateNextReceiptNumber } from "@/app/(dashboard)/payments/actions";
 
 type TeacherRelation = {
     staff_details?: { status?: string } | Array<{ status?: string }>;
@@ -400,45 +399,6 @@ export async function createStudentMember(data: {
 
         if (updateError) {
             console.error("Error upserting student details:", updateError);
-        } else {
-            // Generate automated fee receipt
-            try {
-                const totalAmount = (data.monthly_fee !== undefined ? data.monthly_fee : 4500) +
-                                    (data.monthly_fee_2 || 0) +
-                                    (data.monthly_fee_3 || 0) +
-                                    (data.monthly_fee_4 || 0) +
-                                    (data.monthly_fee_5 || 0);
-
-                if (totalAmount > 0) {
-                    const receiptNumber = await generateNextReceiptNumber();
-                    const subjectsList = [
-                        data.subject_name_1 || 'Maths',
-                        data.subject_name_2,
-                        data.subject_name_3,
-                        data.subject_name_4,
-                        data.subject_name_5
-                    ].filter(Boolean).join(', ');
-
-                    const { error: paymentError } = await adminClient
-                        .from('payments')
-                        .insert({
-                            student_id: inviteData.user.id,
-                            amount: totalAmount,
-                            billing_month: new Date().getMonth() + 1,
-                            billing_year: new Date().getFullYear(),
-                            payment_method: 'upi_qr', // default convenient offline onboarding method
-                            status: 'completed',
-                            receipt_number: receiptNumber,
-                            subject_name: subjectsList
-                        });
-
-                    if (paymentError) {
-                        console.error("Error generating automated onboarding payment receipt:", paymentError);
-                    }
-                }
-            } catch (receiptErr) {
-                console.error("Failed to generate onboarding payment receipt:", receiptErr);
-            }
         }
     }
 

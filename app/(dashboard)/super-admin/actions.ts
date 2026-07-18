@@ -298,13 +298,24 @@ export async function getMonthlyReportData(year: number, month: number) {
 
     const pendingPayments = pendingPaymentsData?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0;
 
-    // 6. Fetch Expenses: Active staff basic salaries
-    const { data: staffSalaries } = await supabase
-        .from('staff_details')
-        .select('basic_salary')
-        .eq('status', 'active');
+    // 6. Fetch Expenses: the selected month's payroll, including hourly wages.
+    const { data: payrollRun } = await supabase
+        .from('payroll_runs')
+        .select('id')
+        .eq('month', month)
+        .eq('year', year)
+        .maybeSingle();
 
-    const totalSalaries = staffSalaries?.reduce((acc, curr) => acc + (Number(curr.basic_salary) || 0), 0) || 0;
+    const { data: payrollItems } = payrollRun
+        ? await supabase
+            .from('payroll_items')
+            .select('basic_amount, amount, bonus_amount, deductions_amount, deductions')
+            .or(`run_id.eq.${payrollRun.id},payroll_run_id.eq.${payrollRun.id}`)
+        : { data: [] };
+
+    const totalSalaries = payrollItems?.reduce((acc, item) =>
+        acc + (Number(item.basic_amount) || Number(item.amount) || 0) + (Number(item.bonus_amount) || 0)
+            - (Number(item.deductions_amount) || Number(item.deductions) || 0), 0) || 0;
 
     // 7. Expenses: Overhead (Marketing, Tech)
     const monthStr = `${year}-${String(month).padStart(2, '0')}-01`;
