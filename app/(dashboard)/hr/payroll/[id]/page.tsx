@@ -24,6 +24,7 @@ type VerifiedClass = {
     teacher_id: string | null;
     duration_hours?: number | null;
     student_id?: string | null;
+    payroll_amount?: number | null;
     student_attendance?: { status?: string | null } | { status?: string | null }[] | null;
 };
 type PayrollItem = {
@@ -59,7 +60,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
 
     const { data: verifiedClasses } = await supabase
         .from('live_classes')
-        .select('teacher_id, duration_hours, student_id, student_attendance(status)')
+        .select('teacher_id, duration_hours, student_id, payroll_amount, student_attendance(status)')
         .eq('verification_status', 'verified')
         .gte('scheduled_at', startOfMonth)
         .lte('scheduled_at', endOfMonth);
@@ -136,6 +137,10 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
             const teacher = teachers.find(t => t.id === c.teacher_id);
             if (teacher?.pay_basis === 'fixed') {
                 return; // Fixed pay staff are paid basic_salary, not class hours
+            }
+            if (c.payroll_amount !== null && c.payroll_amount !== undefined) {
+                calculatedPayouts[c.teacher_id] += Number(c.payroll_amount) || 0;
+                return;
             }
             const baseRate = teacher?.hourly_rate || 0;
             const customStudentRate = c.student_id ? studentRates[c.student_id] : null;

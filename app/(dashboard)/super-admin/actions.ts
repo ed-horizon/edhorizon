@@ -302,20 +302,20 @@ export async function getMonthlyReportData(year: number, month: number) {
     const { data: payrollRun } = await supabase
         .from('payroll_runs')
         .select('id')
-        .eq('month', month)
+        .eq('month', String(month))
         .eq('year', year)
         .maybeSingle();
 
     const { data: payrollItems } = payrollRun
         ? await supabase
             .from('payroll_items')
-            .select('amount, bonus, deductions')
-            .eq('payroll_run_id', payrollRun.id)
+            .select('basic_amount, bonus_amount, deductions_amount')
+            .eq('run_id', payrollRun.id)
         : { data: [] };
 
     const totalSalaries = payrollItems?.reduce((acc, item) =>
-        acc + (Number(item.amount) || 0) + (Number(item.bonus) || 0)
-            - (Number(item.deductions) || 0), 0) || 0;
+        acc + (Number(item.basic_amount) || 0) + (Number(item.bonus_amount) || 0)
+            - (Number(item.deductions_amount) || 0), 0) || 0;
 
     // 7. Expenses: Overhead (Marketing, Tech)
     const monthStr = `${year}-${String(month).padStart(2, '0')}-01`;
