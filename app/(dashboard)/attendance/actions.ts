@@ -2904,6 +2904,43 @@ export async function deleteClassLogOrSession(classId: string, action: 'revert' 
             return { success: false, error: classLookupError?.message || "Class session not found." };
         }
 
+        let payrollReconciliation: { runId: string; amount: number } | null = null;
+        if (classToRevert.teacher_id && classToRevert.scheduled_at) {
+            const scheduledDate = new Date(classToRevert.scheduled_at);
+            const month = scheduledDate.getMonth() + 1;
+            const year = scheduledDate.getFullYear();
+            const monthStart = new Date(year, month - 1, 1).toISOString();
+            const monthEnd = new Date(year, month, 1).toISOString();
+            const [runResult, staffResult, classesResult] = await Promise.all([
+                adminClient.from('payroll_runs').select('id, status').eq('month', month).eq('year', year).maybeSingle(),
+                adminClient.from('staff_details').select('hourly_rate').eq('id', classToRevert.teacher_id).maybeSingle(),
+                adminClient
+                    .from('live_classes')
+                    .select('id, duration_hours')
+                    .eq('teacher_id', classToRevert.teacher_id)
+                    .eq('verification_status', 'verified')
+                    .gte('scheduled_at', monthStart)
+                    .lt('scheduled_at', monthEnd),
+            ]);
+
+            if (runResult.error || staffResult.error || classesResult.error) {
+                console.error("deleteClassLogOrSession payroll source query error:", runResult.error || staffResult.error || classesResult.error);
+                return { success: false, error: "Unable to verify payroll before reverting this class. Please retry." };
+            }
+            if (runResult.data?.status === 'completed' || runResult.data?.status === 'paid') {
+                return { success: false, error: "This class belongs to a finalized payroll run and cannot be reverted. Record an adjustment instead." };
+            }
+            if (runResult.data) {
+                const hourlyRate = Number(staffResult.data?.hourly_rate) || 0;
+                payrollReconciliation = {
+                    runId: runResult.data.id,
+                    amount: (classesResult.data || [])
+                        .filter((liveClass) => liveClass.id !== classId)
+                        .reduce((sum, liveClass) => sum + (Number(liveClass.duration_hours) || 1) * hourlyRate, 0),
+                };
+            }
+        }
+
         // Revert class to scheduled and clear completion fields
         const { error: updateError } = await supabase
             .from('live_classes')
@@ -2940,42 +2977,16 @@ export async function deleteClassLogOrSession(classId: string, action: 'revert' 
         }
 
         // Verification-created payroll items are aggregated by teacher/month. Recalculate
-        // this teacher's total from the remaining verified sessions after the revert.
-        if (classToRevert.teacher_id && classToRevert.scheduled_at) {
-            const scheduledDate = new Date(classToRevert.scheduled_at);
-            const month = scheduledDate.getMonth() + 1;
-            const year = scheduledDate.getFullYear();
-            const monthStart = new Date(year, month - 1, 1).toISOString();
-            const monthEnd = new Date(year, month, 1).toISOString();
-
-            const [{ data: payrollRun }, { data: staffDetails }, { data: verifiedClasses }] = await Promise.all([
-                adminClient.from('payroll_runs').select('id').eq('month', month).eq('year', year).maybeSingle(),
-                adminClient.from('staff_details').select('hourly_rate').eq('id', classToRevert.teacher_id).maybeSingle(),
-                adminClient
-                    .from('live_classes')
-                    .select('duration_hours')
-                    .eq('teacher_id', classToRevert.teacher_id)
-                    .eq('verification_status', 'verified')
-                    .gte('scheduled_at', monthStart)
-                    .lt('scheduled_at', monthEnd),
-            ]);
-
-            if (payrollRun) {
-                const hourlyRate = Number(staffDetails?.hourly_rate) || 0;
-                const recalculatedAmount = (verifiedClasses || []).reduce(
-                    (sum, liveClass) => sum + (Number(liveClass.duration_hours) || 1) * hourlyRate,
-                    0,
-                );
-                const payrollItem = adminClient
-                    .from('payroll_items')
-                    .update({ amount: recalculatedAmount })
-                    .eq('payroll_run_id', payrollRun.id)
-                    .eq('staff_id', classToRevert.teacher_id);
-                const { error: payrollError } = await payrollItem;
-                if (payrollError) {
-                    console.error("deleteClassLogOrSession payroll reconciliation error:", payrollError);
-                    return { success: false, error: "Class was reverted, but payroll reconciliation failed. Please retry." };
-                }
+        // this teacher's total from the verified sessions remaining after the revert.
+        if (payrollReconciliation && classToRevert.teacher_id) {
+            const { error: payrollError } = await adminClient
+                .from('payroll_items')
+                .update({ amount: payrollReconciliation.amount })
+                .eq('payroll_run_id', payrollReconciliation.runId)
+                .eq('staff_id', classToRevert.teacher_id);
+            if (payrollError) {
+                console.error("deleteClassLogOrSession payroll reconciliation error:", payrollError);
+                return { success: false, error: "Class was reverted, but payroll reconciliation failed. Please retry." };
             }
         }
 
