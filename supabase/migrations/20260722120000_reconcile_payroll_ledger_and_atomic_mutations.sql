@@ -2,14 +2,17 @@
 -- by the application, then make class/payroll mutations transactional.
 
 ALTER TABLE public.payroll_runs
-  ALTER COLUMN month TYPE TEXT USING month::TEXT;
+  ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
+
+ALTER TABLE public.payroll_runs
+  ALTER COLUMN month TYPE INTEGER USING month::INTEGER;
 
 ALTER TABLE public.payroll_items
   ADD COLUMN IF NOT EXISTS run_id UUID,
   ADD COLUMN IF NOT EXISTS basic_amount NUMERIC(12, 2),
-  ADD COLUMN IF NOT EXISTS bonus_amount NUMERIC(12, 2) DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS deductions_amount NUMERIC(12, 2) DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS payout_status TEXT DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS bonus_amount NUMERIC(12, 2),
+  ADD COLUMN IF NOT EXISTS deductions_amount NUMERIC(12, 2),
+  ADD COLUMN IF NOT EXISTS payout_status TEXT,
   ADD COLUMN IF NOT EXISTS payment_reference TEXT,
   ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS staff_name TEXT,
@@ -41,6 +44,13 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'payroll_items' AND column_name = 'deductions'
+  ) THEN
+    EXECUTE 'UPDATE public.payroll_items SET deductions_amount = COALESCE(deductions_amount, deductions, 0)';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name = 'payroll_items' AND column_name = 'status'
   ) THEN
     EXECUTE $sql$UPDATE public.payroll_items
@@ -52,24 +62,42 @@ BEGIN
 END
 $reconcile$;
 
+UPDATE public.payroll_items
+SET basic_amount = COALESCE(basic_amount, 0),
+    bonus_amount = COALESCE(bonus_amount, 0),
+    deductions_amount = COALESCE(deductions_amount, 0),
+    payout_status = COALESCE(payout_status, 'pending');
+
+-- Normalize net pay to one generated expression. Existing ordinary or
+-- differently-generated columns are safely recomputed from their components.
 DO $generated$
+DECLARE
+  v_is_generated TEXT;
+  v_expression TEXT;
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'payroll_items' AND column_name = 'net_amount'
+  SELECT is_generated, generation_expression
+  INTO v_is_generated, v_expression
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'payroll_items'
+    AND column_name = 'net_amount';
+
+  IF FOUND AND (
+    v_is_generated <> 'ALWAYS'
+    OR regexp_replace(COALESCE(v_expression, ''), '[[:space:]]', '', 'g')
+       <> '((basic_amount+bonus_amount)-deductions_amount)'
   ) THEN
+    ALTER TABLE public.payroll_items DROP COLUMN net_amount;
+    v_is_generated := NULL;
+  END IF;
+
+  IF v_is_generated IS NULL THEN
     ALTER TABLE public.payroll_items
       ADD COLUMN net_amount NUMERIC(12, 2)
       GENERATED ALWAYS AS (basic_amount + bonus_amount - deductions_amount) STORED;
   END IF;
 END
 $generated$;
-
-UPDATE public.payroll_items
-SET basic_amount = COALESCE(basic_amount, 0),
-    bonus_amount = COALESCE(bonus_amount, 0),
-    deductions_amount = COALESCE(deductions_amount, deductions, 0),
-    payout_status = COALESCE(payout_status, 'pending');
 
 UPDATE public.payroll_items AS item
 SET staff_name = COALESCE(item.staff_name, profile.full_name),
@@ -116,13 +144,82 @@ CREATE UNIQUE INDEX IF NOT EXISTS payroll_runs_month_year_key
   ON public.payroll_runs (month, year);
 CREATE INDEX IF NOT EXISTS payroll_items_run_id_idx
   ON public.payroll_items (run_id);
-CREATE INDEX IF NOT EXISTS payroll_items_run_staff_idx
-  ON public.payroll_items (run_id, staff_id)
-  WHERE staff_id IS NOT NULL;
 
 ALTER TABLE public.live_classes
   ADD COLUMN IF NOT EXISTS payroll_item_id UUID REFERENCES public.payroll_items(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS payroll_amount NUMERIC(12, 2);
+
+-- Older UI requests could create more than one payslip for the same employee
+-- and run. Merge those rows before enforcing the ledger invariant.
+CREATE TEMP TABLE payroll_item_reconciliation ON COMMIT DROP AS
+SELECT id AS item_id,
+       first_value(id) OVER (
+         PARTITION BY run_id, staff_id ORDER BY created_at, id
+       ) AS keeper_id,
+       count(*) OVER (PARTITION BY run_id, staff_id) AS item_count
+FROM public.payroll_items
+WHERE run_id IS NOT NULL AND staff_id IS NOT NULL;
+
+WITH totals AS (
+  SELECT mapping.keeper_id,
+         sum(COALESCE(item.basic_amount, 0)) AS basic_amount,
+         sum(COALESCE(item.bonus_amount, 0)) AS bonus_amount,
+         sum(COALESCE(item.deductions_amount, 0)) AS deductions_amount,
+         max(item.paid_at) AS paid_at,
+         (array_agg(item.payment_reference ORDER BY item.created_at, item.id)
+           FILTER (WHERE item.payment_reference IS NOT NULL))[1] AS payment_reference,
+         (array_agg(item.staff_name ORDER BY item.created_at, item.id)
+           FILTER (WHERE item.staff_name IS NOT NULL))[1] AS staff_name,
+         (array_agg(item.staff_email ORDER BY item.created_at, item.id)
+           FILTER (WHERE item.staff_email IS NOT NULL))[1] AS staff_email,
+         (array_agg(item.staff_employee_id ORDER BY item.created_at, item.id)
+           FILTER (WHERE item.staff_employee_id IS NOT NULL))[1] AS staff_employee_id,
+         CASE max(CASE item.payout_status
+           WHEN 'paid' THEN 4
+           WHEN 'processing' THEN 3
+           WHEN 'failed' THEN 2
+           ELSE 1
+         END)
+           WHEN 4 THEN 'paid'
+           WHEN 3 THEN 'processing'
+           WHEN 2 THEN 'failed'
+           ELSE 'pending'
+         END AS payout_status
+  FROM payroll_item_reconciliation AS mapping
+  JOIN public.payroll_items AS item ON item.id = mapping.item_id
+  WHERE mapping.item_count > 1
+  GROUP BY mapping.keeper_id
+)
+UPDATE public.payroll_items AS keeper
+SET basic_amount = totals.basic_amount,
+    bonus_amount = totals.bonus_amount,
+    deductions_amount = totals.deductions_amount,
+    deductions = totals.deductions_amount,
+    payout_status = totals.payout_status,
+    paid_at = totals.paid_at,
+    payment_reference = totals.payment_reference,
+    staff_name = totals.staff_name,
+    staff_email = totals.staff_email,
+    staff_employee_id = totals.staff_employee_id
+FROM totals
+WHERE keeper.id = totals.keeper_id;
+
+UPDATE public.live_classes AS class
+SET payroll_item_id = mapping.keeper_id
+FROM payroll_item_reconciliation AS mapping
+WHERE mapping.item_count > 1
+  AND mapping.item_id <> mapping.keeper_id
+  AND class.payroll_item_id = mapping.item_id;
+
+DELETE FROM public.payroll_items AS item
+USING payroll_item_reconciliation AS mapping
+WHERE mapping.item_count > 1
+  AND mapping.item_id <> mapping.keeper_id
+  AND item.id = mapping.item_id;
+
+DROP INDEX IF EXISTS public.payroll_items_run_staff_idx;
+CREATE UNIQUE INDEX payroll_items_run_staff_idx
+  ON public.payroll_items (run_id, staff_id);
 
 CREATE OR REPLACE FUNCTION public.verify_class_attendance_with_payroll(
   p_class_id UUID,
@@ -143,7 +240,7 @@ DECLARE
   v_custom_rate NUMERIC;
   v_rate NUMERIC := 0;
   v_session_pay NUMERIC(12, 2) := 0;
-  v_month TEXT;
+  v_month INTEGER;
   v_year INTEGER;
   v_staff_name TEXT;
   v_staff_email TEXT;
@@ -208,7 +305,7 @@ BEGIN
   END IF;
 
   IF v_session_pay > 0 THEN
-    v_month := EXTRACT(MONTH FROM v_class.scheduled_at)::INTEGER::TEXT;
+    v_month := EXTRACT(MONTH FROM v_class.scheduled_at)::INTEGER;
     v_year := EXTRACT(YEAR FROM v_class.scheduled_at)::INTEGER;
 
     PERFORM pg_advisory_xact_lock(hashtextextended(v_year::TEXT || ':' || v_month, 0));
@@ -259,6 +356,12 @@ BEGIN
         0, 'pending', v_staff_name, v_staff_email,
         v_employee_id
       )
+      ON CONFLICT (run_id, staff_id)
+      DO UPDATE SET
+        basic_amount = public.payroll_items.basic_amount + EXCLUDED.basic_amount,
+        staff_name = COALESCE(public.payroll_items.staff_name, EXCLUDED.staff_name),
+        staff_email = COALESCE(public.payroll_items.staff_email, EXCLUDED.staff_email),
+        staff_employee_id = COALESCE(public.payroll_items.staff_employee_id, EXCLUDED.staff_employee_id)
       RETURNING * INTO v_item;
     END IF;
   END IF;
@@ -285,6 +388,7 @@ DECLARE
   v_class public.live_classes%ROWTYPE;
   v_item public.payroll_items%ROWTYPE;
   v_run public.payroll_runs%ROWTYPE;
+  v_run_id UUID;
   v_next_basic NUMERIC(12, 2);
 BEGIN
   IF p_action NOT IN ('revert', 'delete') THEN
@@ -310,10 +414,11 @@ BEGIN
         RAISE EXCEPTION 'This verified class has no payroll ledger entry. Record a manual payroll adjustment first.';
       END IF;
 
-      SELECT * INTO v_item
+      -- Discover the parent without locking, then lock run -> item in the same
+      -- order used by verification to avoid a run/item deadlock cycle.
+      SELECT run_id INTO v_run_id
       FROM public.payroll_items
-      WHERE id = v_class.payroll_item_id
-      FOR UPDATE;
+      WHERE id = v_class.payroll_item_id;
 
       IF NOT FOUND THEN
         RAISE EXCEPTION 'The linked payroll item could not be found.';
@@ -321,11 +426,21 @@ BEGIN
 
       SELECT * INTO v_run
       FROM public.payroll_runs
-      WHERE id = v_item.run_id
+      WHERE id = v_run_id
       FOR UPDATE;
 
       IF NOT FOUND THEN
         RAISE EXCEPTION 'The linked payroll run could not be found.';
+      END IF;
+
+      SELECT * INTO v_item
+      FROM public.payroll_items
+      WHERE id = v_class.payroll_item_id
+        AND run_id = v_run.id
+      FOR UPDATE;
+
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'The linked payroll item changed while it was being adjusted.';
       END IF;
 
       IF v_run.status IN ('processed', 'completed', 'paid')
