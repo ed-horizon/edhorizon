@@ -33,6 +33,9 @@ BEGIN
     WHERE table_schema = 'public' AND table_name = 'payroll_items' AND column_name = 'amount'
   ) THEN
     EXECUTE 'UPDATE public.payroll_items SET basic_amount = COALESCE(basic_amount, amount)';
+    -- New ledger writes use basic_amount; retain the legacy column only for
+    -- backward compatibility without requiring every new insert to dual-write.
+    EXECUTE 'ALTER TABLE public.payroll_items ALTER COLUMN amount DROP NOT NULL';
   END IF;
 
   IF EXISTS (
