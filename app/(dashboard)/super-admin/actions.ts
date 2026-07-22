@@ -302,7 +302,7 @@ export async function getMonthlyReportData(year: number, month: number) {
     const { data: payrollRun } = await supabase
         .from('payroll_runs')
         .select('id')
-        .eq('month', String(month))
+        .eq('month', month)
         .eq('year', year)
         .maybeSingle();
 

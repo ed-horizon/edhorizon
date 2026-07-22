@@ -90,13 +90,13 @@ export default async function StaffProfilePage(props: { params: Promise<{ id: st
     if (activeRun) {
         const { data: payrollItem } = await supabase
             .from('payroll_items')
-            .select('amount')
-            .eq('payroll_run_id', activeRun.id)
+            .select('net_amount')
+            .eq('run_id', activeRun.id)
             .eq('staff_id', profile.id)
             .single();
 
         if (payrollItem) {
-            currentAccruedSalary = Number(payrollItem.amount);
+            currentAccruedSalary = Number(payrollItem.net_amount);
         }
     }
 

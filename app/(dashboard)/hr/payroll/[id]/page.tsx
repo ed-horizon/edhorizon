@@ -174,7 +174,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
                 // Insert missing payroll item for active teachers
                 await supabaseAdmin
                     .from('payroll_items')
-                    .insert({
+                    .upsert({
                         run_id: id,
                         staff_id: teacher.id,
                         staff_name: teacher.full_name,
@@ -184,6 +184,9 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
                         deductions_amount: 0,
                         deductions: 0,
                         bonus_amount: 0
+                    }, {
+                        onConflict: 'run_id,staff_id',
+                        ignoreDuplicates: true
                     });
             } else if (Number(existing.basic_amount) !== calculatedAmount && existing.payout_status !== 'processing' && existing.payout_status !== 'paid') {
                 // Update amount if mismatch is found and item isn't approved/paid yet

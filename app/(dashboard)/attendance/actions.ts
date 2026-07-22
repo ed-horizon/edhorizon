@@ -1481,140 +1481,24 @@ export async function verifyClassAttendance(classId: string, verificationStatus:
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
-    const supabaseAdmin = createSupabaseClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    // Read the prior state before recording payroll. Re-verifying a class must not
-    // add its amount a second time.
-    const { data: existingClass, error: classLookupError } = await supabaseAdmin
-        .from('live_classes')
-        .select(`
-            *,
-            teacher:profiles!teacher_id(
-                id,
-                staff_details(hourly_rate)
-            )
-        `)
-        .eq('id', classId)
+    const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
         .single();
-
-    if (classLookupError || !existingClass) {
-        console.error("verifyClassAttendance class lookup error:", classLookupError)
-        throw classLookupError || new Error("Class session not found.");
+    if (profileError || !['admin', 'super_admin', 'hr', 'operations'].includes(profile?.role || '')) {
+        return { success: false, error: "Unauthorized: Only admins, HR, and Operations can verify classes." };
     }
 
-    if (verificationStatus === 'verified' && existingClass.verification_status === 'verified') {
-        return { success: true };
-    }
-
-    if (verificationStatus === 'verified') {
-        const teacherProfile = existingClass.teacher as unknown as { staff_details?: { hourly_rate?: number | string | null } | Array<{ hourly_rate?: number | string | null }> } | null;
-        const staffDetails = Array.isArray(teacherProfile?.staff_details) ? teacherProfile.staff_details[0] : teacherProfile?.staff_details;
-        const hourlyRate = Number(staffDetails?.hourly_rate) || 0;
-        const duration = Number(existingClass.duration_hours) || 1.0;
-        let payrollItemId: string | null = null;
-        let payrollAmount: number | null = null;
-
-        if (hourlyRate > 0 && existingClass.teacher_id && existingClass.scheduled_at) {
-            const sessionPay = duration * Number(hourlyRate);
-
-            // Store the amount earned for this class. Later reversals subtract this
-            // immutable value instead of recalculating with a changed hourly rate.
-            const scheduledDate = new Date(existingClass.scheduled_at);
-            const classMonth = String(scheduledDate.getMonth() + 1);
-            const classYear = scheduledDate.getFullYear();
-
-            const { data: existingPayrollRun, error: payrollRunError } = await supabaseAdmin
-                .from('payroll_runs')
-                .select('id, status')
-                .eq('month', classMonth)
-                .eq('year', classYear)
-                .maybeSingle();
-
-            if (payrollRunError) {
-                return { success: false, error: payrollRunError.message };
-            }
-            let payrollRun = existingPayrollRun;
-            if (!payrollRun) {
-                const { data: newRun, error: createRunError } = await supabaseAdmin
-                    .from('payroll_runs')
-                    .insert({ month: classMonth, year: classYear })
-                    .select('id, status')
-                    .single();
-                if (createRunError || !newRun) {
-                    return { success: false, error: createRunError?.message || "Unable to create payroll run." };
-                }
-                payrollRun = newRun;
-            }
-
-            if (payrollRun.status === 'completed' || payrollRun.status === 'paid') {
-                return { success: false, error: "This class belongs to a finalized payroll run. Record an adjustment instead." };
-            }
-
-            const { data: existingItem, error: itemLookupError } = await supabaseAdmin
-                .from('payroll_items')
-                .select('id, basic_amount, bonus_amount, deductions_amount, payout_status')
-                .eq('run_id', payrollRun.id)
-                .eq('staff_id', existingClass.teacher_id)
-                .maybeSingle();
-            if (itemLookupError) {
-                return { success: false, error: itemLookupError.message };
-            }
-
-            if (existingItem?.payout_status === 'processing' || existingItem?.payout_status === 'paid') {
-                return { success: false, error: "This payroll item is finalized. Record an adjustment instead." };
-            }
-
-            if (existingItem) {
-                const nextBasicAmount = Number(existingItem.basic_amount || 0) + sessionPay;
-                const { error: updatePayrollError } = await supabaseAdmin
-                    .from('payroll_items')
-                    .update({
-                        basic_amount: nextBasicAmount,
-                        net_amount: nextBasicAmount + Number(existingItem.bonus_amount || 0) - Number(existingItem.deductions_amount || 0),
-                    })
-                    .eq('id', existingItem.id);
-                if (updatePayrollError) return { success: false, error: updatePayrollError.message };
-                payrollItemId = existingItem.id;
-            } else {
-                const { data: newItem, error: createItemError } = await supabaseAdmin
-                    .from('payroll_items')
-                    .insert({
-                        run_id: payrollRun.id,
-                        staff_id: existingClass.teacher_id,
-                        basic_amount: sessionPay,
-                        bonus_amount: 0,
-                        deductions_amount: 0,
-                        deductions: 0,
-                        net_amount: sessionPay,
-                        payout_status: 'pending',
-                    })
-                    .select('id')
-                    .single();
-                if (createItemError || !newItem) return { success: false, error: createItemError?.message || "Unable to create payroll item." };
-                payrollItemId = newItem.id;
-            }
-            payrollAmount = sessionPay;
-        }
-
-        const { error: updateError } = await supabaseAdmin
-            .from('live_classes')
-            .update({
-                verification_status: verificationStatus,
-                verified_by: user.id,
-                payroll_item_id: payrollItemId,
-                payroll_amount: payrollAmount,
-            })
-            .eq('id', classId);
-        if (updateError) return { success: false, error: updateError.message };
-    } else {
-        const { error: updateError } = await supabaseAdmin
-            .from('live_classes')
-            .update({ verification_status: verificationStatus, verified_by: user.id })
-            .eq('id', classId);
-        if (updateError) return { success: false, error: updateError.message };
+    const adminClient = createAdminClient();
+    const { error } = await adminClient.rpc('verify_class_attendance_with_payroll', {
+        p_class_id: classId,
+        p_verified_by: user.id,
+        p_verification_status: verificationStatus,
+    });
+    if (error) {
+        console.error("verifyClassAttendance transaction error:", error);
+        return { success: false, error: error.message };
     }
 
     revalidatePath('/(dashboard)/hr', 'page');
@@ -2945,131 +2829,13 @@ export async function deleteClassLogOrSession(classId: string, action: 'revert' 
         return { success: false, error: "Unauthorized: Only admins, HR, and Operations can perform this action." };
     }
 
-    const { data: classSession, error: classLookupError } = await adminClient
-        .from('live_classes')
-        .select('verification_status, payroll_item_id, payroll_amount')
-        .eq('id', classId)
-        .single();
-
-    if (classLookupError || !classSession) {
-        return { success: false, error: classLookupError?.message || "Class session not found." };
-    }
-
-    // A verified class is a payroll-bearing record. Only reverse it using the
-    // amount captured at verification time; never derive it from the staff
-    // member's current rate. Older verified classes without the ledger link are
-    // intentionally blocked so HR can make a documented manual adjustment.
-    let payrollAdjustment: { itemId: string; basicAmount: number; netAmount: number } | null = null;
-    if (classSession.verification_status === 'verified') {
-        if (!classSession.payroll_item_id || classSession.payroll_amount === null) {
-            return { success: false, error: "This verified class has no payroll ledger entry. Record a manual payroll adjustment before changing it." };
-        }
-
-        const { data: payrollItem, error: payrollItemError } = await adminClient
-            .from('payroll_items')
-            .select('id, run_id, basic_amount, bonus_amount, deductions_amount, payout_status')
-            .eq('id', classSession.payroll_item_id)
-            .single();
-        if (payrollItemError || !payrollItem) {
-            return { success: false, error: payrollItemError?.message || "The linked payroll item could not be found." };
-        }
-
-        const { data: payrollRun, error: payrollRunError } = await adminClient
-            .from('payroll_runs')
-            .select('status')
-            .eq('id', payrollItem.run_id)
-            .single();
-        if (payrollRunError || !payrollRun) {
-            return { success: false, error: payrollRunError?.message || "The linked payroll run could not be found." };
-        }
-        if (payrollRun.status === 'completed' || payrollRun.status === 'paid' || payrollItem.payout_status === 'processing' || payrollItem.payout_status === 'paid') {
-            return { success: false, error: "This class belongs to a finalized payroll item and cannot be changed. Record an adjustment instead." };
-        }
-
-        const basicAmount = Number(payrollItem.basic_amount || 0) - Number(classSession.payroll_amount);
-        if (basicAmount < 0) {
-            return { success: false, error: "The payroll ledger is inconsistent. Record a manual adjustment before changing this class." };
-        }
-        payrollAdjustment = {
-            itemId: payrollItem.id,
-            basicAmount,
-            netAmount: basicAmount + Number(payrollItem.bonus_amount || 0) - Number(payrollItem.deductions_amount || 0),
-        };
-    }
-
-    const applyPayrollAdjustment = async () => {
-        if (!payrollAdjustment) return null;
-        const { error } = await adminClient
-            .from('payroll_items')
-            .update({ basic_amount: payrollAdjustment.basicAmount, net_amount: payrollAdjustment.netAmount })
-            .eq('id', payrollAdjustment.itemId);
-        return error;
-    };
-
-    if (action === 'revert') {
-
-        // Revert class to scheduled and clear completion fields
-        const { error: updateError } = await supabase
-            .from('live_classes')
-            .update({
-                status: 'scheduled',
-                topic_taught: null,
-                homework_given: null,
-                student_performance: null,
-                parent_note: null,
-                tutor_joined_at: null,
-                student_joined_at: null,
-                tutor_joined_late: null,
-                verification_status: null,
-                verified_by: null,
-                payroll_item_id: null,
-                payroll_amount: null,
-                parent_verified: null,
-                parent_dispute_reason: null
-            })
-            .eq('id', classId);
-
-        if (updateError) {
-            console.error("deleteClassLogOrSession revert update error:", updateError);
-            return { success: false, error: updateError.message };
-        }
-
-        // Delete all matching student attendance records so it's removed from student portal/counts
-        const { error: deleteAttendanceError } = await supabase
-            .from('student_attendance')
-            .delete()
-            .eq('class_id', classId);
-
-        if (deleteAttendanceError) {
-            console.error("deleteClassLogOrSession revert delete attendance error:", deleteAttendanceError);
-            return { success: false, error: deleteAttendanceError.message };
-        }
-
-        const payrollError = await applyPayrollAdjustment();
-        if (payrollError) {
-            console.error("deleteClassLogOrSession payroll adjustment error:", payrollError);
-            return { success: false, error: "Class was reverted, but payroll adjustment failed. Please retry." };
-        }
-
-    } else if (action === 'delete') {
-        // The same finalized-run and ledger safeguards apply to deletion.
-        const payrollError = await applyPayrollAdjustment();
-        if (payrollError) {
-            console.error("deleteClassLogOrSession payroll adjustment error:", payrollError);
-            return { success: false, error: "Unable to adjust payroll before deleting this class. Please retry." };
-        }
-
-        const { error: deleteError } = await supabase
-            .from('live_classes')
-            .delete()
-            .eq('id', classId);
-
-        if (deleteError) {
-            console.error("deleteClassLogOrSession delete class error:", deleteError);
-            return { success: false, error: deleteError.message };
-        }
-    } else {
-        return { success: false, error: "Invalid action specified." };
+    const { error } = await adminClient.rpc('change_class_log_with_payroll', {
+        p_class_id: classId,
+        p_action: action,
+    });
+    if (error) {
+        console.error("deleteClassLogOrSession transaction error:", error);
+        return { success: false, error: error.message };
     }
 
     revalidatePath('/(dashboard)', 'layout');
