@@ -57,10 +57,11 @@ BEGIN
     WHERE table_schema = 'public' AND table_name = 'payroll_items' AND column_name = 'status'
   ) THEN
     EXECUTE $sql$UPDATE public.payroll_items
-      SET payout_status = CASE
-        WHEN status IN ('pending', 'processing', 'paid', 'failed') THEN status
-        ELSE COALESCE(payout_status, 'pending')
-      END$sql$;
+      SET payout_status = COALESCE(
+        payout_status,
+        CASE WHEN status IN ('pending', 'processing', 'paid', 'failed') THEN status END,
+        'pending'
+      )$sql$;
   END IF;
 END
 $reconcile$;
