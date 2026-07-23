@@ -49,7 +49,43 @@ function getErrorMessage(error: unknown) {
 }
 
 type TeacherRelation = {
-    staff_details?: { status?: string } | Array<{ status?: string }>;
+    staff_details?: { status?: string };
+};
+
+type StaffDetails = { status?: string | null; hourly_rate?: number | string | null };
+type ProfileWithStaffDetails = {
+    id: string;
+    full_name?: string | null;
+    email?: string | null;
+    staff_details?: StaffDetails | null;
+};
+type StudentDetails = {
+    status?: string | null;
+    custom_student_id?: string | null;
+    grade_level?: string | null;
+    monthly_fee?: number | string | null;
+    preferred_meeting_link?: string | null;
+    preferred_time?: string | null;
+    classes_per_month?: number | string | null;
+    assigned_teacher_id?: string | null;
+    assigned_teacher?: TeacherRelation | TeacherRelation[] | null;
+    assigned_teacher_2?: TeacherRelation | TeacherRelation[] | null;
+    assigned_teacher_3?: TeacherRelation | TeacherRelation[] | null;
+    assigned_teacher_4?: TeacherRelation | TeacherRelation[] | null;
+    assigned_teacher_5?: TeacherRelation | TeacherRelation[] | null;
+};
+type StudentProfile = ProfileWithStaffDetails & {
+    student_details?: StudentDetails | null;
+};
+type ClassWithTeacher = {
+    student_id?: string | null;
+    teacher?: TeacherRelation | null;
+    duration_hours?: number | string | null;
+    scheduled_at?: string | null;
+};
+type RequestWithProfiles = {
+    student?: StudentProfile | null;
+    teacher?: ProfileWithStaffDetails | null;
 };
 
 function isLockedTeacherRelation(teacher: unknown) {
@@ -466,7 +502,12 @@ export async function getAssignedStudents() {
         activeSchedules?.map(s => [s.student_id, s]) || []
     );
 
-    return studentsData.map((d: any) => {
+    return studentsData.map((d: {
+        id: string;
+        custom_student_id?: string | null;
+        preferred_time?: string | null;
+        preferred_meeting_link?: string | null;
+    }) => {
         const profile = profileMap[d.id];
         const activeSch = scheduleMap[d.id];
         
@@ -543,7 +584,17 @@ export async function createLiveClass(payload: {
             }
         }
 
-        const insertPayload: any = {
+        const insertPayload: {
+            title: string;
+            meeting_link: string;
+            scheduled_at: string;
+            module_id: string | null;
+            course_id: string | null;
+            student_id: string;
+            duration_hours: number;
+            teacher_id: string;
+            parent_note?: string;
+        } = {
             title: payload.title,
             meeting_link: payload.meeting_link,
             scheduled_at: payload.scheduled_at,
@@ -569,9 +620,9 @@ export async function createLiveClass(payload: {
 
         revalidatePath('/(dashboard)', 'layout');
         return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Unexpected error in createLiveClass:", error);
-        return { error: error.message || "An unexpected error occurred" };
+        return { error: getErrorMessage(error) };
     }
 }
 
@@ -608,9 +659,9 @@ export async function cancelLiveClass(classId: string) {
 
         revalidatePath('/(dashboard)', 'layout');
         return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Unexpected error in cancelLiveClass:", error);
-        return { success: false, error: error.message || "An unexpected error occurred" };
+        return { success: false, error: getErrorMessage(error) };
     }
 }
 
@@ -645,13 +696,13 @@ export async function getAllTeachers() {
         return [];
     }
 
-    const filtered = (data || []).filter((t: any) => {
+    const filtered = (data || []).filter(t => {
         if (currentUserRole === 'super_admin') return true;
         const details = Array.isArray(t.staff_details) ? t.staff_details[0] : t.staff_details;
         return details?.status !== 'locked';
     });
 
-    return filtered.map((t: any) => ({
+    return filtered.map(t => ({
         id: t.id,
         full_name: t.full_name,
         email: t.email
@@ -677,6 +728,7 @@ export async function getAllStudentsAdmin() {
             full_name, 
             email,
             student_details!student_details_id_fkey (
+                status,
                 custom_student_id,
                 assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (
                     staff_details (status)
@@ -691,15 +743,14 @@ export async function getAllStudentsAdmin() {
         return [];
     }
 
-    const filtered = (data || []).filter((s: any) => {
-        if (currentUserRole === 'super_admin') return true;
+    const filtered = (data || []).filter(s => {
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
-        const assignedTeacher = details?.assigned_teacher;
-        const teacherDetails = Array.isArray(assignedTeacher?.staff_details) ? assignedTeacher?.staff_details[0] : assignedTeacher?.staff_details;
-        return teacherDetails?.status !== 'locked';
+        if (details?.status === 'inactive') return false;
+        if (currentUserRole === 'super_admin') return true;
+        return !isLockedTeacherRelation(details?.assigned_teacher);
     });
 
-    return filtered.map((s: any) => {
+    return filtered.map(s => {
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
         return {
             id: s.id,
@@ -900,11 +951,6 @@ export async function finalizeClassSession(
         }
     }
 
-    // Compute fallbacks for check-in logs if they are missing
-    const fallbackTime = classObj?.scheduled_at || new Date().toISOString();
-    const tutorJoinedAt = classObj?.tutor_joined_at || fallbackTime;
-    const studentJoinedAt = classObj?.student_joined_at || fallbackTime;
-
     // Update live_classes with status, verification_status and post-class logs
     const { error: updateError } = await supabase
         .from('live_classes')
@@ -915,8 +961,9 @@ export async function finalizeClassSession(
             homework_given: homeworkGiven,
             student_performance: studentPerformance,
             parent_note: parentNote,
-            tutor_joined_at: tutorJoinedAt,
-            student_joined_at: studentJoinedAt
+            // Join timestamps are populated only by an actual check-in.
+            tutor_joined_at: classObj?.tutor_joined_at || null,
+            student_joined_at: classObj?.student_joined_at || null
         })
         .eq('id', classId);
 
@@ -1158,12 +1205,12 @@ export async function getTeacherRequestsData() {
 
     if (leaveError) console.error("Error fetching teacher leave requests:", leaveError);
 
-    const filteredRescheduleRequests = (rescheduleRequests || []).filter((r: any) => {
+    const filteredRescheduleRequests = (rescheduleRequests || []).filter(r => {
         const studentDetails = Array.isArray(r.student?.student_details) ? r.student?.student_details[0] : r.student?.student_details;
         return studentDetails?.status !== 'inactive';
     });
 
-    const filteredLeaveRequests = (leaveRequests || []).filter((l: any) => {
+    const filteredLeaveRequests = (leaveRequests || []).filter(l => {
         const studentDetails = Array.isArray(l.student?.student_details) ? l.student?.student_details[0] : l.student?.student_details;
         return studentDetails?.status !== 'inactive';
     });
@@ -1224,7 +1271,7 @@ export async function getAllRequestsData() {
 
     if (leaveError) console.error("Error fetching all leave requests:", leaveError);
 
-    const filteredRescheduleRequests = (rescheduleRequests || []).filter((r: any) => {
+    const filteredRescheduleRequests = (rescheduleRequests || []).filter(r => {
         const studentDetails = Array.isArray(r.student?.student_details) ? r.student?.student_details[0] : r.student?.student_details;
         if (studentDetails?.status === 'inactive') return false;
 
@@ -1233,7 +1280,7 @@ export async function getAllRequestsData() {
         return teacherDetails?.status !== 'locked';
     });
 
-    const filteredLeaveRequests = (leaveRequests || []).filter((l: any) => {
+    const filteredLeaveRequests = (leaveRequests || []).filter(l => {
         const studentDetails = Array.isArray(l.student?.student_details) ? l.student?.student_details[0] : l.student?.student_details;
         if (studentDetails?.status === 'inactive') return false;
 
@@ -1299,8 +1346,8 @@ export async function updateRescheduleStatus(requestId: string, status: 'approve
                 console.error("updateRescheduleStatus live_classes update error:", classUpdateError);
                 return { success: false, error: classUpdateError.message };
             }
-        } catch (e: any) {
-            console.error("Error parsing date/time in updateRescheduleStatus:", e);
+        } catch (error: unknown) {
+            console.error("Error parsing date/time in updateRescheduleStatus:", error);
             return { success: false, error: "Invalid date or time format in request." };
         }
     }
@@ -1434,87 +1481,24 @@ export async function verifyClassAttendance(classId: string, verificationStatus:
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
-    const supabaseAdmin = createSupabaseClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    // 1. Update the live_classes record bypassing RLS
-    const { data: classData, error } = await supabaseAdmin
-        .from('live_classes')
-        .update({
-            verification_status: verificationStatus,
-            verified_by: user.id
-        })
-        .eq('id', classId)
-        .select(`
-            *,
-            teacher:profiles!teacher_id(
-                id,
-                staff_details(hourly_rate)
-            )
-        `)
+    const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
         .single();
-
-    if (error) {
-        console.error("verifyClassAttendance admin update error:", error)
-        throw error;
+    if (profileError || !['admin', 'super_admin', 'hr', 'operations'].includes(profile?.role || '')) {
+        return { success: false, error: "Unauthorized: Only admins, HR, and Operations can verify classes." };
     }
 
-    // 2. Automate Payroll Calculation if Verified
-    if (verificationStatus === 'verified' && classData) {
-        const teacherProfile = classData.teacher as any;
-        const hourlyRate = teacherProfile?.staff_details?.hourly_rate || 0;
-        const duration = Number(classData.duration_hours) || 1.0;
-
-        if (hourlyRate > 0) {
-            const sessionPay = duration * Number(hourlyRate);
-
-            // Find or create active payroll run for the scheduled month
-            const scheduledDate = new Date(classData.scheduled_at);
-            const classMonth = scheduledDate.getMonth() + 1; // 1-12
-            const classYear = scheduledDate.getFullYear();
-
-            let { data: payrollRun } = await supabaseAdmin
-                .from('payroll_runs')
-                .select('id')
-                .eq('month', classMonth)
-                .eq('year', classYear)
-                .single();
-
-            if (!payrollRun) {
-                const { data: newRun } = await supabaseAdmin
-                    .from('payroll_runs')
-                    .insert({ month: classMonth, year: classYear })
-                    .select()
-                    .single();
-                payrollRun = newRun;
-            }
-
-            if (payrollRun) {
-                const { data: existingItem } = await supabaseAdmin
-                    .from('payroll_items')
-                    .select('*')
-                    .eq('payroll_run_id', payrollRun.id)
-                    .eq('staff_id', classData.teacher_id)
-                    .single();
-
-                if (existingItem) {
-                    await supabaseAdmin
-                        .from('payroll_items')
-                        .update({ amount: Number(existingItem.amount) + sessionPay })
-                        .eq('id', existingItem.id);
-                } else {
-                    await supabaseAdmin
-                        .from('payroll_items')
-                        .insert({
-                            payroll_run_id: payrollRun.id,
-                            staff_id: classData.teacher_id,
-                            amount: sessionPay
-                        });
-                }
-            }
-        }
+    const adminClient = createAdminClient();
+    const { error } = await adminClient.rpc('verify_class_attendance_with_payroll', {
+        p_class_id: classId,
+        p_verified_by: user.id,
+        p_verification_status: verificationStatus,
+    });
+    if (error) {
+        console.error("verifyClassAttendance transaction error:", error);
+        return { success: false, error: error.message };
     }
 
     revalidatePath('/(dashboard)/hr', 'page');
@@ -1551,7 +1535,7 @@ export async function getPendingClassVerifications() {
 
     if (error) throw error;
 
-    const filtered = (data || []).filter((c: any) => {
+    const filtered = (data || []).filter(c => {
         if (currentUserRole === 'super_admin') return true;
         const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
         return teacherDetails?.status !== 'locked';
@@ -1654,7 +1638,7 @@ export async function getAllCompletedClassLogs() {
         return [];
     }
 
-    const filtered = (data || []).filter((c: any) => {
+    const filtered = (data || []).filter(c => {
         if (currentUserRole === 'super_admin') return true;
         const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
         return teacherDetails?.status !== 'locked';
@@ -1794,7 +1778,7 @@ export async function getAttendanceHistory(teacherId?: string) {
         return [];
     }
 
-    return data.map((r: any) => ({
+    return data.map((r: { id: string; date: string; status: string; verification_status: string }) => ({
         id: r.id,
         date: r.date,
         status: r.status as 'present' | 'absent' | 'on_leave',
@@ -1942,7 +1926,8 @@ export async function getStudentDashboardData() {
         completedClasses,
         rescheduleRequests: rescheduleRequests || [],
         leaveRequests: leaveRequests || [],
-        activeSchedule
+        activeSchedule,
+        activeSchedules: schedulesData || []
     };
 }
 
@@ -2115,6 +2100,15 @@ export async function getStudentsWithClasses() {
                 preferred_time,
                 classes_per_month,
                 custom_student_id,
+                subject_name_1,
+                subject_name_2,
+                classes_per_month_2,
+                subject_name_3,
+                classes_per_month_3,
+                subject_name_4,
+                classes_per_month_4,
+                subject_name_5,
+                classes_per_month_5,
                 assigned_teacher:profiles!student_details_assigned_teacher_id_fkey (
                     staff_details (status)
                 ),
@@ -2140,7 +2134,7 @@ export async function getStudentsWithClasses() {
         return [];
     }
 
-    const filteredStudents = (students || []).filter((s: any) => {
+    const filteredStudents = (students || []).filter(s => {
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
         
         // Hide inactive students from all dashboards/places
@@ -2149,10 +2143,7 @@ export async function getStudentsWithClasses() {
         if (currentUserRole === 'super_admin') return true;
 
         // Hide students of locked tutors
-        const checkTeacherLocked = (teacher: any) => {
-            const details = Array.isArray(teacher?.staff_details) ? teacher.staff_details[0] : teacher?.staff_details;
-            return details?.status === 'locked';
-        };
+        const checkTeacherLocked = (teacher: unknown) => isLockedTeacherRelation(teacher);
         const isAnyTeacherLocked = 
             checkTeacherLocked(details?.assigned_teacher) ||
             checkTeacherLocked(details?.assigned_teacher_2) ||
@@ -2180,7 +2171,7 @@ export async function getStudentsWithClasses() {
         return [];
     }
 
-    const filteredClasses = (classes || []).filter((c: any) => {
+    const filteredClasses = (classes || []).filter(c => {
         if (currentUserRole === 'super_admin') return true;
         const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
         return teacherDetails?.status !== 'locked';
@@ -2202,7 +2193,7 @@ export async function getStudentsWithClasses() {
         .order('created_at', { ascending: false });
 
     // Group schedules by student_id
-    const schedulesByStudent: Record<string, any[]> = {};
+    const schedulesByStudent: Record<string, NonNullable<typeof schedulesData>> = {};
     (schedulesData || []).forEach(sch => {
         if (sch.student_id) {
             if (!schedulesByStudent[sch.student_id]) {
@@ -2213,7 +2204,7 @@ export async function getStudentsWithClasses() {
     });
 
     // Group classes by student_id
-    const classesByStudent: Record<string, any[]> = {};
+    const classesByStudent: Record<string, NonNullable<typeof classes>> = {};
     filteredClasses.forEach(c => {
         if (c.student_id) {
             if (!classesByStudent[c.student_id]) {
@@ -2223,7 +2214,7 @@ export async function getStudentsWithClasses() {
         }
     });
 
-    return filteredStudents.map((s: any) => {
+    return filteredStudents.map(s => {
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
         const studentSchedules = schedulesByStudent[s.id] || [];
         const activeSchedule = studentSchedules.length > 0 ? studentSchedules[0] : null;
@@ -2243,7 +2234,8 @@ export async function getStudentsWithClasses() {
             custom_student_id: details?.custom_student_id || null,
             classes: classesByStudent[s.id] || [],
             active_schedule: activeSchedule,
-            active_schedules: studentSchedules
+            active_schedules: studentSchedules,
+            details: details || null
         };
     });
 }
@@ -2324,7 +2316,6 @@ export async function assignTutorToStudent(studentId: string, teacherId: string 
     return { success: true };
 }
 
-import { generateNextReceiptNumber } from "@/app/(dashboard)/payments/actions";
 
 export async function onboardStudent(payload: {
     fullName: string;
@@ -2471,45 +2462,6 @@ export async function onboardStudent(payload: {
         return { error: detailsError.message };
     }
 
-    // Generate automated fee receipt
-    try {
-        const totalAmount = (payload.monthlyFee !== undefined ? payload.monthlyFee : 4500) +
-                            (payload.monthlyFee2 || 0) +
-                            (payload.monthlyFee3 || 0) +
-                            (payload.monthlyFee4 || 0) +
-                            (payload.monthlyFee5 || 0);
-
-        if (totalAmount > 0) {
-            const receiptNumber = await generateNextReceiptNumber();
-            const subjectsList = [
-                payload.subjectName1 || 'Maths',
-                payload.subjectName2,
-                payload.subjectName3,
-                payload.subjectName4,
-                payload.subjectName5
-            ].filter(Boolean).join(', ');
-
-            const { error: paymentError } = await adminClient
-                .from('payments')
-                .insert({
-                    student_id: newStudentId,
-                    amount: totalAmount,
-                    billing_month: new Date().getMonth() + 1,
-                    billing_year: new Date().getFullYear(),
-                    payment_method: 'upi_qr', // default convenient offline onboarding method
-                    status: 'completed',
-                    receipt_number: receiptNumber,
-                    subject_name: subjectsList
-                });
-
-            if (paymentError) {
-                console.error("Error generating automated onboarding payment receipt:", paymentError);
-            }
-        }
-    } catch (receiptErr) {
-        console.error("Failed to generate onboarding payment receipt:", receiptErr);
-    }
-
     // If onboarding a converted lead, mark the lead as onboarded
     if (payload.leadId) {
         let leadUpdate = adminClient
@@ -2552,7 +2504,7 @@ export async function logTutorJoinClass(classId: string) {
         return { success: false, error: fetchError.message };
     }
 
-    const updates: any = {};
+    const updates: { tutor_joined_at?: string; tutor_joined_late?: boolean; status?: 'ongoing' } = {};
     if (!classData.tutor_joined_at) {
         const now = new Date();
         updates.tutor_joined_at = now.toISOString();
@@ -2832,7 +2784,7 @@ export async function modifyClassLog(
                 .upsert({
                     class_id: classId,
                     student_id: classObj.student_id,
-                    status: studentAttendanceStatus as any,
+                    status: studentAttendanceStatus as 'present' | 'absent' | 'late' | 'excused',
                     marked_by: user.id
                 }, { onConflict: 'class_id,student_id' });
 
@@ -2861,6 +2813,7 @@ export async function modifyClassLog(
 
 export async function deleteClassLogOrSession(classId: string, action: 'revert' | 'delete') {
     const supabase = await createClient();
+    const adminClient = createAdminClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Unauthorized: Please log in." };
 
@@ -2876,53 +2829,13 @@ export async function deleteClassLogOrSession(classId: string, action: 'revert' 
         return { success: false, error: "Unauthorized: Only admins, HR, and Operations can perform this action." };
     }
 
-    if (action === 'revert') {
-        // Revert class to scheduled and clear completion fields
-        const { error: updateError } = await supabase
-            .from('live_classes')
-            .update({
-                status: 'scheduled',
-                topic_taught: null,
-                homework_given: null,
-                student_performance: null,
-                parent_note: null,
-                tutor_joined_at: null,
-                student_joined_at: null,
-                tutor_joined_late: null,
-                parent_verified: null,
-                parent_dispute_reason: null
-            })
-            .eq('id', classId);
-
-        if (updateError) {
-            console.error("deleteClassLogOrSession revert update error:", updateError);
-            return { success: false, error: updateError.message };
-        }
-
-        // Delete all matching student attendance records so it's removed from student portal/counts
-        const { error: deleteAttendanceError } = await supabase
-            .from('student_attendance')
-            .delete()
-            .eq('class_id', classId);
-
-        if (deleteAttendanceError) {
-            console.error("deleteClassLogOrSession revert delete attendance error:", deleteAttendanceError);
-            return { success: false, error: deleteAttendanceError.message };
-        }
-
-    } else if (action === 'delete') {
-        // Completely delete the class session
-        const { error: deleteError } = await supabase
-            .from('live_classes')
-            .delete()
-            .eq('id', classId);
-
-        if (deleteError) {
-            console.error("deleteClassLogOrSession delete class error:", deleteError);
-            return { success: false, error: deleteError.message };
-        }
-    } else {
-        return { success: false, error: "Invalid action specified." };
+    const { error } = await adminClient.rpc('change_class_log_with_payroll', {
+        p_class_id: classId,
+        p_action: action,
+    });
+    if (error) {
+        console.error("deleteClassLogOrSession transaction error:", error);
+        return { success: false, error: error.message };
     }
 
     revalidatePath('/(dashboard)', 'layout');

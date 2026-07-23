@@ -29,9 +29,15 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
                 if (res.active && res.shift) {
                     setIsActive(true);
                     setClockInTime(res.shift.clock_in);
+                    sessionStorage.setItem("wasClockedIn", "true");
+                    if (!sessionStorage.getItem("clockInTime")) {
+                        sessionStorage.setItem("clockInTime", res.shift.clock_in);
+                    }
                 } else {
                     setIsActive(false);
                     setClockInTime(null);
+                    sessionStorage.removeItem("wasClockedIn");
+                    sessionStorage.removeItem("clockInTime");
                 }
             } catch (err) {
                 console.error("Failed to fetch shift status:", err);
@@ -79,9 +85,10 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
     useEffect(() => {
         if (!isActive) return;
 
-        // 1. Idle Auto Clock-out after 20 minutes
+        // 1. Idle Auto Clock-out after 20 minutes for HR and Operations only
+        const isTargetRole = ['hr', 'operations'].includes(role);
+        let checkInterval: NodeJS.Timeout;
         const IDLE_LIMIT = 20 * 60 * 1000; // 20 minutes
-        let idleTimer: NodeJS.Timeout;
 
         const autoClockOut = async () => {
             try {
@@ -97,34 +104,42 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
         };
 
         const resetIdleTimer = () => {
-            if (idleTimer) clearTimeout(idleTimer);
-            idleTimer = setTimeout(autoClockOut, IDLE_LIMIT);
+            if (isTargetRole) {
+                localStorage.setItem('lastActivity', Date.now().toString());
+            }
         };
 
-        // Track user interaction events
         const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart"];
-        events.forEach(event => {
-            window.addEventListener(event, resetIdleTimer);
-        });
 
-        // Initialize timer
-        resetIdleTimer();
+        if (isTargetRole) {
+            if (typeof window !== "undefined") {
+                if (!localStorage.getItem('lastActivity')) {
+                    localStorage.setItem('lastActivity', Date.now().toString());
+                }
+            }
 
-        // 2. Browser Close / Page Unload trigger
-        const handleUnload = () => {
-            // Send synchronous beacon request to ensure it reaches backend even during page unload
-            navigator.sendBeacon("/api/staff/clock-out");
-        };
-        window.addEventListener("beforeunload", handleUnload);
+            checkInterval = setInterval(() => {
+                const lastActivity = Number(localStorage.getItem('lastActivity') || Date.now());
+                const elapsed = Date.now() - lastActivity;
+                if (elapsed >= IDLE_LIMIT) {
+                    autoClockOut();
+                }
+            }, 10000); // Check every 10 seconds
+
+            events.forEach(event => {
+                window.addEventListener(event, resetIdleTimer);
+            });
+        }
 
         return () => {
-            if (idleTimer) clearTimeout(idleTimer);
-            events.forEach(event => {
-                window.removeEventListener(event, resetIdleTimer);
-            });
-            window.removeEventListener("beforeunload", handleUnload);
+            if (isTargetRole) {
+                clearInterval(checkInterval);
+                events.forEach(event => {
+                    window.removeEventListener(event, resetIdleTimer);
+                });
+            }
         };
-    }, [isActive]);
+    }, [isActive, role]);
 
     const handleToggle = async () => {
         setIsPending(true);
@@ -136,15 +151,20 @@ export default function StaffShiftToggle({ role, isSidebar = false }: { role: st
                 const nowActive = !isActive;
                 setIsActive(nowActive);
                 if (nowActive) {
-                    setClockInTime(new Date().toISOString());
+                    const nowStr = new Date().toISOString();
+                    setClockInTime(nowStr);
+                    sessionStorage.setItem("wasClockedIn", "true");
+                    sessionStorage.setItem("clockInTime", nowStr);
                     toast.success("Clocked in successfully!");
                 } else {
                     setClockInTime(null);
+                    sessionStorage.removeItem("wasClockedIn");
+                    sessionStorage.removeItem("clockInTime");
                     toast.success(`Clocked out successfully! ${elapsedTime}`);
                 }
             }
-        } catch (err: any) {
-            toast.error(err.message || "Failed to update shift status.");
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : "Failed to update shift status.");
         } finally {
             setIsPending(false);
         }

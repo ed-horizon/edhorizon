@@ -7,13 +7,44 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { PayrollItemsManager } from "@/components/features/hr/PayrollItemsManager";
 
+type StaffDetails = {
+    hourly_rate?: number | null;
+    basic_salary?: number | null;
+    pay_basis?: 'hourly' | 'fixed' | null;
+    status?: string | null;
+};
+type TeacherProfile = {
+    id: string;
+    full_name?: string | null;
+    email: string;
+    role: string;
+    staff_details?: StaffDetails | StaffDetails[] | null;
+};
+type VerifiedClass = {
+    teacher_id: string | null;
+    duration_hours?: number | null;
+    student_id?: string | null;
+    payroll_amount?: number | null;
+    student_attendance?: { status?: string | null } | { status?: string | null }[] | null;
+};
+type PayrollItem = {
+    id: string;
+    staff_id?: string | null;
+    basic_amount?: number | null;
+    payout_status?: string | null;
+    staff_name?: string | null;
+    staff_email?: string | null;
+    profile?: TeacherProfile | TeacherProfile[] | null;
+    [key: string]: unknown;
+};
+
 export default async function PayrollRunDetails({ params }: { params: { id: string } }) {
     const { id } = await params;
     const supabase = await createClient();
     const supabaseAdmin = createAdminClient();
 
     // 1. Fetch the payroll run details
-    const { data: run, error: runError } = await supabase
+    const { data: run } = await supabase
         .from('payroll_runs')
         .select('*')
         .eq('id', id)
@@ -29,7 +60,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
 
     const { data: verifiedClasses } = await supabase
         .from('live_classes')
-        .select('teacher_id, duration_hours, student_id, student_attendance(status)')
+        .select('teacher_id, duration_hours, student_id, payroll_amount, student_attendance(status)')
         .eq('verification_status', 'verified')
         .gte('scheduled_at', startOfMonth)
         .lte('scheduled_at', endOfMonth);
@@ -43,7 +74,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         .lte('scheduled_at', endOfMonth);
 
     const lateJoiningsCount: Record<string, number> = {};
-    lateClasses?.forEach((lc: any) => {
+    (lateClasses as Array<{ teacher_id: string | null }> | null)?.forEach((lc) => {
         if (lc.teacher_id) {
             lateJoiningsCount[lc.teacher_id] = (lateJoiningsCount[lc.teacher_id] || 0) + 1;
         }
@@ -55,7 +86,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         .select('id, tutor_hourly_rate');
 
     const studentRates = Object.fromEntries(
-        (studentDetailsData || []).map((s: any) => [s.id, s.tutor_hourly_rate !== null ? Number(s.tutor_hourly_rate) : null])
+        ((studentDetailsData || []) as Array<{ id: string; tutor_hourly_rate: number | null }>).map((s) => [s.id, s.tutor_hourly_rate !== null ? Number(s.tutor_hourly_rate) : null])
     );
 
     // 4. Fetch all staff profiles (except super_admin, student, parent)
@@ -77,7 +108,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         .neq('role', 'student')
         .neq('role', 'parent');
 
-    const teachers = (teachersData || []).map((t: any) => {
+    const teachers = ((teachersData || []) as TeacherProfile[]).map((t) => {
         const details = Array.isArray(t.staff_details) ? t.staff_details[0] : t.staff_details;
         return {
             id: t.id,
@@ -89,7 +120,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
             hourly_rate: Number(details?.hourly_rate || 0),
             status: details?.status || 'active'
         };
-    }).filter((t: any) => t.status !== 'locked');
+    }).filter((t) => t.status !== 'locked');
 
     // 5. Calculate accrued payouts dynamically
     const calculatedPayouts: Record<string, number> = {};
@@ -97,15 +128,19 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         calculatedPayouts[t.id] = t.pay_basis === 'fixed' ? t.basic_salary : 0;
     });
 
-    verifiedClasses?.forEach((c: any) => {
+    (verifiedClasses as VerifiedClass[] | null)?.forEach((c) => {
         const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
         if (att?.status === 'absent') {
             return; // Skip student "No Show" classes (Tutors not paid)
         }
-        if (calculatedPayouts[c.teacher_id] !== undefined) {
+        if (c.teacher_id && calculatedPayouts[c.teacher_id] !== undefined) {
             const teacher = teachers.find(t => t.id === c.teacher_id);
             if (teacher?.pay_basis === 'fixed') {
                 return; // Fixed pay staff are paid basic_salary, not class hours
+            }
+            if (c.payroll_amount !== null && c.payroll_amount !== undefined) {
+                calculatedPayouts[c.teacher_id] += Number(c.payroll_amount) || 0;
+                return;
             }
             const baseRate = teacher?.hourly_rate || 0;
             const customStudentRate = c.student_id ? studentRates[c.student_id] : null;
@@ -125,7 +160,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         .eq('run_id', id);
 
     const existingItemsMap = Object.fromEntries(
-        (existingItems || []).map((item: any) => [item.staff_id, item])
+        ((existingItems || []) as PayrollItem[]).flatMap((item) => item.staff_id ? [[item.staff_id, item]] : [])
     );
 
     // 7. Synchronize DB payroll items: Insert missing, update mismatched draft items
@@ -139,14 +174,19 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
                 // Insert missing payroll item for active teachers
                 await supabaseAdmin
                     .from('payroll_items')
-                    .insert({
+                    .upsert({
                         run_id: id,
                         staff_id: teacher.id,
+                        staff_name: teacher.full_name,
+                        staff_email: teacher.email,
                         basic_amount: calculatedAmount,
                         payout_status: 'pending',
                         deductions_amount: 0,
                         deductions: 0,
                         bonus_amount: 0
+                    }, {
+                        onConflict: 'run_id,staff_id',
+                        ignoreDuplicates: true
                     });
             } else if (Number(existing.basic_amount) !== calculatedAmount && existing.payout_status !== 'processing' && existing.payout_status !== 'paid') {
                 // Update amount if mismatch is found and item isn't approved/paid yet
@@ -170,6 +210,9 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
             deduction_reason,
             bonus_amount,
             net_amount,
+            staff_name,
+            staff_email,
+            staff_employee_id,
             profile:profiles!staff_id (
                 id,
                 full_name,
@@ -182,17 +225,26 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         `)
         .eq('run_id', id);
 
-    const safeItems = (items || []).map((item: any) => {
-        const teacherId = item.profile?.id;
+    const safeItems = ((items || []) as unknown as PayrollItem[]).map((item) => {
+        const profile = Array.isArray(item.profile) ? item.profile[0] : item.profile;
+        const teacherId = profile?.id;
         const lateCount = teacherId ? (lateJoiningsCount[teacherId] || 0) : 0;
         return {
             ...item,
+            profile: profile || {
+                id: null,
+                full_name: item.staff_name || "Former staff member",
+                email: item.staff_email || null,
+                role: "former_staff",
+                staff_details: null
+            },
             lateJoinings: lateCount
         };
-    }).filter((item: any) => {
-        const staffDetails = Array.isArray(item.profile?.staff_details)
-            ? item.profile.staff_details[0]
-            : item.profile?.staff_details;
+    }).filter((item) => {
+        const profile = item.profile as TeacherProfile;
+        const staffDetails = Array.isArray(profile.staff_details)
+            ? profile.staff_details[0]
+            : profile.staff_details;
         return staffDetails?.status !== 'locked';
     });
 

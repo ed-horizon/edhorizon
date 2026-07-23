@@ -6,7 +6,6 @@ import { revalidatePath } from "next/cache";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatStudentIdAndMobile } from "@/lib/utils";
-import { generateNextReceiptNumber } from "@/app/(dashboard)/payments/actions";
 
 type TeacherRelation = {
     staff_details?: { status?: string } | Array<{ status?: string }>;
@@ -65,7 +64,7 @@ function normalizeStaffRole(role: string) {
 function validateStaffRole(role: string, requesterRole: string) {
     const normalizedRole = normalizeStaffRole(role);
     if (!SUPPORTED_STAFF_ROLES.has(normalizedRole)) {
-        return { error: "Select a supported staff role." } as const;
+        return { error: "A supported access role is required." } as const;
     }
     if (ELEVATED_STAFF_ROLES.has(normalizedRole) && requesterRole !== "super_admin") {
         return { error: "Only Super Admin can assign elevated staff roles." } as const;
@@ -73,10 +72,19 @@ function validateStaffRole(role: string, requesterRole: string) {
     return { role: normalizedRole } as const;
 }
 
+function validateJobTitle(jobTitle: string | undefined) {
+    const normalizedTitle = jobTitle?.trim().replace(/\s+/g, " ") || "";
+    if (!normalizedTitle || normalizedTitle.length > 80) {
+        return { error: "Job title must be between 1 and 80 characters." } as const;
+    }
+    return { jobTitle: normalizedTitle } as const;
+}
+
 export async function createStaffMember(data: { 
     full_name: string; 
     email: string; 
     role: string; 
+    job_title?: string;
     employee_id?: string; 
     mobile_number: string;
     pay_basis?: string;
@@ -104,6 +112,10 @@ export async function createStaffMember(data: {
     if ("error" in roleValidation) {
         return { error: roleValidation.error };
     }
+    const jobTitleValidation = validateJobTitle(data.job_title);
+    if ("error" in jobTitleValidation) {
+        return { error: jobTitleValidation.error };
+    }
 
     // Create the user in Auth directly with password 'password123' and confirm email
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.createUser({
@@ -129,6 +141,7 @@ export async function createStaffMember(data: {
                 id: inviteData.user.id,
                 employee_id: data.employee_id || null,
                 mobile_number: data.mobile_number || null,
+                job_title: jobTitleValidation.jobTitle,
                 status: 'active',
                 joining_date: new Date().toISOString().split('T')[0],
                 pay_basis: data.pay_basis || 'hourly',
@@ -149,6 +162,7 @@ export async function updateStaffMember(id: string, data: {
     full_name: string; 
     email: string; 
     role: string; 
+    job_title?: string;
     hourly_rate?: number; 
     basic_salary?: number;
     pay_basis?: string;
@@ -175,6 +189,10 @@ export async function updateStaffMember(id: string, data: {
     if ("error" in roleValidation) {
         return { error: roleValidation.error };
     }
+    const jobTitleValidation = validateJobTitle(data.job_title);
+    if ("error" in jobTitleValidation) {
+        return { error: jobTitleValidation.error };
+    }
 
     const { data: targetStaff } = await adminClient
         .from("staff_details")
@@ -198,7 +216,7 @@ export async function updateStaffMember(id: string, data: {
     if (profileError) return { error: profileError.message };
 
     // Update staff_details
-    const detailsUpdate: any = {};
+    const detailsUpdate: Record<string, string | number | null | undefined> = {};
     if (data.hourly_rate !== undefined) {
         detailsUpdate.hourly_rate = data.hourly_rate;
     }
@@ -214,6 +232,7 @@ export async function updateStaffMember(id: string, data: {
     if (data.mobile_number !== undefined) {
         detailsUpdate.mobile_number = data.mobile_number || null;
     }
+    detailsUpdate.job_title = jobTitleValidation.jobTitle;
 
     if (Object.keys(detailsUpdate).length > 0) {
         const { error: detailsError } = await adminClient
@@ -380,45 +399,6 @@ export async function createStudentMember(data: {
 
         if (updateError) {
             console.error("Error upserting student details:", updateError);
-        } else {
-            // Generate automated fee receipt
-            try {
-                const totalAmount = (data.monthly_fee !== undefined ? data.monthly_fee : 4500) +
-                                    (data.monthly_fee_2 || 0) +
-                                    (data.monthly_fee_3 || 0) +
-                                    (data.monthly_fee_4 || 0) +
-                                    (data.monthly_fee_5 || 0);
-
-                if (totalAmount > 0) {
-                    const receiptNumber = await generateNextReceiptNumber();
-                    const subjectsList = [
-                        data.subject_name_1 || 'Maths',
-                        data.subject_name_2,
-                        data.subject_name_3,
-                        data.subject_name_4,
-                        data.subject_name_5
-                    ].filter(Boolean).join(', ');
-
-                    const { error: paymentError } = await adminClient
-                        .from('payments')
-                        .insert({
-                            student_id: inviteData.user.id,
-                            amount: totalAmount,
-                            billing_month: new Date().getMonth() + 1,
-                            billing_year: new Date().getFullYear(),
-                            payment_method: 'upi_qr', // default convenient offline onboarding method
-                            status: 'completed',
-                            receipt_number: receiptNumber,
-                            subject_name: subjectsList
-                        });
-
-                    if (paymentError) {
-                        console.error("Error generating automated onboarding payment receipt:", paymentError);
-                    }
-                }
-            } catch (receiptErr) {
-                console.error("Failed to generate onboarding payment receipt:", receiptErr);
-            }
         }
     }
 
@@ -523,7 +503,7 @@ export async function updateStudentMember(id: string, data: {
 
     const serializedId = formatStudentIdAndMobile(data.custom_student_id, data.mobile_number);
 
-    const updateFields: any = {
+    const updateFields: Record<string, string | number | null | undefined> = {
         grade_level: data.grade_level,
         custom_student_id: serializedId,
         parent_email: data.parent_email !== undefined ? data.parent_email : null,
