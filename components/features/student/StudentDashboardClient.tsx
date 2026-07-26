@@ -21,6 +21,7 @@ import { createPaymentRecord } from "@/app/(dashboard)/payments/actions"
 import { deleteUploadedR2File, uploadFileDirectToR2 } from "@/lib/r2-upload-client"
 import { toast } from "sonner"
 import { ClassLogsCalendarClient } from "@/components/features/class-logs/ClassLogsCalendarClient"
+import { getLocalDateKey } from "@/lib/date-keys"
 
 interface LiveClass {
     id: string;
@@ -36,6 +37,7 @@ interface LiveClass {
     student_joined_at?: string | null;
     parent_verified?: boolean | null;
     parent_dispute_reason?: string | null;
+    schedule_id?: string | null;
 }
 
 interface Homework {
@@ -123,6 +125,44 @@ interface LeaveRequest {
     teacher?: { full_name: string } | null;
 }
 
+interface Payment {
+    id: string;
+    billing_month: number;
+    billing_year: number;
+    payment_method: string;
+    status?: string | null;
+    amount?: number | null;
+    receipt_number?: string | null;
+}
+
+interface ScheduleSummary {
+    id: string;
+    title?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+}
+
+interface RazorpayResponse {
+    razorpay_payment_id: string;
+}
+
+interface RazorpayCheckout {
+    on(event: 'payment.failed', handler: (response: { error: { description?: string } }) => void): void;
+    open(): void;
+}
+
+type RazorpayConstructor = new (options: {
+    key: string;
+    amount: number;
+    currency: string;
+    name: string;
+    description: string;
+    handler: (response: RazorpayResponse) => Promise<void>;
+    prefill: { name: string; email: string };
+    modal: { ondismiss: () => void };
+    theme: { color: string };
+}) => RazorpayCheckout;
+
 interface StudentDashboardClientProps {
     currentUserProfile: {
         id: string;
@@ -141,8 +181,9 @@ interface StudentDashboardClientProps {
     completedClasses: LiveClass[];
     rescheduleRequests: RescheduleRequest[];
     leaveRequests: LeaveRequest[];
-    initialPayments: any[];
-    activeSchedule?: any;
+    initialPayments: Payment[];
+    activeSchedule?: ScheduleSummary;
+    activeSchedules?: ScheduleSummary[];
 }
 
 export function StudentDashboardClient({
@@ -159,7 +200,8 @@ export function StudentDashboardClient({
     rescheduleRequests,
     leaveRequests,
     initialPayments,
-    activeSchedule
+    activeSchedule,
+    activeSchedules = []
 }: StudentDashboardClientProps) {
     // Build active subjects list
     const activeSubjects: { name: string; fee: number; classesPerMonth: number; tutor: string }[] = [];
@@ -243,35 +285,54 @@ export function StudentDashboardClient({
 
     const currentMonth = new Date().getMonth()
     const currentYear = new Date().getFullYear()
-    
-    const completedClassesThisMonth = completedClasses.filter(c => {
-        const d = new Date(c.scheduled_at);
-        if (activeSchedule) {
-            const start = new Date(activeSchedule.start_date + "T00:00:00");
-            const end = new Date(activeSchedule.end_date + "T23:59:59");
-            return d >= start && d <= end;
-        }
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    });
 
-    const subjectCompletions = activeSubjects.map(sub => ({ ...sub, completed: 0 }));
-    completedClassesThisMonth.forEach(cls => {
-        const titleLower = (cls.title || "").toLowerCase();
-        let matchedIndex = -1;
-        for (let i = 0; i < activeSubjects.length; i++) {
-            if (titleLower.includes(activeSubjects[i].name.toLowerCase())) {
-                matchedIndex = i;
-                break;
+    // Calculate completed classes for each active subject based on its own specific schedule/billing cycle
+    const subjectCompletions = activeSubjects.map(sub => {
+        // Find an active schedule that matches this subject name
+        const matchingSchedule = (activeSchedules || []).find(sch => 
+            sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
+        ) || activeSchedule;
+
+        let startStr: string | null = null;
+        let endStr: string | null = null;
+        if (matchingSchedule) {
+            startStr = matchingSchedule.start_date ?? null;
+            endStr = matchingSchedule.end_date ?? null;
+        }
+
+        const completedClassesForSubject = completedClasses.filter(c => {
+            if (c.schedule_id && matchingSchedule) {
+                if (c.schedule_id !== matchingSchedule.id) {
+                    return false;
+                }
+            } else {
+                const classTitleLower = (c.title || "").toLowerCase();
+                const subjectLower = sub.name.toLowerCase();
+                const matchesSubject = activeSubjects.length === 1 || 
+                                       classTitleLower.includes(subjectLower) || 
+                                       subjectLower.includes(classTitleLower);
+                if (!matchesSubject) return false;
             }
-        }
-        if (matchedIndex !== -1) {
-            subjectCompletions[matchedIndex].completed++;
-        } else if (subjectCompletions.length > 0) {
-            subjectCompletions[0].completed++;
-        }
+
+            // Date boundary checks
+            const classDateStr = getLocalDateKey(c.scheduled_at);
+            if (startStr && endStr) {
+                return classDateStr >= startStr && classDateStr <= endStr;
+            }
+            
+            // Fallback: current calendar month
+            const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
+            const currentYearStr = String(currentYear);
+            return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
+        });
+
+        return {
+            ...sub,
+            completed: completedClassesForSubject.length
+        };
     });
 
-    const completedThisMonth = completedClassesThisMonth.length;
+    const completedThisMonth = subjectCompletions.reduce((sum, s) => sum + s.completed, 0);
 
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
@@ -295,7 +356,7 @@ export function StudentDashboardClient({
     )
 
     // Payment States
-    const [payments, setPayments] = useState<any[]>(initialPayments)
+    const [payments, setPayments] = useState<Payment[]>(initialPayments)
     const [paymentModalOpen, setPaymentModalOpen] = useState(false)
     const [billingMonth, setBillingMonth] = useState(new Date().getMonth() + 1)
     const [billingYear, setBillingYear] = useState(new Date().getFullYear())
@@ -306,7 +367,7 @@ export function StudentDashboardClient({
     // Razorpay script loading helper
     const loadRazorpayScript = () => {
         return new Promise((resolve) => {
-            if ((window as any).Razorpay) {
+            if ((window as Window & { Razorpay?: RazorpayConstructor }).Razorpay) {
                 resolve(true);
                 return;
             }
@@ -344,8 +405,8 @@ export function StudentDashboardClient({
                 } else {
                     toast.error(res.error || "Failed to log Razorpay payment.");
                 }
-            } catch (error: any) {
-                toast.error("Error updating payment logs: " + error.message);
+            } catch (error: unknown) {
+                toast.error("Error updating payment logs: " + (error instanceof Error ? error.message : "Unknown error"));
             } finally {
                 setIsProcessingPayment(false);
             }
@@ -368,7 +429,7 @@ export function StudentDashboardClient({
                 currency: "INR",
                 name: "EdHorizon Academy",
                 description: `Tuition Fee - Cycle ${billingMonth}/${billingYear}`,
-                handler: async function (response: any) {
+                handler: async function (response: RazorpayResponse) {
                     await processCompletedPayment(response.razorpay_payment_id);
                 },
                 prefill: {
@@ -385,14 +446,16 @@ export function StudentDashboardClient({
                     color: "#4f46e5"
                 }
             };
-            const rzp = new (window as any).Razorpay(options);
-            rzp.on('payment.failed', function (response: any) {
+            const Razorpay = (window as Window & { Razorpay?: RazorpayConstructor }).Razorpay;
+            if (!Razorpay) throw new Error("Razorpay checkout is unavailable");
+            const rzp = new Razorpay(options);
+            rzp.on('payment.failed', function (response) {
                 setIsProcessingPayment(false);
                 toast.error("Payment failed: " + response.error.description);
             });
             rzp.open();
-        } catch (err: any) {
-            console.error("Razorpay initiation error:", err);
+        } catch (error: unknown) {
+            console.error("Razorpay initiation error:", error);
             toast.info("Razorpay failed to open (invalid keys). Running sandbox simulation...");
             setTimeout(async () => {
                 const mockPaymentId = `pay_mock_${Math.random().toString(36).substring(2, 11)}`;
@@ -422,8 +485,8 @@ export function StudentDashboardClient({
             } else {
                 toast.error(res.error || "Failed to submit UPI payment log.");
             }
-        } catch (error: any) {
-            toast.error("Error submitting details: " + error.message);
+        } catch (error: unknown) {
+            toast.error("Error submitting details: " + (error instanceof Error ? error.message : "Unknown error"));
         } finally {
             setIsProcessingPayment(false);
         }
@@ -530,8 +593,8 @@ export function StudentDashboardClient({
             } else {
                 toast.error(res.error || "Failed to submit reschedule request.")
             }
-        } catch (error: any) {
-            toast.error(error.message || "An unexpected error occurred.")
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "An unexpected error occurred.")
         } finally {
             setIsSubmittingReschedule(false)
         }
@@ -560,8 +623,8 @@ export function StudentDashboardClient({
             } else {
                 toast.error(res.error || "Failed to submit leave request.")
             }
-        } catch (error: any) {
-            toast.error(error.message || "An unexpected error occurred.")
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "An unexpected error occurred.")
         } finally {
             setIsSubmittingLeave(false)
         }
@@ -790,7 +853,7 @@ export function StudentDashboardClient({
                             Hello, {studentName}!
                         </h1>
                         <p className="text-indigo-100 text-sm md:text-base opacity-95 leading-relaxed">
-                            Welcome to your learning page! Here, parents can easily join daily live video sessions, download worksheets, check tuition status, and upload photos of children's homework.
+                            Welcome to your learning page! Here, parents can easily join daily live video sessions, download worksheets, check tuition status, and upload photos of children&apos;s homework.
                         </p>
                     </div>
                     
@@ -816,7 +879,7 @@ export function StudentDashboardClient({
                             <div className="space-y-1">
                                 <CardTitle className="text-xl font-bold text-indigo-950 dark:text-indigo-50 flex items-center gap-2">
                                     <Video className="text-indigo-600 dark:text-indigo-400 animate-pulse" size={20} />
-                                    <span>Today's Live Class</span>
+                                    <span>Today&apos;s Live Class</span>
                                 </CardTitle>
                                 <CardDescription className="text-xs">Your classroom portal link is ready below.</CardDescription>
                             </div>
@@ -923,7 +986,7 @@ export function StudentDashboardClient({
                                             {hw.submission_notes && (
                                                 <div className="mt-2 text-xs bg-indigo-50/50 dark:bg-indigo-950/20 p-2.5 rounded-lg border border-indigo-100/30">
                                                     <span className="block text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-400">Parent Upload Note:</span>
-                                                    <p className="italic text-muted-foreground">"{hw.submission_notes}"</p>
+                                                    <p className="italic text-muted-foreground">&quot;{hw.submission_notes}&quot;</p>
                                                 </div>
                                             )}
                                         </div>
@@ -985,7 +1048,7 @@ export function StudentDashboardClient({
                                     {/* Shared Worksheets */}
                                     {materials.filter(m => !m.title.startsWith('[Submitted Worksheet]') && !m.title.startsWith('[Study Material]')).length > 0 && (
                                         <div className="space-y-2">
-                                            <span className="block text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Teacher's Worksheets</span>
+                                            <span className="block text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Teacher&apos;s Worksheets</span>
                                             {materials.filter(m => !m.title.startsWith('[Submitted Worksheet]') && !m.title.startsWith('[Study Material]')).map(mat => (
                                                 <div key={mat.id} className="p-4 rounded-xl border border-border/30 bg-muted/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-indigo-500/10 transition-all">
                                                     <div className="space-y-1 min-w-0 flex-1">
@@ -1246,7 +1309,7 @@ export function StudentDashboardClient({
                                                     </Badge>
                                                 </div>
                                                 {leave.reason && (
-                                                    <p className="text-muted-foreground italic text-[11px] leading-relaxed">"{leave.reason}"</p>
+                                                    <p className="text-muted-foreground italic text-[11px] leading-relaxed">&quot;{leave.reason}&quot;</p>
                                                 )}
                                                 {leave.teacher?.full_name && (
                                                     <p className="text-[10px] text-muted-foreground/60 font-semibold mt-1">Notified: {leave.teacher.full_name}</p>
@@ -1290,7 +1353,7 @@ export function StudentDashboardClient({
                                                     </Badge>
                                                 </div>
                                                 {req.reason && (
-                                                    <p className="text-muted-foreground italic text-[11px] leading-relaxed">Reason: "{req.reason}"</p>
+                                                    <p className="text-muted-foreground italic text-[11px] leading-relaxed">Reason: &quot;{req.reason}&quot;</p>
                                                 )}
                                                 {req.teacher?.full_name && (
                                                     <p className="text-[10px] text-muted-foreground/60 font-semibold mt-1">Tutor: {req.teacher.full_name}</p>
@@ -1396,7 +1459,7 @@ export function StudentDashboardClient({
                             <span>Submit Homework Photo</span>
                         </DialogTitle>
                         <DialogDescription className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                            Parents, select your child's completed Hindi, English or Math homework worksheet photo.
+                            Parents, select your child&apos;s completed Hindi, English or Math homework worksheet photo.
                         </DialogDescription>
                     </DialogHeader>
 

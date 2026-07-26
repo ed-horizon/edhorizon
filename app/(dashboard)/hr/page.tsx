@@ -69,11 +69,11 @@ export default async function HRDashboard() {
     if (activeRun) {
         const { data: payrollItems } = await supabase
             .from('payroll_items')
-            .select('amount')
-            .eq('payroll_run_id', activeRun.id);
+            .select('net_amount')
+            .eq('run_id', activeRun.id);
             
         if (payrollItems) {
-            currentPayrollTotal = payrollItems.reduce((sum, item) => sum + Number(item.amount), 0);
+            currentPayrollTotal = payrollItems.reduce((sum, item) => sum + Number(item.net_amount), 0);
         }
     }
 

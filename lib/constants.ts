@@ -88,6 +88,12 @@ export const NAV_ITEMS = [
         roles: ["super_admin"],
     },
     {
+        title: "Monthly Report",
+        href: "/super-admin/monthly-report",
+        icon: BarChart3,
+        roles: ["super_admin"],
+    },
+    {
         title: "My Students",
         href: "/super-admin/my-students",
         icon: GraduationCap,

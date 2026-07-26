@@ -41,6 +41,15 @@ interface LiveClass {
     parent_verified?: boolean | null;
     parent_dispute_reason?: string | null;
     tutor_joined_late?: boolean | null;
+    schedule_id?: string | null;
+}
+
+interface ClassSchedule {
+    id: string;
+    title?: string | null;
+    subject?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
 }
 
 interface StudentWithClasses {
@@ -57,8 +66,8 @@ interface StudentWithClasses {
     preferred_time: string;
     custom_student_id?: string | null;
     classes: LiveClass[];
-    active_schedule?: any | null;
-    active_schedules?: any[];
+    active_schedule?: ClassSchedule | null;
+    active_schedules?: ClassSchedule[];
 }
 
 interface StudentClassMonitorProps {
@@ -145,6 +154,30 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
         } catch (error) {
             toast.error("An unexpected error occurred.");
         }
+    };
+
+    const getScheduleStats = (sch: ClassSchedule, allClasses: LiveClass[]) => {
+        const classesForSch = allClasses.filter(c => {
+            if (c.schedule_id === sch.id) return true;
+            if (!c.schedule_id) {
+                const classTitleLower = (c.title || "").toLowerCase();
+                const subjectLower = (sch.title || "").toLowerCase();
+                return classTitleLower.includes(subjectLower) || subjectLower.includes(classTitleLower);
+            }
+            return false;
+        });
+
+        const start = new Date(sch.start_date + "T00:00:00");
+        const end = new Date(sch.end_date + "T23:59:59");
+        const inCycleClasses = classesForSch.filter(c => {
+            const d = new Date(c.scheduled_at);
+            return d >= start && d <= end;
+        });
+
+        const schedCount = inCycleClasses.filter(c => c.status === 'scheduled').length;
+        const doneCount = inCycleClasses.filter(c => c.status === 'completed').length;
+
+        return { schedCount, doneCount };
     };
 
     const handleShareLink = (title: string, link: string) => {
@@ -328,14 +361,37 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                     </div>
 
                                     {/* Class Counts & expand chevron */}
-                                    <div className="flex items-center justify-between md:justify-end gap-2 flex-wrap md:col-span-2">
-                                        <div className="flex gap-1.5 items-center">
-                                            <Badge variant="outline" className="text-[8px] font-black uppercase tracking-wider rounded-full px-2 py-0.5 text-slate-600 dark:text-slate-300">
-                                                {activeClasses.length} Sched
-                                            </Badge>
-                                            <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-none text-[8px] font-black uppercase tracking-wider rounded-full px-2 py-0.5">
-                                                {completedClasses.length} Done
-                                            </Badge>
+                                    <div className="flex items-center justify-between md:justify-end gap-3 flex-wrap md:col-span-2">
+                                        <div className="flex flex-col gap-1 items-end pr-2 text-right">
+                                            {studentSchedules.length > 0 ? (
+                                                studentSchedules.map((sch: ClassSchedule, idx: number) => {
+                                                    const { schedCount, doneCount } = getScheduleStats(sch, student.classes);
+                                                    return (
+                                                        <div key={sch.id || idx} className="flex flex-col items-end">
+                                                            <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-tight">
+                                                                {sch.title || "Class"}
+                                                            </span>
+                                                            <div className="flex gap-1 mt-0.5">
+                                                                <Badge variant="outline" className="text-[8px] font-black uppercase rounded-full px-1.5 py-0.2 scale-90">
+                                                                    {schedCount} Sched
+                                                                </Badge>
+                                                                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-none text-[8px] font-black uppercase rounded-full px-1.5 py-0.2 scale-90">
+                                                                    {doneCount} Done
+                                                                </Badge>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                            ) : (
+                                                <div className="flex gap-1.5 items-center">
+                                                    <Badge variant="outline" className="text-[8px] font-black uppercase tracking-wider rounded-full px-2 py-0.5 text-slate-600 dark:text-slate-300">
+                                                        {activeClasses.length} Sched
+                                                    </Badge>
+                                                    <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-none text-[8px] font-black uppercase tracking-wider rounded-full px-2 py-0.5">
+                                                        {completedClasses.length} Done
+                                                    </Badge>
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="flex items-center gap-1">
@@ -400,7 +456,7 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-border/10">
-                                                    {student.classes.map(c => (
+                                                    {filteredStudentClasses.map(c => (
                                                         <tr key={c.id} className="hover:bg-muted/20 transition-colors">
                                                             <td className="p-4 pl-6 font-bold text-indigo-950 dark:text-indigo-200 uppercase tracking-tight">
                                                                 {(() => {
@@ -561,10 +617,10 @@ export function StudentClassMonitor({ students: initialStudents, teachers }: Stu
                                                             </td>
                                                         </tr>
                                                     ))}
-                                                    {student.classes.length === 0 && (
+                                                    {filteredStudentClasses.length === 0 && (
                                                         <tr>
                                                             <td colSpan={6} className="text-center py-10 text-muted-foreground italic">
-                                                                No classes scheduled for this student yet.
+                                                                No classes scheduled for this student in this cycle.
                                                             </td>
                                                         </tr>
                                                     )}

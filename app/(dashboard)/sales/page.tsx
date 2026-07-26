@@ -21,15 +21,19 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { onboardStudent, getAllTeachers } from "@/app/(dashboard)/attendance/actions";
 
+type Lead = Awaited<ReturnType<typeof getLeads>>[number];
+type SalesAgent = Awaited<ReturnType<typeof getSalesAgents>>[number];
+type Teacher = Awaited<ReturnType<typeof getAllTeachers>>[number];
+
 export default function SalesDashboard() {
     const [isHeadView, setIsHeadView] = useState(false);
-    const [leads, setLeads] = useState<any[]>([]);
-    const [agents, setAgents] = useState<any[]>([]);
+    const [leads, setLeads] = useState<Lead[]>([]);
+    const [agents, setAgents] = useState<SalesAgent[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [selectedLead, setSelectedLead] = useState<any | null>(null);
+    const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
     const [onboardLeadId, setOnboardLeadId] = useState<string | null>(null);
     const [userName, setUserName] = useState("Sales");
-    const [teachers, setTeachers] = useState<any[]>([]);
+    const [teachers, setTeachers] = useState<Teacher[]>([]);
     const [userRole, setUserRole] = useState<string>("sales");
 
     // CRM Master Board Filter States
@@ -234,8 +238,8 @@ export default function SalesDashboard() {
                 setVisibleSubjectsCount(1);
                 await loadData(isHeadView);
             }
-        } catch (err: any) {
-            toast.error(err.message || "Failed to onboard student");
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : "Failed to onboard student");
         } finally {
             setIsOnboarding(false);
         }
@@ -316,7 +320,7 @@ export default function SalesDashboard() {
     const lostLeads = leads.filter(l => l.status === 'not_converted').length;
 
     // Lead Sources Count
-    const sourcesSummary = leads.reduce((acc: any, curr: any) => {
+    const sourcesSummary = leads.reduce<Record<string, number>>((acc, curr) => {
         const src = curr.lead_source || 'Website';
         acc[src] = (acc[src] || 0) + 1;
         return acc;
@@ -462,7 +466,7 @@ export default function SalesDashboard() {
                                         <CardDescription className="text-xs">Channels introducing traffic leads.</CardDescription>
                                     </CardHeader>
                                     <CardContent className="p-5 space-y-4">
-                                        {Object.entries(sourcesSummary).map(([src, count]: any) => (
+                                        {Object.entries(sourcesSummary).map(([src, count]) => (
                                             <div key={src} className="space-y-1 text-xs">
                                                 <div className="flex justify-between font-semibold">
                                                     <span className="text-muted-foreground">{src}</span>
@@ -768,6 +772,7 @@ export default function SalesDashboard() {
                                                         <th className="p-4">Required Course</th>
                                                         <th className="p-4">Class</th>
                                                         <th className="p-4">Status</th>
+                                                        <th className="p-4">Latest Feedback / Update</th>
                                                         <th className="p-4 text-right pr-6">Instant Actions</th>
                                                     </tr>
                                                 </thead>
@@ -788,6 +793,9 @@ export default function SalesDashboard() {
                                                                 <Badge className={cn("text-[9px] font-black uppercase border-none rounded-full px-2.5 py-0.5", getStatusStyles(lead.status))}>
                                                                     {lead.status.replace("_", " ")}
                                                                 </Badge>
+                                                            </td>
+                                                            <td className="p-4 max-w-[200px] truncate text-muted-foreground font-medium" title={lead.feedback || ""}>
+                                                                {lead.feedback || <span className="text-muted-foreground/30 italic">No feedback updated</span>}
                                                             </td>
                                                             <td className="p-4 text-right pr-6">
                                                                 <div className="flex items-center justify-end gap-1.5">
@@ -819,7 +827,7 @@ export default function SalesDashboard() {
                                                     ))}
                                                     {leads.length === 0 && (
                                                         <tr>
-                                                            <td colSpan={5} className="text-center py-10 text-muted-foreground italic">No leads assigned to you. Add some leads above!</td>
+                                                            <td colSpan={6} className="text-center py-10 text-muted-foreground italic">No leads assigned to you. Add some leads above!</td>
                                                         </tr>
                                                     )}
                                                 </tbody>
