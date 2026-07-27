@@ -70,7 +70,7 @@ export default function SchedulesPage() {
                 </div>
             ) : (
                 <div className="space-y-6">
-                    <StudentClassMonitor students={students} teachers={teachers} />
+                    <StudentClassMonitor students={students} teachers={teachers} onRefresh={loadData} />
                 </div>
             )}
         </div>
