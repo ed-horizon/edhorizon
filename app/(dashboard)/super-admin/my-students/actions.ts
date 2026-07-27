@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import { formatStudentIdAndMobile } from "@/lib/utils";
 
 // Helper security check: ensure the caller is indeed super_admin
@@ -22,6 +22,7 @@ async function checkSuperAdmin() {
 
 // 1. Get Private Tutors (locked)
 export async function getPrivateTutors() {
+    noStore();
     const { isSuperAdmin } = await checkSuperAdmin();
     if (!isSuperAdmin) throw new Error("Unauthorized");
 
@@ -348,6 +349,7 @@ export async function createPrivateStudent(data: {
 
 // 9. Get Private Students With Classes (Flattened for StudentClassMonitor)
 export async function getPrivateStudentsWithClasses() {
+    noStore();
     const { isSuperAdmin } = await checkSuperAdmin();
     if (!isSuperAdmin) throw new Error("Unauthorized");
 

@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from "@/lib/supabase/server"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, unstable_noStore as noStore } from "next/cache"
 import { addDays, format, isAfter, parseISO, startOfDay, endOfDay } from "date-fns"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { canManageSchedule, SCHEDULE_MANAGER_ROLES } from "@/lib/schedule-authorization"
@@ -506,6 +506,7 @@ export async function cancelClassSchedule(scheduleId: string) {
 }
 
 export async function getAllActiveSchedules() {
+    noStore()
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Unauthorized")
@@ -529,6 +530,7 @@ export async function getAllActiveSchedules() {
 }
 
 export async function getTeacherSchedules(teacherId?: string) {
+    noStore()
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     
