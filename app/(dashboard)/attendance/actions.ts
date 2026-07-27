@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import { startOfMonth, endOfMonth, isAfter } from "date-fns";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -388,6 +388,7 @@ export async function deleteR2UploadAction(
 // --- Live Classes ---
 
 export async function getLiveClasses() {
+    noStore();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
@@ -1787,6 +1788,7 @@ export async function getAttendanceHistory(teacherId?: string) {
 }
 
 export async function getStudentDashboardData() {
+    noStore();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { todayClasses: [], upcomingClass: null, allCalendarClasses: [], homework: [], materials: [], details: null, attendanceHistory: [], completedClasses: [] };
@@ -2073,6 +2075,7 @@ export async function adminEditAttendance(classId: string, studentId: string, st
 }
 
 export async function getStudentsWithClasses() {
+    noStore();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];

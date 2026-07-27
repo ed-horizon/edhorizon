@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { parseDescription, formatDescription } from "@/lib/utils";
+import { unstable_noStore as noStore } from "next/cache";
 
 export async function getModules() {
     const supabase = await createClient();
@@ -216,6 +217,7 @@ export async function saveCapsule(payload: any) {
 }
 
 export async function getPendingCapsules() {
+    noStore();
     const supabase = await createClient();
     const { data, error } = await supabase
         .from('capsules')

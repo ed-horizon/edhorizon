@@ -3,9 +3,10 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 
 export async function getUsers() {
+    noStore();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 

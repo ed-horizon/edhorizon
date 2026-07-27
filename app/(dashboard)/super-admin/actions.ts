@@ -1,8 +1,10 @@
 'use server'
 
 import { createClient } from "@/lib/supabase/server";
+import { unstable_noStore as noStore } from "next/cache";
 
 export async function getSuperAdminAnalytics() {
+    noStore();
     const supabase = await createClient();
     const now = new Date();
 
@@ -245,6 +247,7 @@ export async function getSuperAdminAnalytics() {
 }
 
 export async function getMonthlyReportData(year: number, month: number) {
+    noStore();
     const supabase = await createClient();
 
     // 1. Calculate boundaries for that month (for leads and admissions)

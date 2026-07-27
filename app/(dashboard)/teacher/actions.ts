@@ -2,10 +2,11 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import { redirect } from "next/navigation";
 
 export async function getTeacherCapsules() {
+    noStore();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -72,6 +73,7 @@ export async function createCapsule(formData: FormData) {
 }
 
 export async function getTeacherStats() {
+    noStore();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { students: 0, capsules: 0, hours: 0, monthlyClassCount: 0 };
