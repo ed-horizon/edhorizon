@@ -2157,7 +2157,11 @@ export async function getStudentsWithClasses() {
         return !isAnyTeacherLocked;
     });
 
-    // Fetch all live classes
+    // Fetch active live classes (from 60 days ago through future scheduled end dates)
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    const sixtyDaysAgoISO = sixtyDaysAgo.toISOString();
+
     const { data: classes, error: classesError } = await supabase
         .from('live_classes')
         .select(`
@@ -2167,7 +2171,9 @@ export async function getStudentsWithClasses() {
                 staff_details (status)
             )
         `)
-        .order('scheduled_at', { ascending: true });
+        .gte('scheduled_at', sixtyDaysAgoISO)
+        .order('scheduled_at', { ascending: true })
+        .limit(5000);
 
     if (classesError) {
         console.error("getStudentsWithClasses classes error:", classesError);
