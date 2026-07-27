@@ -574,7 +574,7 @@ export default function OperationsDashboard() {
                 
                 <div className="flex items-center gap-3 flex-wrap">
                     <CreateLiveClassDialog />
-                    <ManageSchedulesDialog />
+                    <ManageSchedulesDialog onSuccess={loadData} />
                     <a href="/admin/schedules">
                         <Button className="gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-md h-10">
                             Class Schedules

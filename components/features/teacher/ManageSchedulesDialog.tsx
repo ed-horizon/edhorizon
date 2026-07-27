@@ -35,6 +35,7 @@ const DAYS = [
 interface ManageSchedulesDialogProps {
     initialSchedule?: Partial<Schedule> & { id: string };
     trigger?: React.ReactNode;
+    onSuccess?: () => void;
 }
 
 type Schedule = {
@@ -68,7 +69,7 @@ type Student = {
     preferred_time?: string | null;
 };
 
-export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedulesDialogProps = {}) {
+export function ManageSchedulesDialog({ initialSchedule, trigger, onSuccess }: ManageSchedulesDialogProps = {}) {
     const [isOpen, setIsOpen] = useState(false)
     const isSubmittingRef = useRef(false)
     const [isLoading, setIsLoading] = useState(false)
@@ -302,6 +303,7 @@ export function ManageSchedulesDialog({ initialSchedule, trigger }: ManageSchedu
             await loadInitialData()
             if (isAdminOrOps) await loadSchedulesFiltered()
             resetForm(true)
+            onSuccess?.()
             router.refresh()
         } catch (error: unknown) {
             toast.error(error instanceof Error ? error.message : "Scheduling failure")

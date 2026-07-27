@@ -73,15 +73,20 @@ interface StudentWithClasses {
 interface StudentClassMonitorProps {
     students: StudentWithClasses[];
     teachers: { id: string; full_name: string | null; email: string }[];
+    onRefresh?: () => void;
 }
 
-export function StudentClassMonitor({ students: initialStudents, teachers }: StudentClassMonitorProps) {
+export function StudentClassMonitor({ students: initialStudents, teachers, onRefresh }: StudentClassMonitorProps) {
     const [students, setStudents] = useState<StudentWithClasses[]>(initialStudents);
     const [searchQuery, setSearchQuery] = useState("");
     const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
     const [updatingTutorId, setUpdatingTutorId] = useState<string | null>(null);
     const [userRole, setUserRole] = useState<string>("");
     const [deletingClassId, setDeletingClassId] = useState<string | null>(null);
+
+    useEffect(() => {
+        setStudents(initialStudents);
+    }, [initialStudents]);
 
     useEffect(() => {
         const fetchRole = async () => {
