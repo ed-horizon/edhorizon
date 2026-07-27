@@ -192,6 +192,33 @@ export async function createClassSchedule(payload: SchedulePayload) {
 
         if (scheduleError) throw scheduleError
 
+        // Archive any prior active schedules for the same student and subject to avoid overlapping schedule collisions
+        const { data: existingActiveSchedules } = await supabase
+            .from('class_schedules')
+            .select('id')
+            .eq('student_id', payload.student_id)
+            .ilike('title', payload.title)
+            .eq('status', 'active')
+            .neq('id', schedule.id);
+
+        if (existingActiveSchedules && existingActiveSchedules.length > 0) {
+            const oldScheduleIds = existingActiveSchedules.map(s => s.id);
+
+            // 1. Mark old schedules as cancelled
+            await supabase
+                .from('class_schedules')
+                .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+                .in('id', oldScheduleIds);
+
+            // 2. Remove uncompleted future classes from old schedules starting from payload.start_date
+            await supabase
+                .from('live_classes')
+                .delete()
+                .in('schedule_id', oldScheduleIds)
+                .eq('status', 'scheduled')
+                .gte('scheduled_at', payload.start_date);
+        }
+
         // Sync to student_details
         const timeHHMM = payload.time_of_day.substring(0, 5);
         const { error: studentUpdateError } = await supabase
