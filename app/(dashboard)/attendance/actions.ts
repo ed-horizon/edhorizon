@@ -2195,6 +2195,7 @@ export async function getStudentsWithClasses() {
         return !isAnyTeacherLocked;
     });
 
+
     // Fetch all teachers for mapping/reference
     const { data: teachers } = await supabase
         .from('profiles')
