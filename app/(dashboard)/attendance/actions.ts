@@ -2074,6 +2074,44 @@ export async function adminEditAttendance(classId: string, studentId: string, st
     return { success: true };
 }
 
+export async function getClassesForStudent(studentId: string) {
+    noStore();
+    if (!studentId) return [];
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+    const currentUserRole = profile?.role || 'student';
+
+    const { data: classes, error } = await supabase
+        .from('live_classes')
+        .select(`
+            *,
+            teacher:profiles!teacher_id(
+                full_name,
+                staff_details (status)
+            )
+        `)
+        .eq('student_id', studentId)
+        .order('scheduled_at', { ascending: true });
+
+    if (error) {
+        console.error("getClassesForStudent error:", error);
+        return [];
+    }
+
+    return (classes || []).filter(c => {
+        if (currentUserRole === 'super_admin') return true;
+        const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
+        return teacherDetails?.status !== 'locked';
+    });
+}
+
 export async function getStudentsWithClasses() {
     noStore();
     const supabase = await createClient();
@@ -2157,35 +2195,6 @@ export async function getStudentsWithClasses() {
         return !isAnyTeacherLocked;
     });
 
-    // Fetch active live classes (from 60 days ago through future scheduled end dates)
-    const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-    const sixtyDaysAgoISO = sixtyDaysAgo.toISOString();
-
-    const { data: classes, error: classesError } = await supabase
-        .from('live_classes')
-        .select(`
-            *,
-            teacher:profiles!teacher_id(
-                full_name,
-                staff_details (status)
-            )
-        `)
-        .gte('scheduled_at', sixtyDaysAgoISO)
-        .order('scheduled_at', { ascending: true })
-        .limit(5000);
-
-    if (classesError) {
-        console.error("getStudentsWithClasses classes error:", classesError);
-        return [];
-    }
-
-    const filteredClasses = (classes || []).filter(c => {
-        if (currentUserRole === 'super_admin') return true;
-        const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
-        return teacherDetails?.status !== 'locked';
-    });
-
     // Fetch all teachers for mapping/reference
     const { data: teachers } = await supabase
         .from('profiles')
@@ -2212,17 +2221,6 @@ export async function getStudentsWithClasses() {
         }
     });
 
-    // Group classes by student_id
-    const classesByStudent: Record<string, NonNullable<typeof classes>> = {};
-    filteredClasses.forEach(c => {
-        if (c.student_id) {
-            if (!classesByStudent[c.student_id]) {
-                classesByStudent[c.student_id] = [];
-            }
-            classesByStudent[c.student_id].push(c);
-        }
-    });
-
     return filteredStudents.map(s => {
         const details = Array.isArray(s.student_details) ? s.student_details[0] : s.student_details;
         const studentSchedules = schedulesByStudent[s.id] || [];
@@ -2241,7 +2239,7 @@ export async function getStudentsWithClasses() {
             preferred_time: details?.preferred_time || '',
             classes_per_month: details?.classes_per_month || 12,
             custom_student_id: details?.custom_student_id || null,
-            classes: classesByStudent[s.id] || [],
+            classes: [] as any[],
             active_schedule: activeSchedule,
             active_schedules: studentSchedules,
             details: details || null
