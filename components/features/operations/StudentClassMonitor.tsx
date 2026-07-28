@@ -435,40 +435,36 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                                                     const { schedCount, doneCount } = getScheduleStats(sch, rawStudentClasses);
                                                     return (
                                                         <div key={sch.id || idx} className="flex flex-col items-end">
-                                                            <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-tight">
+                                                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-tight">
                                                                 {sch.title || sch.subject || "Class"}
                                                             </span>
-                                                            <div className="flex gap-1 mt-0.5">
-                                                                <Badge variant="outline" className="text-[8px] font-black uppercase rounded-full px-1.5 py-0.2 scale-90">
-                                                                    {schedCount} Sched
-                                                                </Badge>
-                                                                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-none text-[8px] font-black uppercase rounded-full px-1.5 py-0.2 scale-90">
-                                                                    {doneCount} Done
-                                                                </Badge>
-                                                            </div>
+                                                            {isExpanded && (
+                                                                <div className="flex gap-1 mt-0.5">
+                                                                    <Badge variant="outline" className="text-[8px] font-black uppercase rounded-full px-1.5 py-0.2 scale-90">
+                                                                        {schedCount} Sched
+                                                                    </Badge>
+                                                                    <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-none text-[8px] font-black uppercase rounded-full px-1.5 py-0.2 scale-90">
+                                                                        {doneCount} Done
+                                                                    </Badge>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     );
                                                 })
                                             ) : (
-                                                <div className="flex gap-1.5 items-center">
-                                                    <Badge variant="outline" className="text-[8px] font-black uppercase tracking-wider rounded-full px-2 py-0.5 text-slate-600 dark:text-slate-300">
-                                                        {activeClasses.length} Sched
-                                                    </Badge>
-                                                    <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-none text-[8px] font-black uppercase rounded-full px-1.5 py-0.2 scale-90">
-                                                        {completedClasses.length} Done
-                                                    </Badge>
-                                                </div>
+                                                <span className="text-[10px] font-semibold text-muted-foreground italic">No Active Schedules</span>
                                             )}
                                         </div>
 
                                         <div className="flex items-center gap-1">
                                             <Button
-                                                size="icon"
-                                                variant="ghost"
-                                                className="h-8 w-8 rounded-full hover:bg-muted"
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider rounded-xl border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 gap-1.5 shadow-sm"
                                                 onClick={() => handleExpandToggle(student.id)}
                                             >
-                                                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                                <span>{isExpanded ? "Hide Details" : "Show Details"}</span>
+                                                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                             </Button>
                                         </div>
                                     </div>
