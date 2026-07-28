@@ -2210,9 +2210,35 @@ export async function getStudentsWithClasses() {
         .eq('status', 'active')
         .order('created_at', { ascending: false });
 
+    // Fetch count stats for all active schedules
+    const activeScheduleIds = (schedulesData || []).map(s => s.id);
+    const scheduleStatsMap: Record<string, { schedCount: number; doneCount: number }> = {};
+
+    if (activeScheduleIds.length > 0) {
+        const { data: scheduleCounts } = await supabase
+            .from('live_classes')
+            .select('schedule_id, status')
+            .in('schedule_id', activeScheduleIds);
+
+        (scheduleCounts || []).forEach(c => {
+            if (!c.schedule_id) return;
+            if (!scheduleStatsMap[c.schedule_id]) {
+                scheduleStatsMap[c.schedule_id] = { schedCount: 0, doneCount: 0 };
+            }
+            if (c.status === 'scheduled') scheduleStatsMap[c.schedule_id].schedCount += 1;
+            if (c.status === 'completed') scheduleStatsMap[c.schedule_id].doneCount += 1;
+        });
+    }
+
+    const schedulesWithStats = (schedulesData || []).map(sch => ({
+        ...sch,
+        sched_count: scheduleStatsMap[sch.id]?.schedCount || 0,
+        done_count: scheduleStatsMap[sch.id]?.doneCount || 0
+    }));
+
     // Group schedules by student_id
-    const schedulesByStudent: Record<string, NonNullable<typeof schedulesData>> = {};
-    (schedulesData || []).forEach(sch => {
+    const schedulesByStudent: Record<string, typeof schedulesWithStats> = {};
+    schedulesWithStats.forEach(sch => {
         if (sch.student_id) {
             if (!schedulesByStudent[sch.student_id]) {
                 schedulesByStudent[sch.student_id] = [];

@@ -50,6 +50,8 @@ interface ClassSchedule {
     subject?: string | null;
     start_date?: string | null;
     end_date?: string | null;
+    sched_count?: number;
+    done_count?: number;
 }
 
 interface StudentWithClasses {
@@ -229,6 +231,10 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
     };
 
     const getScheduleStats = (sch: ClassSchedule, allClasses: LiveClass[]) => {
+        if (allClasses.length === 0 && (sch.sched_count !== undefined || sch.done_count !== undefined)) {
+            return { schedCount: sch.sched_count || 0, doneCount: sch.done_count || 0 };
+        }
+
         const classesForSch = allClasses.filter(c => {
             if (c.schedule_id === sch.id) return true;
             if (!c.schedule_id) {
