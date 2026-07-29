@@ -668,6 +668,7 @@ export async function cancelLiveClass(classId: string) {
 
 
 export async function getAllTeachers() {
+    noStore();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
