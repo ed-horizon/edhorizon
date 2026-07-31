@@ -316,7 +316,7 @@ export default function SalesDashboard() {
     const newLeads = leads.filter(l => l.status === 'new').length;
     const contactedLeads = leads.filter(l => l.status === 'contacted').length;
     const demoLeads = leads.filter(l => l.status === 'demo_scheduled').length;
-    const convertedLeads = leads.filter(l => l.status === 'converted').length;
+    const convertedLeads = leads.filter(l => ['converted', 'closed_won'].includes(l.status)).length;
     const lostLeads = leads.filter(l => l.status === 'not_converted').length;
 
     // Lead Sources Count
@@ -331,11 +331,11 @@ export default function SalesDashboard() {
         .filter(agent => agent.role === 'sales' || agent.role === 'sales_head')
         .map(agent => {
             const agentLeads = leads.filter(l => l.assigned_to?.id === agent.id || l.assigned_to === agent.id);
-            const wonLeads = agentLeads.filter(l => l.status === 'converted');
+            const wonLeads = agentLeads.filter(l => ['converted', 'closed_won'].includes(l.status));
             const conversionRate = agentLeads.length > 0 ? Math.round((wonLeads.length / agentLeads.length) * 100) : 0;
 
             const callsDone = agentLeads.filter(l => l.status !== 'new').length * 2;
-            const demosBooked = agentLeads.filter(l => ['demo_scheduled', 'feedback', 'converted'].includes(l.status)).length;
+            const demosBooked = agentLeads.filter(l => ['demo_scheduled', 'feedback', 'converted', 'closed_won'].includes(l.status)).length;
 
             return {
                 id: agent.id,
@@ -351,7 +351,7 @@ export default function SalesDashboard() {
     // Reminders for salesperson: include all active, pending leads (not converted, not lost) that have a follow-up scheduled.
     // Sorted by next_follow_up ascending so overdue/nearest follow-ups appear first.
     const reminders = leads
-        .filter(l => l.next_follow_up && l.status !== 'converted' && l.status !== 'not_converted')
+        .filter(l => l.next_follow_up && !['converted', 'closed_won', 'not_converted'].includes(l.status))
         .sort((a, b) => new Date(a.next_follow_up).getTime() - new Date(b.next_follow_up).getTime());
 
     return (
@@ -680,7 +680,7 @@ export default function SalesDashboard() {
                                                                     >
                                                                         Edit
                                                                     </Button>
-                                                                    {lead.status === 'converted' && (
+                                                                    {(lead.status === 'converted' || lead.status === 'closed_won') && (
                                                                          lead.is_onboarded ? (
                                                                              <Badge className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-400 border-none rounded-full px-2.5 py-1">
                                                                                  Onboarded

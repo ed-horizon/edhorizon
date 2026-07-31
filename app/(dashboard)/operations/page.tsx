@@ -453,7 +453,7 @@ export default function OperationsDashboard() {
         (new Date().getTime() - new Date(c.scheduled_at).getTime() >= 24 * 60 * 60 * 1000)
     );
     const pendingComplaintsCount = complaints.filter(c => c.status === 'pending').length;
-    const unpaidLeadsCount = leads.filter(l => l.status === 'converted' && l.value > 4000).length; // Simulated payment pending
+    const unpaidLeadsCount = leads.filter(l => ['converted', 'closed_won'].includes(l.status) && l.value > 4000).length; // Simulated payment pending
 
     const nowTime = new Date().getTime();
     const lateTutorAlerts = classes.filter(c => {

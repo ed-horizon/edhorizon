@@ -34,7 +34,7 @@ export default async function HRSalesPerformancePage() {
         .filter((agent: any) => agent.role === 'sales' || agent.role === 'sales_head')
         .map((agent: any) => {
             const agentLeads = leads.filter((l: any) => l.assigned_to?.id === agent.id || l.assigned_to === agent.id);
-            const convertedLeads = agentLeads.filter((l: any) => l.status === 'converted');
+            const convertedLeads = agentLeads.filter((l: any) => ['converted', 'closed_won'].includes(l.status));
             const conversionRate = agentLeads.length > 0 ? Math.round((convertedLeads.length / agentLeads.length) * 100) : 0;
             return {
                 id: agent.id,
