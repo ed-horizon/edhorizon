@@ -11,7 +11,7 @@ import {
     Activity, Video, Users, AlertCircle, CheckCircle, 
     Clock, MessageSquare, ClipboardList, HelpCircle, Share2, Plus, LogOut, Check, CreditCard, Loader2, Key, CalendarRange
 } from "lucide-react";
-import { cn, formatTime12Hour, ensureAbsoluteUrl } from "@/lib/utils";
+import { cn, formatTime12Hour, ensureAbsoluteUrl, isSubjectMatch } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { 
@@ -141,7 +141,11 @@ export default function OperationsDashboard() {
             setClasses(fetchedClasses || []);
             setLeads(fetchedLeads || []);
             setCompletedClasses(fetchedCompleted || []);
-            setStudents(fetchedStudents || []);
+            const studentsWithCompletedClasses = (fetchedStudents || []).map((student: any) => ({
+                ...student,
+                classes: (fetchedCompleted || []).filter((c: any) => c.student_id === student.id)
+            }));
+            setStudents(studentsWithCompletedClasses);
             setTeachers(fetchedTeachers || []);
             setRescheduleRequests(fetchedRequests.rescheduleRequests || []);
             setLeaveRequests(fetchedRequests.leaveRequests || []);
@@ -529,13 +533,14 @@ export default function OperationsDashboard() {
             const completedCount = (student.classes || []).filter(c => {
                 if (c.status !== 'completed') return false;
 
-                if (c.schedule_id && matchingSchedule) {
-                    if (c.schedule_id !== matchingSchedule.id) return false;
-                } else {
-                    const classTitleLower = (c.title || "").toLowerCase();
-                    const matchesSubject = activeSubjects.length === 1 || classTitleLower.includes(sub.name.toLowerCase());
-                    if (!matchesSubject) return false;
+                let matches = false;
+                if (c.schedule_id && matchingSchedule && c.schedule_id === matchingSchedule.id) {
+                    matches = true;
+                } else if (isSubjectMatch(c.title || "", sub.name)) {
+                    matches = true;
                 }
+
+                if (!matches) return false;
 
                 const classDateStr = getLocalDateKey(c.scheduled_at);
                 if (startStr && endStr) {
@@ -752,13 +757,15 @@ export default function OperationsDashboard() {
 
                                                             const completedCount = (student.classes || []).filter(c => {
                                                                 if (c.status !== 'completed') return false;
-                                                                if (c.schedule_id && matchingSchedule) {
-                                                                    if (c.schedule_id !== matchingSchedule.id) return false;
-                                                                } else {
-                                                                    const classTitleLower = (c.title || "").toLowerCase();
-                                                                    const matchesSubject = activeSubjects.length === 1 || classTitleLower.includes(sub.name.toLowerCase());
-                                                                    if (!matchesSubject) return false;
+                                                                
+                                                                let matches = false;
+                                                                if (c.schedule_id && matchingSchedule && c.schedule_id === matchingSchedule.id) {
+                                                                    matches = true;
+                                                                } else if (isSubjectMatch(c.title || "", sub.name)) {
+                                                                    matches = true;
                                                                 }
+
+                                                                if (!matches) return false;
                                                                 const classDateStr = getLocalDateKey(c.scheduled_at);
                                                                 if (startStr && endStr) {
                                                                     return classDateStr >= startStr && classDateStr <= endStr;

@@ -130,3 +130,32 @@ export function formatInIST(dateInput: string | Date | null | undefined, formatS
 
   return `${month} ${day}, ${hour}:${minute} ${dayPeriod}`;
 }
+
+export function isSubjectMatch(classTitle: string, subjectName: string): boolean {
+  const title = (classTitle || "").toLowerCase().trim();
+  const subject = (subjectName || "").toLowerCase().trim();
+  if (title.includes(subject) || subject.includes(title)) return true;
+  
+  // Math variations
+  const isMathTitle = title.includes("math") || title.includes("algebra") || title.includes("geometry") || title.includes("mathematics");
+  const isMathSubject = subject.includes("math") || subject.includes("mathematics");
+  if (isMathTitle && isMathSubject) return true;
+
+  // Hindi variations
+  const isHindiTitle = title.includes("hindi");
+  const isHindiSubject = subject.includes("hindi");
+  if (isHindiTitle && isHindiSubject) return true;
+
+  // English variations
+  const isEnglishTitle = title.includes("english");
+  const isEnglishSubject = subject.includes("english");
+  if (isEnglishTitle && isEnglishSubject) return true;
+
+  // Coding/AI variations
+  const isCodingTitle = title.includes("ai") || title.includes("coding") || title.includes("python") || title.includes("scratch") || title.includes("java");
+  const isCodingSubject = subject.includes("ai") || subject.includes("coding");
+  if (isCodingTitle && isCodingSubject) return true;
+
+  return false;
+}
+

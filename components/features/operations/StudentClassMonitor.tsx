@@ -18,7 +18,7 @@ import {
     Search, GraduationCap, DollarSign, UserCheck, Loader2, ExternalLink, Check, X,
     BookOpen, Upload, FileText, Trash2, AlertTriangle
 } from "lucide-react";
-import { cn, formatClassTitle, parseStudentIdAndMobile, formatInIST } from "@/lib/utils";
+import { cn, formatClassTitle, parseStudentIdAndMobile, formatInIST, isSubjectMatch } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { assignTutorToStudent, cancelLiveClass, deleteClassLogOrSession, getClassesForStudent } from "@/app/(dashboard)/attendance/actions";
@@ -236,13 +236,12 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
         }
 
         const classesForSch = allClasses.filter(c => {
-            if (c.schedule_id === sch.id) return true;
-            if (!c.schedule_id) {
-                const classTitleLower = (c.title || "").toLowerCase();
-                const subjectLower = (sch.title || sch.subject || "").toLowerCase();
-                return classTitleLower.includes(subjectLower) || subjectLower.includes(classTitleLower);
+            if (c.schedule_id && sch.id) {
+                if (c.schedule_id === sch.id) {
+                    return true;
+                }
             }
-            return false;
+            return isSubjectMatch(c.title || "", sch.title || sch.subject || "");
         });
 
         const start = new Date((sch.start_date || "") + "T00:00:00");
@@ -307,7 +306,16 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                         const rawStudentClasses = loadedClassesByStudent[student.id] || student.classes || [];
 
                         let filteredStudentClasses = rawStudentClasses;
-                        const studentSchedules = student.active_schedules || (student.active_schedule ? [student.active_schedule] : []);
+                        const rawSchedules = student.active_schedules || (student.active_schedule ? [student.active_schedule] : []);
+                        const oneMonthAgo = new Date();
+                        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                        oneMonthAgo.setHours(0, 0, 0, 0);
+
+                        const studentSchedules = rawSchedules.filter(sch => {
+                            if (!sch.end_date) return true;
+                            const endDate = new Date(sch.end_date + "T23:59:59");
+                            return endDate >= oneMonthAgo;
+                        });
                         const hasActiveSchedules = studentSchedules.length > 0;
                         if (hasActiveSchedules) {
                             filteredStudentClasses = rawStudentClasses.filter(c => {
@@ -475,18 +483,14 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                                         <div className="flex justify-between items-center mt-4">
                                             <div>
                                                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Class Schedule History</h4>
-                                                {student.active_schedules && student.active_schedules.length > 0 ? (
+                                                {studentSchedules && studentSchedules.length > 0 ? (
                                                      <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5 space-y-0.5">
-                                                         {student.active_schedules.map((sch, idx) => (
+                                                         {studentSchedules.map((sch, idx) => (
                                                              <div key={sch.id || idx}>
                                                                  Subject: <span className="font-bold">{sch.title || sch.subject}</span> | Active Cycle Range: {formatInIST(sch.start_date)} to {formatInIST(sch.end_date)}
                                                              </div>
                                                          ))}
                                                      </div>
-                                                 ) : student.active_schedule ? (
-                                                     <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5">
-                                                         Active Cycle Range: {formatInIST(student.active_schedule.start_date)} to {formatInIST(student.active_schedule.end_date)}
-                                                     </p>
                                                  ) : null}
                                             </div>
                                             <CreateLiveClassDialog

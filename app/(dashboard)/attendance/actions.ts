@@ -5,6 +5,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import { startOfMonth, endOfMonth, isAfter } from "date-fns";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { generateNextReceiptNumber } from "@/app/(dashboard)/payments/actions";
 import {
     deleteR2Object,
     getSignedDownloadUrl,
@@ -2469,6 +2470,111 @@ export async function onboardStudent(payload: {
     if (detailsError) {
         console.error("Student details creation failed during onboarding:", detailsError);
         return { error: detailsError.message };
+    }
+
+    // Generate automatic completed fee receipts for all onboarded subjects with non-zero fees
+    const currentMonth = new Date().getMonth() + 1;
+    const currentYear = new Date().getFullYear();
+    const todayDateStr = new Date().toISOString().split('T')[0];
+
+    // Subject 1
+    if (payload.monthlyFee > 0) {
+        try {
+            const receipt1 = await generateNextReceiptNumber();
+            await adminClient.from('payments').insert({
+                student_id: newStudentId,
+                amount: payload.monthlyFee,
+                billing_month: currentMonth,
+                billing_year: currentYear,
+                payment_method: 'upi_qr',
+                status: 'completed',
+                receipt_number: receipt1,
+                subject_name: payload.subjectName1 || 'Maths',
+                receipt_date: todayDateStr
+            });
+        } catch (err) {
+            console.error("Failed to generate auto receipt for subject 1:", err);
+        }
+    }
+
+    // Subject 2
+    if (payload.subjectName2 && (payload.monthlyFee2 || 0) > 0) {
+        try {
+            const receipt2 = await generateNextReceiptNumber();
+            await adminClient.from('payments').insert({
+                student_id: newStudentId,
+                amount: payload.monthlyFee2,
+                billing_month: currentMonth,
+                billing_year: currentYear,
+                payment_method: 'upi_qr',
+                status: 'completed',
+                receipt_number: receipt2,
+                subject_name: payload.subjectName2,
+                receipt_date: todayDateStr
+            });
+        } catch (err) {
+            console.error("Failed to generate auto receipt for subject 2:", err);
+        }
+    }
+
+    // Subject 3
+    if (payload.subjectName3 && (payload.monthlyFee3 || 0) > 0) {
+        try {
+            const receipt3 = await generateNextReceiptNumber();
+            await adminClient.from('payments').insert({
+                student_id: newStudentId,
+                amount: payload.monthlyFee3,
+                billing_month: currentMonth,
+                billing_year: currentYear,
+                payment_method: 'upi_qr',
+                status: 'completed',
+                receipt_number: receipt3,
+                subject_name: payload.subjectName3,
+                receipt_date: todayDateStr
+            });
+        } catch (err) {
+            console.error("Failed to generate auto receipt for subject 3:", err);
+        }
+    }
+
+    // Subject 4
+    if (payload.subjectName4 && (payload.monthlyFee4 || 0) > 0) {
+        try {
+            const receipt4 = await generateNextReceiptNumber();
+            await adminClient.from('payments').insert({
+                student_id: newStudentId,
+                amount: payload.monthlyFee4,
+                billing_month: currentMonth,
+                billing_year: currentYear,
+                payment_method: 'upi_qr',
+                status: 'completed',
+                receipt_number: receipt4,
+                subject_name: payload.subjectName4,
+                receipt_date: todayDateStr
+            });
+        } catch (err) {
+            console.error("Failed to generate auto receipt for subject 4:", err);
+        }
+    }
+
+    // Subject 5
+    if (payload.subjectName5 && (payload.monthlyFee5 || 0) > 0) {
+        try {
+            const receipt5 = await generateNextReceiptNumber();
+            await adminClient.from('payments').insert({
+                student_id: newStudentId,
+                amount: payload.monthlyFee5,
+                billing_month: currentMonth,
+                billing_year: currentYear,
+                payment_method: 'upi_qr',
+                status: 'completed',
+                receipt_number: receipt5,
+                subject_name: payload.subjectName5,
+                receipt_date: todayDateStr
+            });
+        } catch (err) {
+            console.error("Failed to generate auto receipt for subject 5:", err);
+        }
     }
 
     // If onboarding a converted lead, mark the lead as onboarded

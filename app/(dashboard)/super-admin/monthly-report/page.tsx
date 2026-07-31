@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { getMonthlyReportData } from "../actions";
 import { toast } from "sonner";
 import Link from "next/link";
+import { deletePaymentRecord } from "@/app/(dashboard)/payments/actions";
 
 type MonthlyReport = Awaited<ReturnType<typeof getMonthlyReportData>>;
 type HistorySummary = {
@@ -111,6 +112,25 @@ export default function MonthlyReportPage() {
     useEffect(() => {
         loadHistorySummaries();
     }, []);
+
+    const handleDeletePayment = async (paymentId: string) => {
+        if (!window.confirm("Are you sure you want to delete this payment record? This action is permanent.")) return;
+        setIsLoading(true);
+        try {
+            const res = await deletePaymentRecord(paymentId);
+            if (res.success) {
+                toast.success("Payment record deleted successfully.");
+                await loadMonthlyData(selectedYear, selectedMonth);
+                await loadHistorySummaries();
+            } else {
+                toast.error(res.error || "Failed to delete payment record.");
+            }
+        } catch (err: any) {
+            toast.error(err.message || "An error occurred.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const getStatusStyles = (status: string) => {
         switch (status) {
@@ -342,7 +362,8 @@ export default function MonthlyReportPage() {
                                                         <th className="p-4">Student</th>
                                                         <th className="p-4">Paid Date</th>
                                                         <th className="p-4">Method</th>
-                                                        <th className="p-4 text-right pr-6">Amount</th>
+                                                        <th className="p-4 text-right">Amount</th>
+                                                        <th className="p-4 text-center pr-6">Action</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-border/10">
@@ -363,14 +384,24 @@ export default function MonthlyReportPage() {
                                                                     {p.payment_method.replace('_', ' ')}
                                                                 </Badge>
                                                             </td>
-                                                            <td className="p-4 text-right pr-6 font-bold text-emerald-600 dark:text-emerald-400">
+                                                            <td className="p-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
                                                                 {formatCurrency(p.amount)}
+                                                            </td>
+                                                            <td className="p-4 text-center pr-6">
+                                                                <Button 
+                                                                    size="sm" 
+                                                                    variant="ghost" 
+                                                                    onClick={() => handleDeletePayment(p.id)}
+                                                                    className="h-7 text-[9px] font-bold uppercase tracking-wider text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-md px-2.5"
+                                                                >
+                                                                    Delete
+                                                                </Button>
                                                             </td>
                                                         </tr>
                                                     ))}
                                                     {reportData.payments.length === 0 && (
                                                         <tr>
-                                                            <td colSpan={5} className="text-center py-12 text-muted-foreground italic">No completed payment receipts found for this month.</td>
+                                                            <td colSpan={6} className="text-center py-12 text-muted-foreground italic">No completed payment receipts found for this month.</td>
                                                         </tr>
                                                     )}
                                                 </tbody>
