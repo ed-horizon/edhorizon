@@ -319,6 +319,9 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                         const hasActiveSchedules = studentSchedules.length > 0;
                         if (hasActiveSchedules) {
                             filteredStudentClasses = rawStudentClasses.filter(c => {
+                                const { isCompensation } = formatClassTitle(c.title);
+                                if (isCompensation) return true;
+
                                 const d = new Date(c.scheduled_at);
                                 return studentSchedules.some(sch => {
                                     const start = new Date((sch.start_date || "") + "T00:00:00");
@@ -330,6 +333,9 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                             const currentMonth = new Date().getMonth();
                             const currentYear = new Date().getFullYear();
                             filteredStudentClasses = rawStudentClasses.filter(c => {
+                                const { isCompensation } = formatClassTitle(c.title);
+                                if (isCompensation) return true;
+
                                 const d = new Date(c.scheduled_at);
                                 return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
                             });
