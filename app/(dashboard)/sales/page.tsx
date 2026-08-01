@@ -316,7 +316,7 @@ export default function SalesDashboard() {
     const newLeads = leads.filter(l => l.status === 'new').length;
     const contactedLeads = leads.filter(l => l.status === 'contacted').length;
     const demoLeads = leads.filter(l => l.status === 'demo_scheduled').length;
-    const convertedLeads = leads.filter(l => l.status === 'converted').length;
+    const convertedLeads = leads.filter(l => ['converted', 'closed_won'].includes(l.status)).length;
     const lostLeads = leads.filter(l => l.status === 'not_converted').length;
 
     // Lead Sources Count
@@ -331,11 +331,11 @@ export default function SalesDashboard() {
         .filter(agent => agent.role === 'sales' || agent.role === 'sales_head')
         .map(agent => {
             const agentLeads = leads.filter(l => l.assigned_to?.id === agent.id || l.assigned_to === agent.id);
-            const wonLeads = agentLeads.filter(l => l.status === 'converted');
+            const wonLeads = agentLeads.filter(l => ['converted', 'closed_won'].includes(l.status));
             const conversionRate = agentLeads.length > 0 ? Math.round((wonLeads.length / agentLeads.length) * 100) : 0;
 
             const callsDone = agentLeads.filter(l => l.status !== 'new').length * 2;
-            const demosBooked = agentLeads.filter(l => ['demo_scheduled', 'feedback', 'converted'].includes(l.status)).length;
+            const demosBooked = agentLeads.filter(l => ['demo_scheduled', 'feedback', 'converted', 'closed_won'].includes(l.status)).length;
 
             return {
                 id: agent.id,
@@ -351,7 +351,7 @@ export default function SalesDashboard() {
     // Reminders for salesperson: include all active, pending leads (not converted, not lost) that have a follow-up scheduled.
     // Sorted by next_follow_up ascending so overdue/nearest follow-ups appear first.
     const reminders = leads
-        .filter(l => l.next_follow_up && l.status !== 'converted' && l.status !== 'not_converted')
+        .filter(l => l.next_follow_up && !['converted', 'closed_won', 'not_converted'].includes(l.status))
         .sort((a, b) => new Date(a.next_follow_up).getTime() - new Date(b.next_follow_up).getTime());
 
     return (
@@ -680,7 +680,7 @@ export default function SalesDashboard() {
                                                                     >
                                                                         Edit
                                                                     </Button>
-                                                                    {lead.status === 'converted' && (
+                                                                    {(lead.status === 'converted' || lead.status === 'closed_won') && (
                                                                          lead.is_onboarded ? (
                                                                              <Badge className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-400 border-none rounded-full px-2.5 py-1">
                                                                                  Onboarded
@@ -759,9 +759,79 @@ export default function SalesDashboard() {
                             {/* Right: Assigned Leads Directory & Call Trigger Actions (8 Cols) */}
                             <div className="lg:col-span-8">
                                 <Card className="rounded-2xl border-border/40 shadow-md bg-card overflow-hidden">
-                                    <CardHeader className="border-b border-border/10 pb-4">
-                                        <CardTitle className="text-base font-bold">My Assigned Leads</CardTitle>
-                                        <CardDescription className="text-xs">Manage phone follow-ups, select call status, and record notes.</CardDescription>
+                                    <CardHeader className="border-b border-border/10 pb-4 space-y-4">
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                            <div>
+                                                <CardTitle className="text-base font-bold">My Assigned Leads</CardTitle>
+                                                <CardDescription className="text-xs">Manage phone follow-ups, select call status, and record notes.</CardDescription>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+                                                {/* Stage/Status dropdown filter */}
+                                                <select
+                                                    value={filterStatus}
+                                                    onChange={(e) => setFilterStatus(e.target.value)}
+                                                    className="h-8 rounded-xl border border-border/40 bg-background px-3 text-[10px] focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full md:w-36 font-semibold"
+                                                >
+                                                    <option value="all">All Stages</option>
+                                                    <option value="new">New</option>
+                                                    <option value="contacted">Contacted</option>
+                                                    <option value="demo_scheduled">Demo Scheduled</option>
+                                                    <option value="feedback">Feedback</option>
+                                                    <option value="converted">Converted (Won)</option>
+                                                    <option value="not_converted">Not Converted (Lost)</option>
+                                                </select>
+
+                                                {/* Search bar inside header */}
+                                                <div className="relative w-full md:w-60">
+                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-3.5 w-3.5" />
+                                                    <Input
+                                                        placeholder="Search by name, parent, email..."
+                                                        value={leadSearchText}
+                                                        onChange={(e) => setLeadSearchText(e.target.value)}
+                                                        className="pl-9 h-8 rounded-xl bg-muted/20 border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-[10px]"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Date Filter & 2-day Toggle Row */}
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1 text-xs">
+                                            <div className="flex items-center gap-4 flex-wrap">
+                                                {/* Latest 2 Days Checkbox */}
+                                                <label className="flex items-center gap-2 font-semibold text-[10px] text-indigo-600 dark:text-indigo-400 cursor-pointer select-none bg-indigo-500/5 border border-indigo-500/10 hover:bg-indigo-500/10 transition-colors px-3 py-1.5 rounded-xl">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={filterLatest2Days}
+                                                        onChange={(e) => handleToggleLatest2Days(e.target.checked)}
+                                                        className="rounded border-indigo-500/20 text-indigo-600 focus:ring-indigo-500 h-3 w-3"
+                                                    />
+                                                    <span>Latest 2 Days (Today & Yesterday)</span>
+                                                </label>
+
+                                                {/* Date Range Inputs */}
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[9px] font-bold text-muted-foreground uppercase">From:</span>
+                                                        <Input
+                                                            type="date"
+                                                            value={filterStartDate}
+                                                            onChange={(e) => handleStartDateChange(e.target.value)}
+                                                            className="h-7 text-[10px] rounded-lg px-2 w-32 border border-muted/30"
+                                                        />
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[9px] font-bold text-muted-foreground uppercase">To:</span>
+                                                        <Input
+                                                            type="date"
+                                                            value={filterEndDate}
+                                                            onChange={(e) => handleEndDateChange(e.target.value)}
+                                                            className="h-7 text-[10px] rounded-lg px-2 w-32 border border-muted/30"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </CardHeader>
                                     <CardContent className="p-0">
                                         <div className="overflow-x-auto">
@@ -777,7 +847,7 @@ export default function SalesDashboard() {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-border/10">
-                                                    {leads.map(lead => (
+                                                    {getFilteredLeads().map(lead => (
                                                         <tr key={lead.id} className="hover:bg-muted/10 transition-colors">
                                                             <td className="p-4 pl-6 cursor-pointer" onClick={() => setSelectedLead(lead)}>
                                                                 <p className="font-bold text-indigo-950 dark:text-indigo-200 uppercase tracking-tight">{lead.name}</p>
@@ -825,9 +895,11 @@ export default function SalesDashboard() {
                                                             </td>
                                                         </tr>
                                                     ))}
-                                                    {leads.length === 0 && (
+                                                    {getFilteredLeads().length === 0 && (
                                                         <tr>
-                                                            <td colSpan={6} className="text-center py-10 text-muted-foreground italic">No leads assigned to you. Add some leads above!</td>
+                                                            <td colSpan={6} className="text-center py-10 text-muted-foreground italic">
+                                                                {leads.length === 0 ? "No leads assigned to you. Add some leads above!" : "No matching leads found."}
+                                                            </td>
                                                         </tr>
                                                     )}
                                                 </tbody>
