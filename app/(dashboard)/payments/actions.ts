@@ -457,3 +457,24 @@ async function activateStudentClasses(studentId: string) {
 
     return { success: true };
 }
+
+export async function deletePaymentRecord(paymentId: string) {
+    const { isManager } = await checkManagerRole();
+    if (!isManager) {
+        return { success: false, error: "Unauthorized: Only super admins and operations can delete payment records." };
+    }
+
+    const adminClient = createAdminClient();
+    const { error } = await adminClient
+        .from('payments')
+        .delete()
+        .eq('id', paymentId);
+
+    if (error) {
+        console.error("deletePaymentRecord error:", error);
+        return { success: false, error: error.message };
+    }
+
+    revalidatePath('/(dashboard)', 'layout');
+    return { success: true };
+}

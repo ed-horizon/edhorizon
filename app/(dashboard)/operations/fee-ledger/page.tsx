@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getPendingPayments, processPaymentApproval, recordManualPayment, getAllPayments } from "@/app/(dashboard)/payments/actions";
+import { getPendingPayments, processPaymentApproval, recordManualPayment, getAllPayments, deletePaymentRecord } from "@/app/(dashboard)/payments/actions";
 import { getStudentsWithClasses } from "@/app/(dashboard)/attendance/actions";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -104,6 +104,24 @@ export default function FeeLedgerPage() {
                 await loadData();
             } else {
                 toast.error(res.error || "Failed to reject payment.");
+            }
+        } catch (err: any) {
+            toast.error(err.message || "An error occurred.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleDeletePayment = async (paymentId: string) => {
+        if (!window.confirm("Are you sure you want to delete this payment record? This action is permanent.")) return;
+        setIsLoading(true);
+        try {
+            const res = await deletePaymentRecord(paymentId);
+            if (res.success) {
+                toast.success("Payment record deleted successfully.");
+                await loadData();
+            } else {
+                toast.error(res.error || "Failed to delete payment record.");
             }
         } catch (err: any) {
             toast.error(err.message || "An error occurred.");
@@ -418,13 +436,23 @@ export default function FeeLedgerPage() {
                                                     <span className="font-black text-sm text-foreground">
                                                         ₹{Number(p.amount).toLocaleString('en-IN')}
                                                     </span>
-                                                    {p.status === 'completed' && (
-                                                        <a href={`/payments/receipt/${p.id}`} target="_blank" rel="noopener noreferrer">
-                                                            <Button size="sm" variant="outline" className="h-7 text-[9px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 rounded-md border-indigo-500/20 px-2.5">
-                                                                Receipt
-                                                            </Button>
-                                                        </a>
-                                                    )}
+                                                    <div className="flex items-center gap-1.5">
+                                                        {p.status === 'completed' && (
+                                                            <a href={`/payments/receipt/${p.id}`} target="_blank" rel="noopener noreferrer">
+                                                                <Button size="sm" variant="outline" className="h-7 text-[9px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 rounded-md border-indigo-500/20 px-2.5">
+                                                                    Receipt
+                                                                </Button>
+                                                            </a>
+                                                        )}
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="ghost" 
+                                                            onClick={() => handleDeletePayment(p.id)}
+                                                            className="h-7 text-[9px] font-bold uppercase tracking-wider text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-md px-2.5"
+                                                        >
+                                                            Delete
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                             </div>
                                                     ))}

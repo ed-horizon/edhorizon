@@ -14,7 +14,7 @@ import {
     ListTodo, ClipboardCheck, Activity, AlertCircle, Loader2
 } from "lucide-react"
 import { isSameDay, format, isAfter } from "date-fns"
-import { cn, formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
+import { cn, formatTime12Hour, ensureAbsoluteUrl, formatClassTitle, isSubjectMatch } from "@/lib/utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { submitHomework, requestReschedule, applyForLeave, logStudentJoinClass, submitCompletedWorksheet, uploadStudentStudyMaterial } from "@/app/(dashboard)/attendance/actions"
 import { createPaymentRecord } from "@/app/(dashboard)/payments/actions"
@@ -301,23 +301,24 @@ export function StudentDashboardClient({
         }
 
         const completedClassesForSubject = completedClasses.filter(c => {
+            let isMatch = false;
             if (c.schedule_id && matchingSchedule) {
-                if (c.schedule_id !== matchingSchedule.id) {
-                    return false;
+                if (c.schedule_id === matchingSchedule.id) {
+                    isMatch = true;
                 }
-            } else {
-                const classTitleLower = (c.title || "").toLowerCase();
-                const subjectLower = sub.name.toLowerCase();
-                const matchesSubject = activeSubjects.length === 1 || 
-                                       classTitleLower.includes(subjectLower) || 
-                                       subjectLower.includes(classTitleLower);
-                if (!matchesSubject) return false;
             }
+            if (!isMatch && isSubjectMatch(c.title, sub.name)) {
+                isMatch = true;
+            }
+
+            if (!isMatch) return false;
 
             // Date boundary checks
             const classDateStr = getLocalDateKey(c.scheduled_at);
-            if (startStr && endStr) {
-                return classDateStr >= startStr && classDateStr <= endStr;
+            const currentStart = startStr;
+            const currentEnd = endStr;
+            if (currentStart && currentEnd) {
+                return classDateStr >= currentStart && classDateStr <= currentEnd;
             }
             
             // Fallback: current calendar month
