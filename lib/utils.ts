@@ -39,10 +39,9 @@ export function getRoleDisplayName(role: string | null | undefined, name?: strin
     admin: "Admin",
     super_admin: "Super Admin",
     student: "Student",
-    parent: "Parent",
-    sales: "Sales"
+    parent: "Parent"
   };
-  return mapping[role.toLowerCase()] || (role.charAt(0).toUpperCase() + role.slice(1));
+  return mapping[role.toLowerCase()] || role;
 }
 
 export function formatClassTitle(title: string | null | undefined): { title: string; isCompensation: boolean } {
@@ -104,7 +103,7 @@ export function formatInIST(dateInput: string | Date | null | undefined, formatS
   if (!dateInput) return "";
   const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
   if (isNaN(date.getTime())) return "";
-
+  
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Kolkata',
     year: 'numeric',
@@ -114,20 +113,20 @@ export function formatInIST(dateInput: string | Date | null | undefined, formatS
     minute: '2-digit',
     hour12: true
   });
-
+  
   const parts = formatter.formatToParts(date);
   const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
-
+  
   const month = partMap.month || "";
   const day = partMap.day || "";
   const hour = partMap.hour || "";
   const minute = partMap.minute || "";
   const dayPeriod = (partMap.dayPeriod || "").toLowerCase();
-
+  
   if (formatStr === 'hh:mm a') {
     return `${hour}:${minute} ${dayPeriod}`;
   }
-
+  
   return `${month} ${day}, ${hour}:${minute} ${dayPeriod}`;
 }
 
@@ -159,3 +158,18 @@ export function isSubjectMatch(classTitle: string, subjectName: string): boolean
   return false;
 }
 
+export function getLocalDateKey(dateInput: string | Date): string {
+    const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    if (isNaN(d.getTime())) return "";
+    
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+    
+    const parts = formatter.formatToParts(d);
+    const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
+    return `${partMap.year}-${partMap.month}-${partMap.day}`;
+}
