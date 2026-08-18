@@ -521,8 +521,8 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                                                 <span className="text-xs font-bold uppercase tracking-wider">Loading class history...</span>
                                             </div>
                                         ) : (
-                                            <div className="overflow-x-auto max-h-[550px] overflow-y-auto mt-3 rounded-xl border border-border/20 bg-background">
-                                                <table className="w-full text-left border-collapse text-xs">
+                                            <div className="overflow-x-auto max-h-[550px] overflow-y-auto mt-3 rounded-xl border border-border/20 bg-background w-full max-w-full">
+                                                <table className="w-full text-left border-collapse text-xs min-w-[650px]">
                                                     <thead>
                                                         <tr className="bg-muted/40 border-b border-border/15 font-bold text-muted-foreground uppercase tracking-widest text-[9px]">
                                                             <th className="p-4 pl-6">Class Title</th>
@@ -592,9 +592,8 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                                                                             <span className="text-rose-500 font-semibold italic">No Join Log</span>
                                                                         )}
                                                                     </div>
-                                                                </td>
-                                                                <td className="p-4 text-right pr-6 space-x-1">
-                                                                    <div className="flex items-center justify-end gap-1.5">
+                                                                                                                              <td className="p-4 text-right pr-6 space-x-1">
+                                                                    <div className="flex flex-wrap items-center justify-end gap-1 md:gap-1.5">
                                                                         <PostClassLogModal
                                                                             classId={c.id}
                                                                             studentId={student.id}
@@ -604,34 +603,59 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                                                                                 <Button
                                                                                     size="sm"
                                                                                     variant="outline"
+                                                                                    title={c.status === 'completed' ? 'Edit Log' : 'Log Class'}
                                                                                     className="h-7 text-[9px] font-bold uppercase tracking-wider rounded-lg border-indigo-500/30 text-indigo-600 hover:bg-indigo-50 gap-1 px-2"
                                                                                 >
                                                                                     <FileText size={11} />
-                                                                                    <span>{c.status === 'completed' ? 'Edit Log' : 'Log Class'}</span>
+                                                                                    <span className="hidden xl:inline">{c.status === 'completed' ? 'Edit Log' : 'Log Class'}</span>
                                                                                 </Button>
                                                                             }
                                                                         />
                                                                         <AssignHomeworkDialog
                                                                             studentId={student.id}
                                                                             studentName={student.full_name}
+                                                                            trigger={
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    variant="outline"
+                                                                                    title="Homework"
+                                                                                    className="h-7 text-[9px] font-bold uppercase tracking-wider rounded-lg border-slate-300 text-slate-700 hover:bg-slate-50 gap-1 px-2"
+                                                                                >
+                                                                                    <BookOpen size={11} />
+                                                                                    <span className="hidden xl:inline">Homework</span>
+                                                                                </Button>
+                                                                            }
                                                                         />
                                                                         <UploadMaterialDialog
                                                                             studentId={student.id}
                                                                             studentName={student.full_name}
+                                                                            trigger={
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    variant="outline"
+                                                                                    title="Worksheet"
+                                                                                    className="h-7 text-[9px] font-bold uppercase tracking-wider rounded-lg border-slate-300 text-slate-700 hover:bg-slate-50 gap-1 px-2"
+                                                                                >
+                                                                                    <Upload size={11} />
+                                                                                    <span className="hidden xl:inline">Worksheet</span>
+                                                                                </Button>
+                                                                            }
                                                                         />
                                                                         <Button
                                                                             size="sm"
                                                                             variant="outline"
+                                                                            title="Share Link"
                                                                             className="h-7 text-[9px] font-bold uppercase tracking-wider rounded-lg border-slate-300 text-slate-700 hover:bg-slate-50 gap-1 px-2"
                                                                             onClick={() => handleShareLink(c.title, c.meeting_link)}
                                                                         >
                                                                             <Share2 size={11} />
-                                                                            <span>Share Link</span>
+                                                                            <span className="hidden xl:inline">Share Link</span>
                                                                         </Button>
                                                                         {c.status === 'completed' && ['hr', 'operations', 'super_admin', 'admin'].includes(userRole) && (
                                                                             <Button
                                                                                 size="sm"
                                                                                 variant="outline"
+                                                                                title="Delete Log"
                                                                                 disabled={deletingClassId === c.id}
                                                                                 className="h-7 text-[9px] font-bold uppercase tracking-wider rounded-lg border-rose-500/30 text-rose-600 hover:bg-rose-50 gap-1 px-2"
                                                                                 onClick={() => handleDeleteClass(c.id, c.title)}
@@ -641,22 +665,23 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                                                                                 ) : (
                                                                                     <Trash2 size={11} />
                                                                                 )}
-                                                                                <span>Delete Log</span>
+                                                                                <span className="hidden xl:inline">Delete Log</span>
                                                                             </Button>
                                                                         )}
                                                                         {c.status === 'scheduled' && (
                                                                             <Button
                                                                                 size="sm"
                                                                                 variant="outline"
+                                                                                title="Cancel"
                                                                                 className="h-7 text-[9px] font-bold uppercase tracking-wider rounded-lg border-rose-500/30 text-rose-600 hover:bg-rose-50 gap-1 px-2"
                                                                                 onClick={() => handleCancelClass(c.id, c.title)}
                                                                             >
                                                                                 <X size={11} />
-                                                                                <span>Cancel</span>
+                                                                                <span className="hidden xl:inline">Cancel</span>
                                                                             </Button>
                                                                         )}
                                                                     </div>
-                                                                </td>
+                                                                </td>     </td>
                                                             </tr>
                                                         ))}
                                                     {filteredStudentClasses.length === 0 && (

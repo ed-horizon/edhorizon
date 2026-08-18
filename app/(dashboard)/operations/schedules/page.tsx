@@ -69,7 +69,7 @@ export default function SchedulesPage() {
                     <span className="text-xs font-black uppercase text-indigo-600/50">Fetching student active timetables...</span>
                 </div>
             ) : (
-                <div className="space-y-6">
+                <div className="space-y-6 w-full max-w-full overflow-x-auto">
                     <StudentClassMonitor students={students} teachers={teachers} onRefresh={loadData} />
                 </div>
             )}

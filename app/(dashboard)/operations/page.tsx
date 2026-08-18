@@ -19,7 +19,7 @@ import {
     getAllCompletedClassLogs, getStudentsWithClasses, getAllTeachers, onboardStudent,
     getAllRequestsData, updateRescheduleStatus, updateLeaveStatus
 } from "@/app/(dashboard)/attendance/actions";
-import { getPendingPayments, processPaymentApproval, recordManualPayment } from "@/app/(dashboard)/payments/actions";
+import { getPendingPayments, processPaymentApproval, recordManualPayment, getLastCompletedPayments } from "@/app/(dashboard)/payments/actions";
 import { getLeads, updateLead } from "@/app/(dashboard)/sales/actions";
 import { CreateLiveClassDialog } from "@/components/features/teacher/CreateLiveClassDialog";
 import { ManageSchedulesDialog } from "@/components/features/teacher/ManageSchedulesDialog";
@@ -38,6 +38,7 @@ type RequestsData = Awaited<ReturnType<typeof getAllRequestsData>>;
 type RescheduleRequest = RequestsData["rescheduleRequests"][number];
 type LeaveRequest = RequestsData["leaveRequests"][number];
 type PendingPayment = Awaited<ReturnType<typeof getPendingPayments>>[number];
+type CompletedPayment = Awaited<ReturnType<typeof getLastCompletedPayments>>[number];
 type Complaint = { id: string; parent: string; student: string; issue: string; status: string; date: string };
 type HomeworkLog = { id: string; student: string; title: string; status: string; fileUrl: string | null; date: string };
 type ScheduleSummary = { id: string; title?: string | null; start_date?: string | null; end_date?: string | null };
@@ -54,6 +55,8 @@ export default function OperationsDashboard() {
     const [rescheduleRequests, setRescheduleRequests] = useState<RescheduleRequest[]>([]);
     const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
     const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
+    const [completedPayments, setCompletedPayments] = useState<CompletedPayment[]>([]);
+    const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
 
     const [isLoading, setIsLoading] = useState(true);
     const [userName, setUserName] = useState("Operations");
@@ -94,6 +97,15 @@ export default function OperationsDashboard() {
             }
         };
         fetchProfile();
+
+        try {
+            const loaded = localStorage.getItem('dismissed-fee-alerts');
+            if (loaded) {
+                setDismissedAlerts(JSON.parse(loaded));
+            }
+        } catch (e) {
+            console.error("Failed to load dismissed fee alerts from localStorage:", e);
+        }
     }, []);
     
     // Onboarding Form States
@@ -129,14 +141,15 @@ export default function OperationsDashboard() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [fetchedClasses, fetchedLeads, fetchedCompleted, fetchedStudents, fetchedTeachers, fetchedRequests, fetchedPayments] = await Promise.all([
+            const [fetchedClasses, fetchedLeads, fetchedCompleted, fetchedStudents, fetchedTeachers, fetchedRequests, fetchedPayments, fetchedCompletedPayments] = await Promise.all([
                 getLiveClasses(),
                 getLeads(true),
                 getAllCompletedClassLogs(),
                 getStudentsWithClasses(),
                 getAllTeachers(),
                 getAllRequestsData(),
-                getPendingPayments()
+                getPendingPayments(),
+                getLastCompletedPayments()
             ]);
             setClasses(fetchedClasses || []);
             setLeads(fetchedLeads || []);
@@ -150,6 +163,7 @@ export default function OperationsDashboard() {
             setRescheduleRequests(fetchedRequests.rescheduleRequests || []);
             setLeaveRequests(fetchedRequests.leaveRequests || []);
             setPendingPayments(fetchedPayments || []);
+            setCompletedPayments(fetchedCompletedPayments || []);
 
             
             // Set complaints from localStorage
@@ -203,6 +217,18 @@ export default function OperationsDashboard() {
             }
         }
         toast.success("Parent complaint marked as resolved!");
+    };
+
+    const handleDismissAlert = (studentId: string, subjectName: string, startStr: string | null) => {
+        const alertKey = `${studentId}-${subjectName}-${startStr || 'no-cycle'}`;
+        const updated = [...dismissedAlerts, alertKey];
+        setDismissedAlerts(updated);
+        try {
+            localStorage.setItem('dismissed-fee-alerts', JSON.stringify(updated));
+        } catch (e) {
+            console.error("Failed to save dismissed alerts to localStorage:", e);
+        }
+        toast.success(`Reminder alert for ${subjectName} dismissed.`);
     };
 
     const handleUpdateReschedule = async (requestId: string, status: 'approved' | 'rejected') => {
@@ -514,7 +540,7 @@ export default function OperationsDashboard() {
         }
 
         // Check if ANY subject meets the fee reminder alert threshold
-        const isAlertNeeded = activeSubjects.some(sub => {
+        const alertingSubjects = activeSubjects.filter(sub => {
             if (sub.classesPerMonth <= 0) return false;
 
             // Find matching schedule for this subject
@@ -529,8 +555,26 @@ export default function OperationsDashboard() {
                 endStr = matchingSchedule.end_date;
             }
 
+            // 1. Check if this alert has been manually dismissed by coordinator
+            const alertKey = `${student.id}-${sub.name}-${startStr || 'no-cycle'}`;
+            if (dismissedAlerts.includes(alertKey)) return false;
+
+            // 2. Check if a completed payment has already been recorded for this cycle/month
+            const hasPaid = completedPayments.some(p => {
+                if (p.student_id !== student.id) return false;
+                if (p.subject_name && !isSubjectMatch(p.subject_name, sub.name)) return false;
+
+                if (startStr) {
+                    const pDate = p.receipt_date || p.created_at.split('T')[0];
+                    return pDate >= startStr;
+                }
+                return p.billing_month === (currentMonth + 1) && p.billing_year === currentYear;
+            });
+
+            if (hasPaid) return false;
+
             // Count completed classes for this subject within its specific cycle date range
-            const completedCount = (student.classes || []).filter(c => {
+            const completedCount = (student.classes || []).filter((c: any) => {
                 if (c.status !== 'completed') return false;
 
                 let matches = false;
@@ -556,7 +600,7 @@ export default function OperationsDashboard() {
             return completedCount >= sub.classesPerMonth - 1;
         });
 
-        return isAlertNeeded;
+        return alertingSubjects.length > 0;
     });
 
     return (
@@ -755,7 +799,7 @@ export default function OperationsDashboard() {
                                                                 endStr = matchingSchedule.end_date;
                                                             }
 
-                                                            const completedCount = (student.classes || []).filter(c => {
+                                                            const completedCount = (student.classes || []).filter((c: any) => {
                                                                 if (c.status !== 'completed') return false;
                                                                 
                                                                 let matches = false;
@@ -784,6 +828,27 @@ export default function OperationsDashboard() {
 
                                                         const alertingSubjects = subjectsWithStats.filter(s => s.limit > 0 && s.completed >= s.limit - 1);
                                                         const isLimitReached = alertingSubjects.some(s => s.completed >= s.limit);
+
+                                                        const studentPayments = completedPayments.filter(p => p.student_id === student.id);
+                                                        const lastPayment = studentPayments.length > 0
+                                                            ? [...studentPayments].sort((a, b) => {
+                                                                const dateA = a.receipt_date || a.created_at;
+                                                                const dateB = b.receipt_date || b.created_at;
+                                                                return new Date(dateB).getTime() - new Date(dateA).getTime();
+                                                            })[0]
+                                                            : null;
+
+                                                        let lastPaidText = "No previous payment record";
+                                                        if (lastPayment) {
+                                                            try {
+                                                                const payDate = new Date(lastPayment.receipt_date || lastPayment.created_at);
+                                                                const formattedDate = format(payDate, "MMM dd, yyyy");
+                                                                lastPaidText = `Last Paid: ${formattedDate} (₹${lastPayment.amount} for ${lastPayment.billing_month}/${lastPayment.billing_year})`;
+                                                            } catch (e) {
+                                                                lastPaidText = `Last Paid: ₹${lastPayment.amount} (${lastPayment.billing_month}/${lastPayment.billing_year})`;
+                                                            }
+                                                        }
+
                                                         return (
                                                             <div key={student.id} className={cn("p-3 border rounded-xl text-xs flex justify-between items-center gap-4",
                                                                 isLimitReached 
@@ -801,28 +866,48 @@ export default function OperationsDashboard() {
                                                                             </p>
                                                                         ))}
                                                                     </div>
+                                                                    <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-1.5 uppercase tracking-wide">
+                                                                        {lastPaidText}
+                                                                    </p>
                                                                     <p className="text-[10px] text-muted-foreground mt-1">
                                                                         {isLimitReached ? "Completed all classes. Needs tuition renewal." : "Only 1 class remaining. Needs renewal reminder."}
                                                                     </p>
                                                                 </div>
-                                                                <Button 
-                                                                    size="sm" 
-                                                                    onClick={() => {
-                                                                        setManualStudentId(student.id);
-                                                                        setManualAmount(String(student.monthly_fee || 4500));
-                                                                        setShowManualPayment(true);
-                                                                    }}
-                                                                    className="h-7 text-[9px] font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3"
-                                                                >
-                                                                    Record Fee
-                                                                </Button>
+                                                                <div className="flex items-center gap-2">
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="ghost"
+                                                                        onClick={() => {
+                                                                            alertingSubjects.forEach(sub => {
+                                                                                const matchingSchedule = (student.active_schedules || []).find(sch =>
+                                                                                    sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
+                                                                                ) || student.active_schedule;
+                                                                                const startStr = matchingSchedule ? matchingSchedule.start_date : null;
+                                                                                handleDismissAlert(student.id, sub.name, startStr);
+                                                                            });
+                                                                        }}
+                                                                        className="h-7 text-[9px] font-bold uppercase tracking-wider border border-border/50 text-muted-foreground hover:bg-muted dark:hover:bg-muted/10 rounded-lg px-2.5"
+                                                                    >
+                                                                        Dismiss
+                                                                    </Button>
+                                                                    <Button 
+                                                                        size="sm" 
+                                                                        onClick={() => {
+                                                                            setManualStudentId(student.id);
+                                                                            setManualAmount(String(student.monthly_fee || 4500));
+                                                                            setShowManualPayment(true);
+                                                                        }}
+                                                                        className="h-7 text-[9px] font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3"
+                                                                    >
+                                                                        Record Fee
+                                                                    </Button>
+                                                                </div>
                                                             </div>
                                                         );
                                                     })}
                                                 </div>
                                             </div>
                                         )}
-                                        
                                     </CardContent>
                                 </Card>
                             )}
