@@ -478,3 +478,24 @@ export async function deletePaymentRecord(paymentId: string) {
     revalidatePath('/(dashboard)', 'layout');
     return { success: true };
 }
+
+export async function getLastCompletedPayments() {
+    const { isManager } = await checkManagerRole();
+    if (!isManager) {
+        throw new Error("Unauthorized");
+    }
+
+    const supabase = await createClient();
+    const { data, error } = await supabase
+        .from('payments')
+        .select('student_id, amount, billing_month, billing_year, payment_method, created_at, receipt_date, subject_name')
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Error fetching last completed payments:", error);
+        return [];
+    }
+
+    return data || [];
+}
