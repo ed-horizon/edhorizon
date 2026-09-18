@@ -55,9 +55,9 @@ export default async function PayrollManagement() {
         };
     }).filter((t: any) => t.status !== 'locked');
 
-    // Fetch verified live classes for this month
-    const startOfMonth = new Date(currentYear, currentMonth - 1, 1).toISOString();
-    const endOfMonth = new Date(currentYear, currentMonth, 0, 23, 59, 59, 999).toISOString();
+    // Fetch verified live classes for this month using explicit UTC bounds to prevent month-end timezone truncation
+    const startOfMonth = new Date(Date.UTC(currentYear, currentMonth - 1, 1, 0, 0, 0, 0)).toISOString();
+    const endOfMonth = new Date(Date.UTC(currentYear, currentMonth, 0, 23, 59, 59, 999)).toISOString();
 
     const { data: verifiedClasses } = await supabase
         .from('live_classes')

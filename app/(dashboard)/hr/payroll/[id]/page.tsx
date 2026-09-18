@@ -54,9 +54,9 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         return <div className="p-12 text-center text-muted-foreground italic">Payroll Run not found.</div>;
     }
 
-    // 2. Fetch verified live classes for this run's month/year
-    const startOfMonth = new Date(run.year, run.month - 1, 1).toISOString();
-    const endOfMonth = new Date(run.year, run.month, 0, 23, 59, 59, 999).toISOString();
+    // 2. Fetch verified live classes for this run's month/year using explicit UTC bounds
+    const startOfMonth = new Date(Date.UTC(run.year, run.month - 1, 1, 0, 0, 0, 0)).toISOString();
+    const endOfMonth = new Date(Date.UTC(run.year, run.month, 0, 23, 59, 59, 999)).toISOString();
 
     const { data: verifiedClasses } = await supabase
         .from('live_classes')
@@ -166,35 +166,47 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
     // 7. Synchronize DB payroll items: Insert missing, update mismatched draft items
     const isRunFinalized = run.status === 'completed' || run.status === 'paid';
     if (!isRunFinalized) {
+        const syncPromises: Promise<any>[] = [];
         for (const teacher of teachers) {
             const calculatedAmount = calculatedPayouts[teacher.id] || 0;
             const existing = existingItemsMap[teacher.id];
 
             if (!existing) {
                 // Insert missing payroll item for active teachers
-                await supabaseAdmin
-                    .from('payroll_items')
-                    .upsert({
-                        run_id: id,
-                        staff_id: teacher.id,
-                        staff_name: teacher.full_name,
-                        staff_email: teacher.email,
-                        basic_amount: calculatedAmount,
-                        payout_status: 'pending',
-                        deductions_amount: 0,
-                        deductions: 0,
-                        bonus_amount: 0
-                    }, {
-                        onConflict: 'run_id,staff_id',
-                        ignoreDuplicates: true
-                    });
+                syncPromises.push(
+                    Promise.resolve(
+                        supabaseAdmin
+                            .from('payroll_items')
+                            .upsert({
+                                run_id: id,
+                                staff_id: teacher.id,
+                                staff_name: teacher.full_name,
+                                staff_email: teacher.email,
+                                basic_amount: calculatedAmount,
+                                payout_status: 'pending',
+                                deductions_amount: 0,
+                                deductions: 0,
+                                bonus_amount: 0
+                            }, {
+                                onConflict: 'run_id,staff_id',
+                                ignoreDuplicates: true
+                            })
+                    )
+                );
             } else if (Number(existing.basic_amount) !== calculatedAmount && existing.payout_status !== 'processing' && existing.payout_status !== 'paid') {
                 // Update amount if mismatch is found and item isn't approved/paid yet
-                await supabaseAdmin
-                    .from('payroll_items')
-                    .update({ basic_amount: calculatedAmount })
-                    .eq('id', existing.id);
+                syncPromises.push(
+                    Promise.resolve(
+                        supabaseAdmin
+                            .from('payroll_items')
+                            .update({ basic_amount: calculatedAmount })
+                            .eq('id', existing.id)
+                    )
+                );
             }
+        }
+        if (syncPromises.length > 0) {
+            await Promise.all(syncPromises);
         }
     }
 
