@@ -1,3 +1,4 @@
+// Production Sync: Inactive staff filter & 15m early join buffer
 import { createClient } from "@/lib/supabase/server";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
