@@ -62,7 +62,8 @@ export default async function PayrollManagement() {
     const { data: verifiedClasses } = await supabase
         .from('live_classes')
         .select('teacher_id, duration_hours, student_id, student_attendance(status)')
-        .eq('verification_status', 'verified')
+        .eq('status', 'completed')
+        .neq('verification_status', 'rejected')
         .gte('scheduled_at', startOfMonth)
         .lte('scheduled_at', endOfMonth);
 

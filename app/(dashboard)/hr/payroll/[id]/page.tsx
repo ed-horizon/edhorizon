@@ -61,7 +61,8 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
     const { data: verifiedClasses } = await supabase
         .from('live_classes')
         .select('teacher_id, duration_hours, student_id, payroll_amount, student_attendance(status)')
-        .eq('verification_status', 'verified')
+        .eq('status', 'completed')
+        .neq('verification_status', 'rejected')
         .gte('scheduled_at', startOfMonth)
         .lte('scheduled_at', endOfMonth);
 
@@ -261,8 +262,8 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
             ? profile.staff_details[0]
             : profile.staff_details;
         if (staffDetails?.status === 'locked') return false;
-        // Omit inactive staff with zero basic amount if status is pending
-        if (staffDetails?.status === 'inactive' && Number(item.basic_amount || 0) === 0 && item.payout_status === 'pending') {
+        // Omit inactive staff with zero basic amount if status is not paid/processing
+        if (staffDetails?.status === 'inactive' && Number(item.basic_amount || 0) === 0 && item.payout_status !== 'paid' && item.payout_status !== 'processing') {
             return false;
         }
         return true;
