@@ -125,7 +125,8 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
     // 5. Calculate accrued payouts dynamically
     const calculatedPayouts: Record<string, number> = {};
     teachers.forEach(t => {
-        calculatedPayouts[t.id] = t.pay_basis === 'fixed' ? t.basic_salary : 0;
+        // Inactive staff do not accrue fixed basic_salary; they are only paid for verified classes taken prior to becoming inactive
+        calculatedPayouts[t.id] = (t.status === 'inactive') ? 0 : (t.pay_basis === 'fixed' ? t.basic_salary : 0);
     });
 
     (verifiedClasses as VerifiedClass[] | null)?.forEach((c) => {
@@ -135,8 +136,8 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         }
         if (c.teacher_id && calculatedPayouts[c.teacher_id] !== undefined) {
             const teacher = teachers.find(t => t.id === c.teacher_id);
-            if (teacher?.pay_basis === 'fixed') {
-                return; // Fixed pay staff are paid basic_salary, not class hours
+            if (teacher?.pay_basis === 'fixed' && teacher?.status !== 'inactive') {
+                return; // Fixed pay active staff are paid basic_salary, not class hours
             }
             if (c.payroll_amount !== null && c.payroll_amount !== undefined) {
                 calculatedPayouts[c.teacher_id] += Number(c.payroll_amount) || 0;
@@ -172,27 +173,29 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
             const existing = existingItemsMap[teacher.id];
 
             if (!existing) {
-                // Insert missing payroll item for active teachers
-                syncPromises.push(
-                    Promise.resolve(
-                        supabaseAdmin
-                            .from('payroll_items')
-                            .upsert({
-                                run_id: id,
-                                staff_id: teacher.id,
-                                staff_name: teacher.full_name,
-                                staff_email: teacher.email,
-                                basic_amount: calculatedAmount,
-                                payout_status: 'pending',
-                                deductions_amount: 0,
-                                deductions: 0,
-                                bonus_amount: 0
-                            }, {
-                                onConflict: 'run_id,staff_id',
-                                ignoreDuplicates: true
-                            })
-                    )
-                );
+                // Insert missing payroll item for active teachers or inactive teachers with verified class earnings
+                if (teacher.status === 'active' || calculatedAmount > 0) {
+                    syncPromises.push(
+                        Promise.resolve(
+                            supabaseAdmin
+                                .from('payroll_items')
+                                .upsert({
+                                    run_id: id,
+                                    staff_id: teacher.id,
+                                    staff_name: teacher.full_name,
+                                    staff_email: teacher.email,
+                                    basic_amount: calculatedAmount,
+                                    payout_status: 'pending',
+                                    deductions_amount: 0,
+                                    deductions: 0,
+                                    bonus_amount: 0
+                                }, {
+                                    onConflict: 'run_id,staff_id',
+                                    ignoreDuplicates: true
+                                })
+                        )
+                    );
+                }
             } else if (Number(existing.basic_amount) !== calculatedAmount && existing.payout_status !== 'processing' && existing.payout_status !== 'paid') {
                 // Update amount if mismatch is found and item isn't approved/paid yet
                 syncPromises.push(
@@ -257,7 +260,12 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         const staffDetails = Array.isArray(profile.staff_details)
             ? profile.staff_details[0]
             : profile.staff_details;
-        return staffDetails?.status !== 'locked';
+        if (staffDetails?.status === 'locked') return false;
+        // Omit inactive staff with zero basic amount if status is pending
+        if (staffDetails?.status === 'inactive' && Number(item.basic_amount || 0) === 0 && item.payout_status === 'pending') {
+            return false;
+        }
+        return true;
     });
 
     return (
