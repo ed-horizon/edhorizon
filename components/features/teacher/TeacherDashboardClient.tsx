@@ -497,8 +497,11 @@ export function TeacherDashboardClient({
 
                                         <div className="flex items-center gap-3 pt-2">
                                             {(() => {
-                                                const scheduledTime = new Date(c.scheduled_at).getTime();
-                                                const elapsedMinutes = (currentTime.getTime() - scheduledTime) / (1000 * 60);
+                                                const rawScheduled = c.scheduled_at ? String(c.scheduled_at).replace(' ', 'T') : '';
+                                                const scheduledTime = rawScheduled ? new Date(rawScheduled).getTime() : 0;
+                                                const elapsedMinutes = (!isNaN(scheduledTime) && scheduledTime > 0)
+                                                    ? (currentTime.getTime() - scheduledTime) / (1000 * 60)
+                                                    : 0;
 
                                                 if (c.status === 'completed') {
                                                     return (
