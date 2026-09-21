@@ -5,6 +5,20 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function getEpochMs(dateInput: string | Date | null | undefined): number {
+  if (!dateInput) return 0;
+  if (dateInput instanceof Date) return dateInput.getTime();
+  let str = String(dateInput).trim();
+  if (!str) return 0;
+  str = str.replace(' ', 'T');
+  const hasTimezone = str.includes('Z') || str.includes('+') || (str.lastIndexOf('-') > 10);
+  if (!hasTimezone) {
+    str += '+05:30';
+  }
+  const ms = new Date(str).getTime();
+  return isNaN(ms) ? 0 : ms;
+}
+
 export function formatTime12Hour(timeStr: string | null | undefined): string {
   if (!timeStr) return "";
   const parts = timeStr.split(":");

@@ -6,6 +6,7 @@ import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import { startOfMonth, endOfMonth, isAfter } from "date-fns";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateNextReceiptNumber } from "@/app/(dashboard)/payments/actions";
+import { getEpochMs } from "@/lib/utils";
 import {
     deleteR2Object,
     getSignedDownloadUrl,
@@ -2624,9 +2625,8 @@ export async function logTutorJoinClass(classId: string) {
         const now = new Date();
 
         if (classData.scheduled_at) {
-            const rawScheduled = String(classData.scheduled_at).replace(' ', 'T');
-            const scheduledTime = new Date(rawScheduled).getTime();
-            if (!isNaN(scheduledTime) && scheduledTime > 0) {
+            const scheduledTime = getEpochMs(classData.scheduled_at);
+            if (scheduledTime > 0) {
                 const diffMinutes = (now.getTime() - scheduledTime) / (1000 * 60);
                 if (diffMinutes < -15) {
                     return { success: false, error: "Check-in opens 15 minutes before scheduled class time." };

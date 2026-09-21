@@ -15,7 +15,7 @@ import {
     Users, ChevronDown, ChevronUp, BookOpen, Upload, Download,
     FileText, Award, Star, Loader2, Sparkles, LogOut, Check, X, Plus
 } from "lucide-react"
-import { formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
+import { formatTime12Hour, ensureAbsoluteUrl, formatClassTitle, getEpochMs } from "@/lib/utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -497,9 +497,8 @@ export function TeacherDashboardClient({
 
                                         <div className="flex items-center gap-3 pt-2">
                                             {(() => {
-                                                const rawScheduled = c.scheduled_at ? String(c.scheduled_at).replace(' ', 'T') : '';
-                                                const scheduledTime = rawScheduled ? new Date(rawScheduled).getTime() : 0;
-                                                const elapsedMinutes = (!isNaN(scheduledTime) && scheduledTime > 0)
+                                                const scheduledTime = getEpochMs(c.scheduled_at);
+                                                const elapsedMinutes = scheduledTime > 0
                                                     ? (currentTime.getTime() - scheduledTime) / (1000 * 60)
                                                     : 0;
 

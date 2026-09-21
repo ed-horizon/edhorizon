@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Video, Calendar, Clock, ExternalLink, CheckCircle2, ChevronDown, ChevronUp, AlertCircle } from "lucide-react"
 import { format } from "date-fns"
-import { ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
+import { ensureAbsoluteUrl, formatClassTitle, getEpochMs } from "@/lib/utils"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
@@ -154,9 +154,8 @@ export function TeacherLiveClasses({ classes }: TeacherLiveClassesProps) {
                                                     </div>
                                                     <div className="flex items-center gap-3">
                                                         {(() => {
-                                                            const rawScheduled = c.scheduled_at ? String(c.scheduled_at).replace(' ', 'T') : '';
-                                                            const scheduledTime = rawScheduled ? new Date(rawScheduled).getTime() : 0;
-                                                            const elapsedMinutes = (!isNaN(scheduledTime) && scheduledTime > 0)
+                                                            const scheduledTime = getEpochMs(c.scheduled_at);
+                                                            const elapsedMinutes = scheduledTime > 0
                                                                 ? (currentTime.getTime() - scheduledTime) / (1000 * 60)
                                                                 : 0;
 
