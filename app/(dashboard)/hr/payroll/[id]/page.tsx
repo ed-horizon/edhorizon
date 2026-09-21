@@ -61,8 +61,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
     const { data: verifiedClasses } = await supabase
         .from('live_classes')
         .select('teacher_id, duration_hours, student_id, payroll_amount, student_attendance(status)')
-        .eq('status', 'completed')
-        .neq('verification_status', 'rejected')
+        .eq('verification_status', 'verified')
         .gte('scheduled_at', startOfMonth)
         .lte('scheduled_at', endOfMonth);
 
