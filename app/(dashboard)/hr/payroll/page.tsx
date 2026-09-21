@@ -99,16 +99,17 @@ export default async function PayrollManagement() {
 
     const teacherPayouts = teachers.map(t => {
         const stats = teacherStats[t.id] || { count: 0, hours: 0, payout: 0 };
-        const payout = t.pay_basis === 'fixed' ? t.basic_salary : stats.payout;
+        // Inactive staff do not accrue fixed basic_salary; they are only paid for verified classes taken prior to becoming inactive
+        const payout = (t.status === 'inactive') ? stats.payout : (t.pay_basis === 'fixed' ? t.basic_salary : stats.payout);
         return {
             ...t,
             classes_taken: stats.count,
             hours_taken: stats.hours,
             total_payout: payout
         };
-    });
+    }).filter(t => t.status === 'active' || t.classes_taken > 0 || t.total_payout > 0);
 
-    const totalStaffCount = teachers.length;
+    const totalStaffCount = teachers.filter(t => t.status === 'active').length;
     const totalClassesTaken = verifiedClasses?.length || 0;
     const totalAmountAccrued = teacherPayouts.reduce((sum, t) => sum + t.total_payout, 0);
 

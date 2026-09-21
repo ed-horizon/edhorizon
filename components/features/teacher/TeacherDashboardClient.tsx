@@ -530,13 +530,15 @@ export function TeacherDashboardClient({
 
                                                 // If teacher has not checked in yet
                                                 if (!c.tutor_joined_at) {
+                                                    const isTooEarly = elapsedMinutes < -15;
                                                     return (
                                                         <Button 
                                                             onClick={() => handleLogInClass(c.id, c.meeting_link)}
-                                                            disabled={loggingInClassId === c.id}
-                                                            className="w-full rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black uppercase tracking-widest text-[10px] h-10 gap-2 shadow-lg shadow-rose-600/10"
+                                                            disabled={loggingInClassId === c.id || isTooEarly}
+                                                            title={isTooEarly ? "Check-in opens 15 minutes before scheduled class time" : undefined}
+                                                            className="w-full rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black uppercase tracking-widest text-[10px] h-10 gap-2 shadow-lg shadow-rose-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
                                                         >
-                                                            {loggingInClassId === c.id ? "Logging In..." : "Log In Class"}
+                                                            {loggingInClassId === c.id ? "Logging In..." : isTooEarly ? "Opens 15m Before Class" : "Log In Class"}
                                                             <ExternalLink size={12} />
                                                         </Button>
                                                     );

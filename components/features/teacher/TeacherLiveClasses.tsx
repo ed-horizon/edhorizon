@@ -178,13 +178,15 @@ export function TeacherLiveClasses({ classes }: TeacherLiveClassesProps) {
 
                                                             // Check if teacher has not checked in yet
                                                             if (!c.tutor_joined_at) {
+                                                                const isTooEarly = elapsedMinutes < -15;
                                                                 return (
                                                                     <Button 
                                                                         onClick={() => handleLogInClass(c.id, c.meeting_link)}
-                                                                        disabled={loggingInClassId === c.id}
-                                                                        className="rounded-xl h-10 px-6 gap-2 font-black uppercase tracking-widest text-[10px] bg-rose-600 hover:bg-rose-700 shadow-lg shadow-rose-600/20"
+                                                                        disabled={loggingInClassId === c.id || isTooEarly}
+                                                                        title={isTooEarly ? "Check-in opens 15 minutes before scheduled class time" : undefined}
+                                                                        className="rounded-xl h-10 px-6 gap-2 font-black uppercase tracking-widest text-[10px] bg-rose-600 hover:bg-rose-700 shadow-lg shadow-rose-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
                                                                     >
-                                                                        {loggingInClassId === c.id ? "Logging In..." : "Log In Class"}
+                                                                        {loggingInClassId === c.id ? "Logging In..." : isTooEarly ? "Opens 15m Before Class" : "Log In Class"}
                                                                         <ExternalLink size={14} />
                                                                     </Button>
                                                                 );
