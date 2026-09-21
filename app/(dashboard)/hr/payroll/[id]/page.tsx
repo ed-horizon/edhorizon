@@ -38,7 +38,13 @@ type PayrollItem = {
     [key: string]: unknown;
 };
 
+import { unstable_noStore as noStore } from "next/cache";
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function PayrollRunDetails({ params }: { params: { id: string } }) {
+    noStore();
     const { id } = await params;
     const supabase = await createClient();
     const supabaseAdmin = createAdminClient();

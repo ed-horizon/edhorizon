@@ -1,5 +1,6 @@
 // Production Sync: Inactive staff filter & 15m early join buffer
 import { createClient } from "@/lib/supabase/server";
+import { unstable_noStore as noStore } from "next/cache";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { CreditCard, Clock, CheckCircle2, AlertCircle, Calendar, Users, FileText, PiggyBank } from "lucide-react";
@@ -8,7 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { format } from "date-fns";
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function PayrollManagement() {
+    noStore();
     const supabase = await createClient();
 
     // 1. Fetch active payroll runs
@@ -100,15 +105,22 @@ export default async function PayrollManagement() {
 
     const teacherPayouts = teachers.map(t => {
         const stats = teacherStats[t.id] || { count: 0, hours: 0, payout: 0 };
+        const isInactive = (t.status || '').toLowerCase() === 'inactive';
         // Inactive staff do not accrue fixed basic_salary; they are only paid for verified classes taken prior to becoming inactive
-        const payout = (t.status === 'inactive') ? stats.payout : (t.pay_basis === 'fixed' ? t.basic_salary : stats.payout);
+        const payout = isInactive ? stats.payout : (t.pay_basis === 'fixed' ? t.basic_salary : stats.payout);
         return {
             ...t,
             classes_taken: stats.count,
             hours_taken: stats.hours,
             total_payout: payout
         };
-    }).filter(t => t.status === 'active' || t.classes_taken > 0 || t.total_payout > 0);
+    }).filter(t => {
+        const isInactive = (t.status || '').toLowerCase() === 'inactive';
+        if (isInactive && t.classes_taken === 0 && t.total_payout === 0) {
+            return false;
+        }
+        return t.status === 'active' || t.classes_taken > 0 || t.total_payout > 0;
+    });
 
     const totalStaffCount = teachers.filter(t => t.status === 'active').length;
     const totalClassesTaken = verifiedClasses?.length || 0;
