@@ -2624,13 +2624,16 @@ export async function logTutorJoinClass(classId: string) {
         const now = new Date();
 
         if (classData.scheduled_at) {
-            const scheduledTime = new Date(classData.scheduled_at);
-            const diffMinutes = (now.getTime() - scheduledTime.getTime()) / (1000 * 60);
-            if (diffMinutes < -15) {
-                return { success: false, error: "Check-in opens 15 minutes before scheduled class time." };
-            }
-            if (diffMinutes > 5) {
-                updates.tutor_joined_late = true;
+            const rawScheduled = String(classData.scheduled_at).replace(' ', 'T');
+            const scheduledTime = new Date(rawScheduled).getTime();
+            if (!isNaN(scheduledTime) && scheduledTime > 0) {
+                const diffMinutes = (now.getTime() - scheduledTime) / (1000 * 60);
+                if (diffMinutes < -15) {
+                    return { success: false, error: "Check-in opens 15 minutes before scheduled class time." };
+                }
+                if (diffMinutes > 5) {
+                    updates.tutor_joined_late = true;
+                }
             }
         }
         updates.tutor_joined_at = now.toISOString();

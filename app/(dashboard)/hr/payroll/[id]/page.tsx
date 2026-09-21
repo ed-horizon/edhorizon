@@ -118,7 +118,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
             pay_basis: details?.pay_basis || 'hourly',
             basic_salary: Number(details?.basic_salary || 0),
             hourly_rate: Number(details?.hourly_rate || 0),
-            status: details?.status || 'active'
+            status: details?.status ? String(details.status).toLowerCase() : 'active'
         };
     }).filter((t) => t.status !== 'locked');
 
