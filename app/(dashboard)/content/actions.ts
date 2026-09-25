@@ -82,52 +82,60 @@ export async function getTopicsByCourse(courseId: string) {
 }
 
 export async function getTopics() {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return [];
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
 
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
 
-    const { data, error } = await supabase
-        .from('topics')
-        .select(`
-            *,
-            courses (
-                title,
-                modules (
-                    id,
+        const { data, error } = await supabase
+            .from('topics')
+            .select(`
+                *,
+                courses (
                     title,
-                    description
+                    modules (
+                        id,
+                        title,
+                        description
+                    )
                 )
-            )
-        `)
-        .order('title', { ascending: true });
+            `)
+            .order('title', { ascending: true });
 
-    if (error) throw error;
-
-    const parsedTopics = (data || []).map((topic: any) => {
-        if (topic.courses?.modules) {
-            const { studentId } = parseDescription(topic.courses.modules.description);
-            topic.courses.modules.student_id = studentId;
+        if (error) {
+            console.error("getTopics query error:", error);
+            return [];
         }
-        return topic;
-    });
 
-    if (profile?.role === 'teacher') {
-        const { data: assignedStudents } = await supabase
-            .from('student_details')
-            .select('id')
-            .eq('assigned_teacher_id', user.id);
-        
-        const studentIds = assignedStudents?.map(s => s.id) || [];
-        return parsedTopics.filter((t: any) => t.courses?.modules?.student_id && studentIds.includes(t.courses.modules.student_id));
+        const parsedTopics = (data || []).map((topic: any) => {
+            if (topic.courses?.modules) {
+                const { studentId } = parseDescription(topic.courses.modules.description);
+                topic.courses.modules.student_id = studentId;
+            }
+            return topic;
+        });
+
+        if (profile?.role === 'teacher') {
+            const { data: assignedStudents } = await supabase
+                .from('student_details')
+                .select('id')
+                .or(`assigned_teacher_id.eq.${user.id},assigned_teacher_id_2.eq.${user.id},assigned_teacher_id_3.eq.${user.id},assigned_teacher_id_4.eq.${user.id},assigned_teacher_id_5.eq.${user.id}`);
+            
+            const studentIds = assignedStudents?.map(s => s.id) || [];
+            return parsedTopics.filter((t: any) => !t.courses?.modules?.student_id || studentIds.includes(t.courses.modules.student_id));
+        }
+
+        return parsedTopics;
+    } catch (err) {
+        console.error("getTopics unexpected error:", err);
+        return [];
     }
-
-    return parsedTopics;
 }
 
 export async function getOrCreateTopicForStudent(studentId: string, topicTitle: string) {
