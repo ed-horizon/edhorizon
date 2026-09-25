@@ -1,16 +1,13 @@
 'use server'
 
 import { createClient } from "@/lib/supabase/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { parseDescription, formatDescription } from "@/lib/utils";
 import { unstable_noStore as noStore } from "next/cache";
 
 function getAdminSupabase() {
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-        return createSupabaseClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-        );
+        return createAdminClient();
     }
     return null;
 }
