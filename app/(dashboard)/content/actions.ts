@@ -1,13 +1,26 @@
 'use server'
 
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { parseDescription, formatDescription } from "@/lib/utils";
 import { unstable_noStore as noStore } from "next/cache";
+
+function getAdminSupabase() {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        return createSupabaseClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+    }
+    return null;
+}
 
 export async function getModules() {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
+
+    const adminSupabase = getAdminSupabase() || supabase;
 
     const { data: profile } = await supabase
         .from('profiles')
@@ -15,7 +28,7 @@ export async function getModules() {
         .eq('id', user.id)
         .single();
 
-    const { data: modulesData, error: modulesError } = await supabase
+    const { data: modulesData, error: modulesError } = await adminSupabase
         .from('modules')
         .select('*')
         .order('created_at', { ascending: false });
@@ -23,7 +36,7 @@ export async function getModules() {
     if (modulesError) throw modulesError;
 
     // Fetch all student profiles to join student names
-    const { data: studentProfiles } = await supabase
+    const { data: studentProfiles } = await adminSupabase
         .from('profiles')
         .select('id, full_name')
         .eq('role', 'student');
@@ -42,7 +55,7 @@ export async function getModules() {
 
     if (profile?.role === 'teacher') {
         // Get teacher's assigned student IDs
-        const { data: assignedStudents } = await supabase
+        const { data: assignedStudents } = await adminSupabase
             .from('student_details')
             .select('id')
             .eq('assigned_teacher_id', user.id);
@@ -56,7 +69,8 @@ export async function getModules() {
 
 export async function getCoursesByModule(moduleId: string) {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const adminSupabase = getAdminSupabase() || supabase;
+    const { data, error } = await adminSupabase
         .from('courses')
         .select('*')
         .eq('module_id', moduleId)
@@ -68,7 +82,8 @@ export async function getCoursesByModule(moduleId: string) {
 
 export async function getTopicsByCourse(courseId: string) {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const adminSupabase = getAdminSupabase() || supabase;
+    const { data, error } = await adminSupabase
         .from('topics')
         .select(`
             *,
@@ -87,13 +102,15 @@ export async function getTopics() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return [];
 
+        const adminSupabase = getAdminSupabase() || supabase;
+
         const { data: profile } = await supabase
             .from('profiles')
             .select('role')
             .eq('id', user.id)
             .single();
 
-        const { data, error } = await supabase
+        const { data, error } = await adminSupabase
             .from('topics')
             .select(`
                 *,
@@ -122,7 +139,7 @@ export async function getTopics() {
         });
 
         if (profile?.role === 'teacher') {
-            const { data: assignedStudents } = await supabase
+            const { data: assignedStudents } = await adminSupabase
                 .from('student_details')
                 .select('id')
                 .or(`assigned_teacher_id.eq.${user.id},assigned_teacher_id_2.eq.${user.id},assigned_teacher_id_3.eq.${user.id},assigned_teacher_id_4.eq.${user.id},assigned_teacher_id_5.eq.${user.id}`);
@@ -140,9 +157,10 @@ export async function getTopics() {
 
 export async function getOrCreateTopicForStudent(studentId: string, topicTitle: string) {
     const supabase = await createClient();
+    const adminSupabase = getAdminSupabase() || supabase;
     
     // 1. Fetch all modules to check if student already has a default module
-    const { data: allModules } = await supabase
+    const { data: allModules } = await adminSupabase
         .from('modules')
         .select('*');
         
@@ -164,7 +182,7 @@ export async function getOrCreateTopicForStudent(studentId: string, topicTitle: 
     const moduleId = targetModule.id;
 
     // 2. Find or create default course under this module
-    const { data: courses } = await supabase
+    const { data: courses } = await adminSupabase
         .from('courses')
         .select('*')
         .eq('module_id', moduleId);
@@ -197,6 +215,8 @@ export async function saveCapsule(payload: any) {
             return { success: false, error: "Unauthorized: User session not found." };
         }
 
+        const adminSupabase = getAdminSupabase() || supabase;
+
         let topicId = payload.topic_id;
         if (!topicId && payload.student_id) {
             try {
@@ -209,7 +229,7 @@ export async function saveCapsule(payload: any) {
 
         // If topicId is still missing, fallback to any existing topic in the database or create a new default topic
         if (!topicId) {
-            const { data: existingTopic } = await supabase
+            const { data: existingTopic } = await adminSupabase
                 .from('topics')
                 .select('id')
                 .limit(1)
@@ -252,7 +272,7 @@ export async function saveCapsule(payload: any) {
             status: 'draft'
         };
 
-        const { data, error } = await supabase
+        const { data, error } = await adminSupabase
             .from('capsules')
             .insert(insertPayload)
             .select()
@@ -272,7 +292,8 @@ export async function saveCapsule(payload: any) {
 export async function getPendingCapsules() {
     noStore();
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const adminSupabase = getAdminSupabase() || supabase;
+    const { data, error } = await adminSupabase
         .from('capsules')
         .select(`
             *,
@@ -288,7 +309,8 @@ export async function getPendingCapsules() {
 
 export async function updateCapsuleStatus(id: string, status: 'published' | 'draft' | 'rejected') {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const adminSupabase = getAdminSupabase() || supabase;
+    const { data, error } = await adminSupabase
         .from('capsules')
         .update({ status })
         .eq('id', id)
@@ -301,7 +323,8 @@ export async function updateCapsuleStatus(id: string, status: 'published' | 'dra
 
 export async function getStudents() {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const adminSupabase = getAdminSupabase() || supabase;
+    const { data, error } = await adminSupabase
         .from('profiles')
         .select('*')
         .eq('role', 'student')
@@ -316,6 +339,8 @@ export async function getTutorStudents() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
 
+    const adminSupabase = getAdminSupabase() || supabase;
+
     const { data: profile } = await supabase
         .from('profiles')
         .select('role')
@@ -326,7 +351,7 @@ export async function getTutorStudents() {
         return getStudents();
     }
 
-    const { data: assignedStudents } = await supabase
+    const { data: assignedStudents } = await adminSupabase
         .from('student_details')
         .select('id')
         .or(`assigned_teacher_id.eq.${user.id},assigned_teacher_id_2.eq.${user.id},assigned_teacher_id_3.eq.${user.id},assigned_teacher_id_4.eq.${user.id},assigned_teacher_id_5.eq.${user.id}`);
@@ -334,7 +359,7 @@ export async function getTutorStudents() {
     const studentIds = (assignedStudents || []).map(s => s.id);
     if (studentIds.length === 0) return [];
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
         .from('profiles')
         .select('id, full_name, email')
         .in('id', studentIds)
@@ -349,10 +374,12 @@ export async function saveModule(payload: { title: string; description: string; 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
+    const adminSupabase = getAdminSupabase() || supabase;
+
     const slug = `${payload.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Math.random().toString(36).substring(2, 8)}`;
     const formattedDesc = formatDescription(payload.student_id, payload.description);
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
         .from('modules')
         .insert({
             title: payload.title,
@@ -372,7 +399,9 @@ export async function saveCourse(payload: { module_id: string; title: string; gr
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
-    const { data: existing } = await supabase
+    const adminSupabase = getAdminSupabase() || supabase;
+
+    const { data: existing } = await adminSupabase
         .from('courses')
         .select('order')
         .eq('module_id', payload.module_id)
@@ -380,7 +409,7 @@ export async function saveCourse(payload: { module_id: string; title: string; gr
         .limit(1);
     const nextOrder = existing && existing.length > 0 ? (existing[0].order + 1) : 0;
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
         .from('courses')
         .insert({
             module_id: payload.module_id,
@@ -399,7 +428,9 @@ export async function saveTopic(payload: { course_id: string; title: string }) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
-    const { data: existing } = await supabase
+    const adminSupabase = getAdminSupabase() || supabase;
+
+    const { data: existing } = await adminSupabase
         .from('topics')
         .select('order')
         .eq('course_id', payload.course_id)
@@ -407,7 +438,7 @@ export async function saveTopic(payload: { course_id: string; title: string }) {
         .limit(1);
     const nextOrder = existing && existing.length > 0 ? (existing[0].order + 1) : 0;
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
         .from('topics')
         .insert({
             course_id: payload.course_id,
