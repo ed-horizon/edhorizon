@@ -38,6 +38,11 @@ export function FlashcardBuilder({ onChange, initialData }: FlashcardBuilderProp
         onChange({ cards: newCards });
     }
 
+    // Pass initial state to parent on mount so default card is captured
+    useState(() => {
+        onChange({ cards });
+    });
+
     const addCard = () => {
         const newCard: Flashcard = {
             id: crypto.randomUUID(),

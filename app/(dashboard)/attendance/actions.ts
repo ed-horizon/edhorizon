@@ -701,9 +701,9 @@ export async function getAllTeachers() {
     }
 
     const filtered = (data || []).filter(t => {
-        if (currentUserRole === 'super_admin') return true;
         const details = Array.isArray(t.staff_details) ? t.staff_details[0] : t.staff_details;
-        return details?.status !== 'locked';
+        const status = details?.status ? String(details.status).toLowerCase() : 'active';
+        return status !== 'inactive' && status !== 'locked';
     });
 
     return filtered.map(t => ({

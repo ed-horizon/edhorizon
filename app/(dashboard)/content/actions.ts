@@ -192,27 +192,43 @@ export async function saveCapsule(payload: any) {
 
     let topicId = payload.topic_id;
     if (!topicId && payload.student_id) {
-        const topicTitle = payload.custom_topic_title?.trim() || "General Study";
-        topicId = await getOrCreateTopicForStudent(payload.student_id, topicTitle);
+        try {
+            const topicTitle = payload.custom_topic_title?.trim() || "General Study";
+            topicId = await getOrCreateTopicForStudent(payload.student_id, topicTitle);
+        } catch (err: any) {
+            console.error("Error creating topic for student:", err);
+            const { data: existingTopics } = await supabase.from('topics').select('id').limit(1);
+            if (existingTopics && existingTopics.length > 0) {
+                topicId = existingTopics[0].id;
+            }
+        }
+    }
+
+    const insertPayload: any = {
+        title: payload.title,
+        type: payload.type,
+        content: {
+            ...payload.content,
+            student_id: payload.student_id
+        },
+        author_id: user.id,
+        status: 'draft'
+    };
+
+    if (topicId) {
+        insertPayload.topic_id = topicId;
     }
 
     const { data, error } = await supabase
         .from('capsules')
-        .insert({
-            topic_id: topicId,
-            title: payload.title,
-            type: payload.type,
-            content: {
-                ...payload.content,
-                student_id: payload.student_id // Store student_id inside the JSONB content column
-            },
-            author_id: user.id,
-            status: 'draft'
-        })
+        .insert(insertPayload)
         .select()
         .single();
 
-    if (error) throw error;
+    if (error) {
+        console.error("saveCapsule Supabase Insert Error:", error);
+        throw new Error(error.message || "Failed to save capsule record in database.");
+    }
     return data;
 }
 
