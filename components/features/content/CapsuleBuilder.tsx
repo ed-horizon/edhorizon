@@ -36,7 +36,7 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
         }
         setLoading(true)
         try {
-            await saveCapsule({
+            const res = await saveCapsule({
                 title,
                 topic_id: topicId || null,
                 custom_topic_title: customTopicTitle,
@@ -48,6 +48,12 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
                         ? flashcardContent
                         : (type === 'video' ? { videoUrl, description: videoDescription } : {})
             });
+
+            if (res && res.success === false) {
+                toast.error(res.error || "Error saving capsule. Please check your inputs.");
+                return;
+            }
+
             toast.success("Capsule saved successfully!");
             router.push('/content');
         } catch (error: any) {
