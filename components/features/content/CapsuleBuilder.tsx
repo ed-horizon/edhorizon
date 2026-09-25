@@ -13,6 +13,8 @@ import { saveCapsule } from "@/app/(dashboard)/content/actions"
 import { McqBuilder } from "./McqBuilder"
 import { FlashcardBuilder } from "./FlashcardBuilder"
 
+import { toast } from "sonner"
+
 export function CapsuleBuilder({ topics, students }: { topics: any[]; students: any[] }) {
     const [step, setStep] = useState(1)
     const [type, setType] = useState('video')
@@ -20,16 +22,21 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
     const [topicId, setTopicId] = useState('')
     const [customTopicTitle, setCustomTopicTitle] = useState('')
     const [studentId, setStudentId] = useState('')
+    const [videoUrl, setVideoUrl] = useState('')
+    const [videoDescription, setVideoDescription] = useState('')
     const [loading, setLoading] = useState(false)
     const [quizContent, setQuizContent] = useState<{ questions: any[] }>({ questions: [] })
     const [flashcardContent, setFlashcardContent] = useState<{ cards: any[] }>({ cards: [] })
     const router = useRouter()
 
     const handleSave = async () => {
-        if (!title || !studentId) return;
+        if (!title.trim() || !studentId) {
+            toast.error("Please enter a title and select a student.");
+            return;
+        }
         setLoading(true)
         try {
-            await saveCapsule({
+            const res = await saveCapsule({
                 title,
                 topic_id: topicId || null,
                 custom_topic_title: customTopicTitle,
@@ -39,12 +46,19 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
                     ? quizContent
                     : type === 'flashcards'
                         ? flashcardContent
-                        : (type === 'video' ? { videoUrl: '', description: '' } : {})
+                        : (type === 'video' ? { videoUrl, description: videoDescription } : {})
             });
+
+            if (res && res.success === false) {
+                toast.error(res.error || "Error saving capsule. Please check your inputs.");
+                return;
+            }
+
+            toast.success("Capsule saved successfully!");
             router.push('/content');
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to save capsule:", error);
-            alert("Error saving capsule. Check console.");
+            toast.error(error?.message || "Error saving capsule. Please check your inputs.");
         } finally {
             setLoading(false)
         }
@@ -204,11 +218,21 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
                             <div className="space-y-6">
                                 <div className="space-y-2">
                                     <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground italic ml-1">Video Source URL</Label>
-                                    <Input placeholder="YouTube or Vimeo Link..." className="h-12 rounded-xl bg-muted/30 border-none px-6" />
+                                    <Input 
+                                        placeholder="YouTube or Vimeo Link..." 
+                                        value={videoUrl}
+                                        onChange={(e) => setVideoUrl(e.target.value)}
+                                        className="h-12 rounded-xl bg-muted/30 border-none px-6" 
+                                    />
                                 </div>
                                 <div className="space-y-2">
                                     <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground italic ml-1">Lesson Notes</Label>
-                                    <Textarea placeholder="What will students learn in this video?" className="rounded-2xl bg-muted/30 border-none min-h-[150px] p-6 lg:p-8" />
+                                    <Textarea 
+                                        placeholder="What will students learn in this video?" 
+                                        value={videoDescription}
+                                        onChange={(e) => setVideoDescription(e.target.value)}
+                                        className="rounded-2xl bg-muted/30 border-none min-h-[150px] p-6 lg:p-8" 
+                                    />
                                 </div>
                             </div>
                         ) : type === 'quiz' ? (

@@ -47,6 +47,11 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
         onChange({ questions: newQuestions });
     }
 
+    // Pass initial state to parent on mount so default question is captured
+    useState(() => {
+        onChange({ questions });
+    });
+
     const addQuestion = () => {
         const newQuestion: Question = {
             id: crypto.randomUUID(),

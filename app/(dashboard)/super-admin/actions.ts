@@ -301,7 +301,8 @@ export async function getMonthlyReportData(year: number, month: number) {
 
     const pendingPayments = pendingPaymentsData?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0;
 
-    // 6. Fetch Expenses: the selected month's payroll, including hourly wages.
+    // 6. Fetch Expenses: the selected month's payroll, including hourly wages & payroll pulse.
+    let totalSalaries = 0;
     const { data: payrollRun } = await supabase
         .from('payroll_runs')
         .select('id')
@@ -309,16 +310,80 @@ export async function getMonthlyReportData(year: number, month: number) {
         .eq('year', year)
         .maybeSingle();
 
-    const { data: payrollItems } = payrollRun
-        ? await supabase
+    if (payrollRun) {
+        const { data: payrollItems } = await supabase
             .from('payroll_items')
-            .select('basic_amount, bonus_amount, deductions_amount')
-            .eq('run_id', payrollRun.id)
-        : { data: [] };
+            .select('basic_amount, hourly_amount, bonus_amount, deductions_amount, net_amount')
+            .eq('run_id', payrollRun.id);
 
-    const totalSalaries = payrollItems?.reduce((acc, item) =>
-        acc + (Number(item.basic_amount) || 0) + (Number(item.bonus_amount) || 0)
-            - (Number(item.deductions_amount) || 0), 0) || 0;
+        totalSalaries = (payrollItems || []).reduce((acc, item) => {
+            const itemNet = item.net_amount !== null && item.net_amount !== undefined 
+                ? Number(item.net_amount) 
+                : (Number(item.basic_amount) || 0) + (Number(item.hourly_amount) || 0) + (Number(item.bonus_amount) || 0) - (Number(item.deductions_amount) || 0);
+            return acc + itemNet;
+        }, 0);
+    } else {
+        // Compute live payroll pulse for un-submitted month
+        const { data: staffMembers } = await supabase
+            .from('profiles')
+            .select(`
+                id,
+                role,
+                staff_details (
+                    hourly_rate,
+                    basic_salary,
+                    pay_basis,
+                    status
+                )
+            `)
+            .neq('role', 'super_admin')
+            .neq('role', 'student')
+            .neq('role', 'parent');
+
+        const activeFixedSalaries = (staffMembers || []).reduce((acc: number, t: any) => {
+            const details = Array.isArray(t.staff_details) ? t.staff_details[0] : t.staff_details;
+            const status = (details?.status || 'active').toLowerCase();
+            if (status !== 'locked' && status !== 'inactive' && details?.pay_basis === 'fixed') {
+                return acc + (Number(details.basic_salary) || 0);
+            }
+            return acc;
+        }, 0);
+
+        const { data: verifiedClasses } = await supabase
+            .from('live_classes')
+            .select('teacher_id, duration_hours, student_id, student_attendance(status)')
+            .eq('verification_status', 'verified')
+            .gte('scheduled_at', startDate)
+            .lt('scheduled_at', endDate);
+
+        const { data: studentDetailsData } = await supabase
+            .from('student_details')
+            .select('id, tutor_hourly_rate');
+
+        const studentRates: Record<string, number | null> = {};
+        (studentDetailsData || []).forEach((s: any) => {
+            studentRates[s.id] = s.tutor_hourly_rate !== null ? Number(s.tutor_hourly_rate) : null;
+        });
+
+        const teacherBaseRates: Record<string, number> = {};
+        (staffMembers || []).forEach((t: any) => {
+            const details = Array.isArray(t.staff_details) ? t.staff_details[0] : t.staff_details;
+            teacherBaseRates[t.id] = Number(details?.hourly_rate || 0);
+        });
+
+        let verifiedClassPayouts = 0;
+        (verifiedClasses || []).forEach((c: any) => {
+            const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
+            if (att?.status === 'absent') return;
+            const baseRate = teacherBaseRates[c.teacher_id] || 0;
+            const customRate = c.student_id ? studentRates[c.student_id] : null;
+            const rate = (customRate !== null && customRate !== undefined && !isNaN(customRate) && customRate > 0) ? customRate : baseRate;
+            const hours = Number(c.duration_hours || 1.0);
+            verifiedClassPayouts += hours * rate;
+        });
+
+        totalSalaries = activeFixedSalaries + verifiedClassPayouts;
+    }
 
     // 7. Expenses: Overhead (Marketing, Tech)
     const monthStr = `${year}-${String(month).padStart(2, '0')}-01`;

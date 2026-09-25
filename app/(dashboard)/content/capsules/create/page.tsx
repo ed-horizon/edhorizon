@@ -5,9 +5,23 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function CreateCapsulePage() {
-    const topics = await getTopics();
-    const students = await getTutorStudents();
+    let topics: any[] = [];
+    let students: any[] = [];
+
+    try {
+        const [tData, sData] = await Promise.all([
+            getTopics(),
+            getTutorStudents()
+        ]);
+        topics = tData || [];
+        students = sData || [];
+    } catch (err) {
+        console.error("Error loading CreateCapsulePage data:", err);
+    }
 
     return (
         <div className="space-y-10 pb-12">

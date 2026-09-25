@@ -39,6 +39,7 @@ export default function StaffDirectoryClient({
 }) {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedRole, setSelectedRole] = useState<string>("all");
+    const [selectedStatus, setSelectedStatus] = useState<"active" | "inactive" | "all">("active");
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -65,6 +66,10 @@ export default function StaffDirectoryClient({
     const [editBasicSalary, setEditBasicSalary] = useState<string>("");
     const [editHourlyRate, setEditHourlyRate] = useState<string>("");
 
+    const activeCount = initialStaff.filter(s => (s.staff_details?.status || 'active').toLowerCase() === 'active').length;
+    const inactiveCount = initialStaff.filter(s => (s.staff_details?.status || 'active').toLowerCase() === 'inactive').length;
+    const totalCount = initialStaff.length;
+
     const openEditStaff = (staff: StaffMember) => {
         const details = staff.staff_details;
         setEditPayBasis(details?.pay_basis || 'hourly');
@@ -81,7 +86,9 @@ export default function StaffDirectoryClient({
             (person.staff_details?.job_title?.toLowerCase().includes(searchLower))
         );
         const matchesRole = selectedRole === "all" || person.role === selectedRole;
-        return matchesSearch && matchesRole;
+        const personStatus = (person.staff_details?.status || 'active').toLowerCase();
+        const matchesStatus = selectedStatus === "all" || personStatus === selectedStatus;
+        return matchesSearch && matchesRole && matchesStatus;
     });
 
     const roles = Array.from(new Set(initialStaff.map(s => s.role)));
@@ -153,17 +160,80 @@ export default function StaffDirectoryClient({
     return (
         <div className="space-y-10">
             {/* Header Controls */}
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-card p-4 rounded-[2rem] shadow-sm border border-border/40">
-                <div className="relative w-full md:w-96">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                    <Input
-                        placeholder="Search by name or email..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-12 bg-muted/20 border-none rounded-full h-12 outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                    />
+            <div className="flex flex-col lg:flex-row gap-4 items-center justify-between bg-card p-4 rounded-[2rem] shadow-sm border border-border/40">
+                <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                    <div className="relative flex-1 sm:w-80 sm:flex-initial">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                        <Input
+                            placeholder="Search by name or email..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-12 bg-muted/20 border-none rounded-full h-12 outline-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                        />
+                    </div>
+
+                    {/* Status Filter Tabs */}
+                    <div className="flex items-center gap-1.5 p-1 bg-muted/20 rounded-full border border-border/30">
+                        <button
+                            type="button"
+                            onClick={() => setSelectedStatus('active')}
+                            className={cn(
+                                "px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-2",
+                                selectedStatus === 'active'
+                                    ? "bg-indigo-600 text-white shadow-md"
+                                    : "text-muted-foreground hover:bg-muted/40"
+                            )}
+                        >
+                            <span>Active</span>
+                            <Badge variant="secondary" className={cn(
+                                "text-[10px] px-1.5 py-0 rounded-full font-black border-none",
+                                selectedStatus === 'active' ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                            )}>
+                                {activeCount}
+                            </Badge>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setSelectedStatus('inactive')}
+                            className={cn(
+                                "px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-2",
+                                selectedStatus === 'inactive'
+                                    ? "bg-rose-600 text-white shadow-md"
+                                    : "text-muted-foreground hover:bg-muted/40"
+                            )}
+                        >
+                            <span>Inactive</span>
+                            <Badge variant="secondary" className={cn(
+                                "text-[10px] px-1.5 py-0 rounded-full font-black border-none",
+                                selectedStatus === 'inactive' ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                            )}>
+                                {inactiveCount}
+                            </Badge>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setSelectedStatus('all')}
+                            className={cn(
+                                "px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-2",
+                                selectedStatus === 'all'
+                                    ? "bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 shadow-md"
+                                    : "text-muted-foreground hover:bg-muted/40"
+                            )}
+                        >
+                            <span>All</span>
+                            <Badge variant="secondary" className={cn(
+                                "text-[10px] px-1.5 py-0 rounded-full font-black border-none",
+                                selectedStatus === 'all' ? "bg-white/20 text-white dark:bg-black/20 dark:text-slate-900" : "bg-muted text-muted-foreground"
+                            )}>
+                                {totalCount}
+                            </Badge>
+                        </button>
+                    </div>
                 </div>
-                <div className="flex items-center gap-2 w-full md:w-auto relative">
+
+                <div className="flex items-center gap-2 w-full lg:w-auto justify-end relative">
                     <div className="relative">
                         <Button
                             variant="outline"
@@ -174,7 +244,7 @@ export default function StaffDirectoryClient({
                             )}
                         >
                             <Filter className="h-4 w-4" />
-                            {selectedRole === "all" ? "Filters" : getRoleDisplayName(selectedRole)}
+                            {selectedRole === "all" ? "Role Filters" : getRoleDisplayName(selectedRole)}
                         </Button>
 
                         {isFilterOpen && (
@@ -200,7 +270,7 @@ export default function StaffDirectoryClient({
 
                     <Button
                         onClick={() => setIsAddModalOpen(true)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full h-12 px-8 font-bold text-xs uppercase tracking-widest ml-auto md:ml-0"
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full h-12 px-8 font-bold text-xs uppercase tracking-widest"
                     >
                         Add New Staff
                     </Button>
