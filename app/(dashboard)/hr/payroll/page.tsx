@@ -61,16 +61,16 @@ export default async function PayrollManagement() {
         };
     }).filter((t: any) => t.status !== 'locked');
 
-    // Fetch verified live classes for this month using explicit UTC bounds to prevent month-end timezone truncation
+    // Fetch verified live classes for this month using canonical UTC month bounds
     const startOfMonth = new Date(Date.UTC(currentYear, currentMonth - 1, 1, 0, 0, 0, 0)).toISOString();
-    const endOfMonth = new Date(Date.UTC(currentYear, currentMonth, 0, 23, 59, 59, 999)).toISOString();
+    const startOfNextMonth = new Date(Date.UTC(currentYear, currentMonth, 1, 0, 0, 0, 0)).toISOString();
 
     const { data: verifiedClasses } = await supabase
         .from('live_classes')
-        .select('teacher_id, duration_hours, student_id, student_attendance(status)')
+        .select('teacher_id, duration_hours, student_id')
         .eq('verification_status', 'verified')
         .gte('scheduled_at', startOfMonth)
-        .lte('scheduled_at', endOfMonth);
+        .lt('scheduled_at', startOfNextMonth);
 
     // Fetch all student details to get custom tutor hourly rates
     const { data: studentDetailsData } = await supabase
@@ -84,11 +84,7 @@ export default async function PayrollManagement() {
     // Map teacher classes, hours, and custom payouts
     const teacherStats = Object.fromEntries(teachers.map(t => [t.id, { count: 0, hours: 0, payout: 0 }]));
     verifiedClasses?.forEach((c: any) => {
-        const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
-        if (att?.status === 'absent') {
-            return; // Skip calculating this for the teacher (Student No Show)
-        }
-        if (teacherStats[c.teacher_id]) {
+        if (c.teacher_id && teacherStats[c.teacher_id]) {
             const teacher = teachers.find(t => t.id === c.teacher_id);
             const baseRate = teacher?.hourly_rate || 0;
             const customStudentRate = c.student_id ? studentRates[c.student_id] : null;

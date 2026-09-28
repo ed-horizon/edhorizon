@@ -91,35 +91,30 @@ export async function getTeacherStats() {
         .eq('author_id', user.id);
 
     const now = new Date();
-    const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const startOfCurrentMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)).toISOString();
+    const startOfNextMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0)).toISOString();
 
     // 3. Completed teaching hours in current month
     const { data: classData } = await supabase
         .from('live_classes')
-        .select('duration_hours, student_attendance(status)')
+        .select('duration_hours')
         .eq('teacher_id', user.id)
         .eq('status', 'completed')
-        .gte('scheduled_at', startOfCurrentMonth);
+        .gte('scheduled_at', startOfCurrentMonth)
+        .lt('scheduled_at', startOfNextMonth);
 
-    const validClassesForHours = (classData || []).filter((c: any) => {
-        const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
-        return att?.status !== 'absent';
-    });
-
-    const totalHours = validClassesForHours.reduce((acc, curr) => acc + Number(curr.duration_hours || 0), 0) || 0;
+    const totalHours = (classData || []).reduce((acc, curr) => acc + Number(curr.duration_hours || 0), 0) || 0;
 
     // 4. Completed classes in current month
     const { data: monthlyClassesData } = await supabase
         .from('live_classes')
-        .select('id, student_attendance(status)')
+        .select('id')
         .eq('teacher_id', user.id)
         .eq('status', 'completed')
-        .gte('scheduled_at', startOfCurrentMonth);
+        .gte('scheduled_at', startOfCurrentMonth)
+        .lt('scheduled_at', startOfNextMonth);
 
-    const monthlyClassCount = (monthlyClassesData || []).filter((c: any) => {
-        const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
-        return att?.status !== 'absent';
-    }).length;
+    const monthlyClassCount = monthlyClassesData?.length || 0;
 
     // 5. Late Joinings in current month
     const { count: monthlyLateJoiningCount } = await supabase
@@ -127,7 +122,8 @@ export async function getTeacherStats() {
         .select('*', { count: 'exact', head: true })
         .eq('teacher_id', user.id)
         .eq('tutor_joined_late', true)
-        .gte('scheduled_at', startOfCurrentMonth);
+        .gte('scheduled_at', startOfCurrentMonth)
+        .lt('scheduled_at', startOfNextMonth);
 
     return {
         students: studentCount || 0,
