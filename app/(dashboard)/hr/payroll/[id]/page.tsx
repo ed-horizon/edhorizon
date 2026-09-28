@@ -66,7 +66,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
 
     const { data: verifiedClasses } = await supabase
         .from('live_classes')
-        .select('teacher_id, duration_hours, student_id, payroll_amount')
+        .select('teacher_id, duration_hours, student_id, payroll_amount, student_attendance(status)')
         .eq('verification_status', 'verified')
         .gte('scheduled_at', startOfMonth)
         .lt('scheduled_at', startOfNextMonth);
@@ -136,6 +136,10 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
     });
 
     (verifiedClasses as VerifiedClass[] | null)?.forEach((c) => {
+        const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
+        if (att?.status === 'absent') {
+            return; // Skip student "No Show" classes (Tutors not paid)
+        }
         if (c.teacher_id && calculatedPayouts[c.teacher_id] !== undefined) {
             const teacher = teachers.find(t => t.id === c.teacher_id);
             if (teacher?.pay_basis === 'fixed' && teacher?.status !== 'inactive') {
