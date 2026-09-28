@@ -67,7 +67,7 @@ export default async function PayrollManagement() {
 
     const { data: verifiedClasses } = await supabase
         .from('live_classes')
-        .select('teacher_id, duration_hours, student_id')
+        .select('teacher_id, duration_hours, student_id, student_attendance(status)')
         .eq('verification_status', 'verified')
         .gte('scheduled_at', startOfMonth)
         .lt('scheduled_at', startOfNextMonth);
@@ -84,6 +84,10 @@ export default async function PayrollManagement() {
     // Map teacher classes, hours, and custom payouts
     const teacherStats = Object.fromEntries(teachers.map(t => [t.id, { count: 0, hours: 0, payout: 0 }]));
     verifiedClasses?.forEach((c: any) => {
+        const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
+        if (att?.status === 'absent') {
+            return; // Skip calculating this for the teacher (Student No Show)
+        }
         if (c.teacher_id && teacherStats[c.teacher_id]) {
             const teacher = teachers.find(t => t.id === c.teacher_id);
             const baseRate = teacher?.hourly_rate || 0;
