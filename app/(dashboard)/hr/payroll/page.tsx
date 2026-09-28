@@ -119,7 +119,7 @@ export default async function PayrollManagement() {
     });
 
     const totalStaffCount = teachers.filter(t => t.status === 'active').length;
-    const totalClassesTaken = verifiedClasses?.length || 0;
+    const totalClassesTaken = teacherPayouts.reduce((sum, t) => sum + t.classes_taken, 0);
     const totalAmountAccrued = teacherPayouts.reduce((sum, t) => sum + t.total_payout, 0);
 
     return (
