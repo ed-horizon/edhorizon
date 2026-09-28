@@ -373,8 +373,6 @@ export async function getMonthlyReportData(year: number, month: number) {
 
         let verifiedClassPayouts = 0;
         (verifiedClasses || []).forEach((c: any) => {
-            const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
-            if (att?.status === 'absent') return;
             const baseRate = teacherBaseRates[c.teacher_id] || 0;
             const customRate = c.student_id ? studentRates[c.student_id] : null;
             const rate = (customRate !== null && customRate !== undefined && !isNaN(customRate) && customRate > 0) ? customRate : baseRate;

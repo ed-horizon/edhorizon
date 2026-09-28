@@ -60,16 +60,16 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         return <div className="p-12 text-center text-muted-foreground italic">Payroll Run not found.</div>;
     }
 
-    // 2. Fetch verified live classes for this run's month/year using explicit UTC bounds
+    // 2. Fetch verified live classes for this run's month/year using canonical UTC month bounds
     const startOfMonth = new Date(Date.UTC(run.year, run.month - 1, 1, 0, 0, 0, 0)).toISOString();
-    const endOfMonth = new Date(Date.UTC(run.year, run.month, 0, 23, 59, 59, 999)).toISOString();
+    const startOfNextMonth = new Date(Date.UTC(run.year, run.month, 1, 0, 0, 0, 0)).toISOString();
 
     const { data: verifiedClasses } = await supabase
         .from('live_classes')
-        .select('teacher_id, duration_hours, student_id, payroll_amount, student_attendance(status)')
+        .select('teacher_id, duration_hours, student_id, payroll_amount')
         .eq('verification_status', 'verified')
         .gte('scheduled_at', startOfMonth)
-        .lte('scheduled_at', endOfMonth);
+        .lt('scheduled_at', startOfNextMonth);
 
     // Fetch all late classes in this run's month/year to show warning badges
     const { data: lateClasses } = await supabase
@@ -77,7 +77,7 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
         .select('teacher_id')
         .eq('tutor_joined_late', true)
         .gte('scheduled_at', startOfMonth)
-        .lte('scheduled_at', endOfMonth);
+        .lt('scheduled_at', startOfNextMonth);
 
     const lateJoiningsCount: Record<string, number> = {};
     (lateClasses as Array<{ teacher_id: string | null }> | null)?.forEach((lc) => {
@@ -136,10 +136,6 @@ export default async function PayrollRunDetails({ params }: { params: { id: stri
     });
 
     (verifiedClasses as VerifiedClass[] | null)?.forEach((c) => {
-        const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
-        if (att?.status === 'absent') {
-            return; // Skip student "No Show" classes (Tutors not paid)
-        }
         if (c.teacher_id && calculatedPayouts[c.teacher_id] !== undefined) {
             const teacher = teachers.find(t => t.id === c.teacher_id);
             if (teacher?.pay_basis === 'fixed' && teacher?.status !== 'inactive') {
