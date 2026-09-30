@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { QuizInterface } from "../QuizInterface";
 import { FlashcardPlayer } from "../FlashcardPlayer";
 import { ArrowLeft } from "lucide-react";
@@ -14,13 +15,19 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
         notFound();
     }
 
-    const { data: capsule, error } = await supabase
+    const adminSupabase = createAdminClient();
+    const { data: capsule, error } = await adminSupabase
         .from('capsules')
         .select('*')
         .eq('id', id)
         .single();
 
-    if (error || !capsule || (capsule.content?.student_id && capsule.content.student_id !== user.id)) {
+    if (error || !capsule) {
+        notFound();
+    }
+
+    // Allow access if directly assigned to user or no specific student lock
+    if (capsule.content?.student_id && capsule.content.student_id !== user.id) {
         notFound();
     }
 
