@@ -1,12 +1,14 @@
 import { getStudentDashboardData, getCurrentProfile } from "@/app/(dashboard)/attendance/actions";
 import { StudentDashboardClient } from "@/components/features/student/StudentDashboardClient";
 import { getStudentPayments } from "@/app/(dashboard)/payments/actions";
+import { getStudentAssignedCapsules } from "@/app/(dashboard)/student/learn/actions";
 
 export default async function StudentDashboard() {
     const profile = await getCurrentProfile();
     const data = await getStudentDashboardData();
     const studentName = profile?.full_name || "Student";
     const payments = await getStudentPayments();
+    const assignedCapsules = await getStudentAssignedCapsules();
 
     return (
         <div className="p-8 md:p-12 max-w-[1600px] mx-auto">
@@ -26,6 +28,7 @@ export default async function StudentDashboard() {
                 initialPayments={payments}
                 activeSchedule={data.activeSchedule}
                 activeSchedules={data.activeSchedules || []}
+                assignedCapsules={assignedCapsules || []}
             />
         </div>
     );
