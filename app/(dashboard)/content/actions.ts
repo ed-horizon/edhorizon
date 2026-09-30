@@ -266,7 +266,7 @@ export async function saveCapsule(payload: any) {
                 student_id: payload.student_id
             },
             author_id: user.id,
-            status: 'draft'
+            status: payload.status || 'published'
         };
 
         const { data, error } = await adminSupabase

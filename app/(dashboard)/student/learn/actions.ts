@@ -3,13 +3,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { parseDescription } from "@/lib/utils";
 
+import { createAdminClient } from "@/lib/supabase/admin";
+
 export async function getStudentCourses() {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
 
+    const adminSupabase = createAdminClient();
+
     // 1. Fetch modules and filter by student_id
-    const { data: modulesData, error: modulesError } = await supabase
+    const { data: modulesData, error: modulesError } = await adminSupabase
         .from('modules')
         .select('id, description');
     if (modulesError) throw modulesError;
@@ -18,10 +22,8 @@ export async function getStudentCourses() {
         .filter(mod => parseDescription(mod.description).studentId === user.id)
         .map(mod => mod.id);
 
-    if (studentModuleIds.length === 0) return [];
-
     // 2. Fetch courses along with topics and capsules
-    const { data, error } = await supabase
+    let query = adminSupabase
         .from('courses')
         .select(`
             *,
@@ -29,34 +31,122 @@ export async function getStudentCourses() {
                 *,
                 capsules (
                     *,
-                    quiz_completions (score)
+                    quiz_completions (score, user_id)
                 )
             )
         `)
-        .in('module_id', studentModuleIds)
         .order('order', { ascending: true });
 
-    if (error) throw error;
+    if (studentModuleIds.length > 0) {
+        query = query.in('module_id', studentModuleIds);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+        console.error("getStudentCourses Error:", error);
+        return [];
+    }
 
     // 3. Process to filter capsules assigned to this student and calculate progress
-    return data.map(course => ({
+    const processedCourses = (data || []).map(course => ({
         ...course,
-        topics: course.topics.map((topic: any) => {
-            const studentCapsules = (topic.capsules || []).filter((c: any) => c.content?.student_id === user.id);
+        topics: (course.topics || []).map((topic: any) => {
+            const studentCapsules = (topic.capsules || []).filter((c: any) => {
+                const isDirectAssignment = c.content?.student_id === user.id;
+                const isModuleAssignment = studentModuleIds.includes(course.module_id);
+                return isDirectAssignment || isModuleAssignment;
+            });
+
             const totalCapsules = studentCapsules.length;
-            const completedCapsules = studentCapsules.filter((c: any) =>
-                c.quiz_completions && (c.quiz_completions.length > 0 || c.type === 'video')
-            ).length;
+            const completedCapsules = studentCapsules.filter((c: any) => {
+                const userCompletions = (c.quiz_completions || []).filter((qc: any) => qc.user_id === user.id);
+                return userCompletions.length > 0 || c.type === 'video';
+            }).length;
 
             return {
                 ...topic,
                 capsules: studentCapsules,
-                progress: totalCapsules > 0 ? (completedCapsules / totalCapsules) * 100 : 0,
+                progress: totalCapsules > 0 ? Math.round((completedCapsules / totalCapsules) * 100) : 0,
                 totalCapsules,
                 completedCapsules
             };
-        })
+        }).filter((topic: any) => topic.capsules.length > 0)
     }));
+
+    return processedCourses.filter(c => c.topics && c.topics.length > 0);
+}
+
+export async function getStudentAssignedCapsules(studentId?: string) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const targetUserId = studentId || user?.id;
+    if (!targetUserId) return [];
+
+    const adminSupabase = createAdminClient();
+
+    // 1. Fetch modules for this student
+    const { data: modulesData } = await adminSupabase
+        .from('modules')
+        .select('id, description');
+
+    const studentModuleIds = (modulesData || [])
+        .filter(mod => parseDescription(mod.description).studentId === targetUserId)
+        .map(mod => mod.id);
+
+    // 2. Query capsules assigned to targetUserId or student's modules
+    const { data: capsulesData, error } = await adminSupabase
+        .from('capsules')
+        .select(`
+            *,
+            topic:topics (
+                id,
+                title,
+                course:courses (
+                    id,
+                    title,
+                    module_id
+                )
+            ),
+            quiz_completions (
+                id,
+                score,
+                completed_at,
+                user_id
+            )
+        `)
+        .order('created_at', { ascending: false });
+
+    if (error || !capsulesData) {
+        console.error("getStudentAssignedCapsules error:", error);
+        return [];
+    }
+
+    // Filter capsules for targetUserId
+    const assigned = capsulesData.filter(c => {
+        const directMatch = c.content?.student_id === targetUserId;
+        const moduleMatch = c.topic?.course?.module_id && studentModuleIds.includes(c.topic.course.module_id);
+        return directMatch || moduleMatch;
+    });
+
+    return assigned.map(c => {
+        const userCompletions = (c.quiz_completions || []).filter((qc: any) => qc.user_id === targetUserId);
+        const isCompleted = userCompletions.length > 0 || c.type === 'video';
+        const bestScore = userCompletions.reduce((max: number, qc: any) => Math.max(max, Number(qc.score || 0)), 0);
+
+        return {
+            id: c.id,
+            title: c.title,
+            type: c.type, // 'mcq' | 'flashcard' | 'video'
+            status: c.status,
+            created_at: c.created_at,
+            topic_id: c.topic_id,
+            topic_title: c.topic?.title || "General Study",
+            course_title: c.topic?.course?.title || "General Course",
+            is_completed: isCompleted,
+            score: userCompletions.length > 0 ? bestScore : null,
+            content: c.content
+        };
+    });
 }
 
 

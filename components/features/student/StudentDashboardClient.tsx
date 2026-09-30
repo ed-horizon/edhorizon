@@ -142,6 +142,20 @@ interface ScheduleSummary {
     end_date?: string | null;
 }
 
+export interface AssignedCapsule {
+    id: string;
+    title: string;
+    type: 'mcq' | 'flashcard' | 'video' | string;
+    status: string;
+    created_at: string;
+    topic_id: string;
+    topic_title: string;
+    course_title: string;
+    is_completed: boolean;
+    score: number | null;
+    content?: any;
+}
+
 interface RazorpayResponse {
     razorpay_payment_id: string;
 }
@@ -184,6 +198,7 @@ interface StudentDashboardClientProps {
     initialPayments: Payment[];
     activeSchedule?: ScheduleSummary;
     activeSchedules?: ScheduleSummary[];
+    assignedCapsules?: AssignedCapsule[];
 }
 
 export function StudentDashboardClient({
@@ -201,7 +216,8 @@ export function StudentDashboardClient({
     leaveRequests,
     initialPayments,
     activeSchedule,
-    activeSchedules = []
+    activeSchedules = [],
+    assignedCapsules = []
 }: StudentDashboardClientProps) {
     // Build active subjects list
     const activeSubjects: { name: string; fee: number; classesPerMonth: number; tutor: string }[] = [];
@@ -937,6 +953,79 @@ export function StudentDashboardClient({
                                             </div>
                                         </div>
                                     ))}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* ASSIGNED LEARNING CAPSULES & TASKS (Quizzes, Flashcards, Video) */}
+                    <Card className="rounded-[2rem] border-border/40 shadow-xl overflow-hidden bg-card border-2 border-indigo-600/10">
+                        <CardHeader className="bg-indigo-50/50 dark:bg-indigo-950/20 px-6 py-5 border-b border-border/20 flex flex-row items-center justify-between">
+                            <div className="space-y-1">
+                                <CardTitle className="text-xl font-bold text-indigo-950 dark:text-indigo-50 flex items-center gap-2">
+                                    <Sparkles className="text-purple-600 dark:text-purple-400" size={20} />
+                                    <span>Assigned Learning Tasks & Capsules</span>
+                                </CardTitle>
+                                <CardDescription className="text-xs">
+                                    Quizzes, Flashcards, and Video learning units assigned by your teacher.
+                                </CardDescription>
+                            </div>
+                            <Link href="/student/learn">
+                                <Button variant="outline" size="sm" className="h-8 rounded-full text-xs font-bold gap-1 text-purple-600 border-purple-200 hover:bg-purple-50 dark:hover:bg-purple-950/20">
+                                    <span>Learning Hub</span>
+                                    <ChevronRight size={14} />
+                                </Button>
+                            </Link>
+                        </CardHeader>
+                        <CardContent className="p-6">
+                            {assignedCapsules.length === 0 ? (
+                                <div className="text-center py-8 bg-muted/20 rounded-2xl border border-dashed border-muted text-muted-foreground italic text-sm">
+                                    ✨ No pending learning tasks assigned yet. Check back soon!
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {assignedCapsules.map((cap) => {
+                                        const isQuiz = cap.type === 'mcq';
+                                        const isFlashcard = cap.type === 'flashcard';
+                                        const badgeText = isQuiz ? 'Quiz Task' : isFlashcard ? 'Flashcards' : 'Video Capsule';
+                                        const badgeClass = isQuiz 
+                                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'
+                                            : isFlashcard 
+                                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                                            : 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300';
+
+                                        return (
+                                            <div key={cap.id} className="p-4 rounded-2xl border border-border/40 bg-muted/10 hover:border-purple-500/30 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                <div className="space-y-1.5">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-bold text-base text-foreground">{cap.title}</span>
+                                                        <Badge className={cn("text-[9px] font-black uppercase tracking-widest px-2 py-0.5 border-none", badgeClass)}>
+                                                            {badgeText}
+                                                        </Badge>
+                                                        {cap.is_completed ? (
+                                                            <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-none text-[9px] font-bold">
+                                                                ✓ Completed {cap.score !== null ? `(${cap.score}%)` : ''}
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge className="bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-none text-[9px] font-bold">
+                                                                Pending Task
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground font-medium">
+                                                        Topic: <span className="font-semibold text-foreground">{cap.topic_title}</span> ({cap.course_title})
+                                                    </p>
+                                                </div>
+
+                                                <Link href={`/student/learn/${cap.id}`} className="shrink-0 w-full sm:w-auto">
+                                                    <Button size="sm" className="w-full sm:w-auto h-10 px-5 bg-purple-600 hover:bg-purple-700 text-white font-bold uppercase tracking-wider text-[10px] rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-purple-600/20">
+                                                        <span>{cap.is_completed ? 'Review Task' : isQuiz ? 'Start Quiz' : isFlashcard ? 'Study Cards' : 'Watch Video'}</span>
+                                                        <ChevronRight size={14} />
+                                                    </Button>
+                                                </Link>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </CardContent>
