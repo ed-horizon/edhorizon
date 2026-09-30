@@ -3,19 +3,21 @@
 import { useState } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Plus, ChevronRight, PlayCircle, HelpCircle, FileText, MoreHorizontal } from "lucide-react"
+import { Plus, ChevronRight, PlayCircle, HelpCircle, FileText, MoreHorizontal, Pencil } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { saveTopic } from "@/app/(dashboard)/content/actions"
 import { useRouter } from "next/navigation"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { EditCapsuleModal } from "./EditCapsuleModal"
 
 export function CourseDetailClient({ course, initialTopics }: { course: any, initialTopics: any[] }) {
     const [topics, setTopics] = useState(initialTopics)
     const [showModal, setShowModal] = useState(false)
     const [title, setTitle] = useState('')
     const [loading, setLoading] = useState(false)
+    const [editingCapsule, setEditingCapsule] = useState<any>(null)
     const router = useRouter()
 
     const handleAddTopic = async (e: React.FormEvent) => {
@@ -84,20 +86,41 @@ export function CourseDetailClient({ course, initialTopics }: { course: any, ini
                                                         capsule.type === 'quiz' ? <HelpCircle size={20} /> :
                                                             <FileText size={20} />}
                                                 </div>
-                                                <Badge variant="outline" className="capitalize text-[10px] font-bold tracking-wider rounded-full py-0.5 px-3 border-border/50">
-                                                    {capsule.status}
-                                                </Badge>
+                                                <div className="flex items-center gap-2">
+                                                    <Badge variant="outline" className="capitalize text-[10px] font-bold tracking-wider rounded-full py-0.5 px-3 border-border/50">
+                                                        {capsule.status}
+                                                    </Badge>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => setEditingCapsule(capsule)}
+                                                        className="h-8 w-8 rounded-full hover:bg-muted text-muted-foreground hover:text-indigo-600"
+                                                        title="Edit / Delete Capsule"
+                                                    >
+                                                        <Pencil size={14} />
+                                                    </Button>
+                                                </div>
                                             </div>
                                             <h4 className="font-bold text-lg leading-tight group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{capsule.title}</h4>
                                         </CardHeader>
                                         <CardContent className="p-6 pt-0">
                                             <div className="flex items-center justify-between mt-6">
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground italic">Last Updated: {new Date(capsule.created_at).toLocaleDateString()}</span>
-                                                <Link href={`/student/learn/${capsule.id}`}>
-                                                    <Button size="icon" variant="ghost" className="rounded-full h-10 w-10 bg-muted/30 hover:bg-indigo-600 hover:text-white transition-all">
-                                                        <ChevronRight size={18} />
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => setEditingCapsule(capsule)}
+                                                        className="rounded-full text-[10px] font-bold uppercase tracking-wider h-8 px-3"
+                                                    >
+                                                        Manage
                                                     </Button>
-                                                </Link>
+                                                    <Link href={`/student/learn/${capsule.id}`}>
+                                                        <Button size="icon" variant="ghost" className="rounded-full h-10 w-10 bg-muted/30 hover:bg-indigo-600 hover:text-white transition-all">
+                                                            <ChevronRight size={18} />
+                                                        </Button>
+                                                    </Link>
+                                                </div>
                                             </div>
                                         </CardContent>
                                     </Card>
@@ -157,6 +180,13 @@ export function CourseDetailClient({ course, initialTopics }: { course: any, ini
                     </Card>
                 </div>
             )}
+
+            <EditCapsuleModal
+                capsule={editingCapsule}
+                isOpen={!!editingCapsule}
+                onClose={() => setEditingCapsule(null)}
+            />
         </div>
     )
 }
+
