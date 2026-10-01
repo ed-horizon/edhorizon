@@ -220,12 +220,17 @@ export async function saveQuizResult(capsuleId: string, score: number, totalQues
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
-    const { error } = await supabase
+    const adminSupabase = createAdminClient();
+
+    // Calculate percentage score (0-100%) if raw correct count was passed
+    const percentageScore = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 100;
+
+    const { error } = await adminSupabase
         .from('quiz_completions')
         .upsert({
             student_id: user.id,
             capsule_id: capsuleId,
-            score,
+            score: percentageScore,
             total_questions: totalQuestions,
             completed_at: new Date().toISOString()
         }, {
@@ -234,11 +239,11 @@ export async function saveQuizResult(capsuleId: string, score: number, totalQues
 
     if (error) throw error;
 
-    // Award XP based on score (e.g., 10 XP per correct answer + 5 base)
+    // Award XP based on correct count or percentage
     const xpAwarded = (score * 10) + 5;
     await awardXPAndStreak(user.id, xpAwarded);
 
-    return { success: true, xpAwarded };
+    return { success: true, xpAwarded, score: percentageScore };
 }
 
 export async function trackVideoCompletion(capsuleId: string) {
@@ -246,14 +251,14 @@ export async function trackVideoCompletion(capsuleId: string) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
-    // Track completion in a generic progress table or specific video_completions
-    // For now, using quiz_completions with perfect score for video
-    const { error } = await supabase
+    const adminSupabase = createAdminClient();
+
+    const { error } = await adminSupabase
         .from('quiz_completions')
         .upsert({
             student_id: user.id,
             capsule_id: capsuleId,
-            score: 1,
+            score: 100,
             total_questions: 1,
             completed_at: new Date().toISOString()
         }, {
