@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parseDescription, formatDescription } from "@/lib/utils";
-import { unstable_noStore as noStore } from "next/cache";
+import { unstable_noStore as noStore, revalidatePath } from "next/cache";
 
 function getAdminSupabase() {
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -84,7 +84,17 @@ export async function getTopicsByCourse(courseId: string) {
         .from('topics')
         .select(`
             *,
-            capsules (*)
+            capsules (
+                *,
+                quiz_completions (
+                    id,
+                    score,
+                    total_questions,
+                    completed_at,
+                    student_id,
+                    student:profiles (id, full_name, email)
+                )
+            )
         `)
         .eq('course_id', courseId)
         .order('order', { ascending: true });
@@ -160,11 +170,10 @@ export async function getOrCreateTopicForStudent(studentId: string, topicTitle: 
     const { data: allModules } = await adminSupabase
         .from('modules')
         .select('*');
-        
     let targetModule = (allModules || []).find(mod => {
         const { studentId: parsedStudentId } = parseDescription(mod.description);
         return parsedStudentId === studentId;
-    }) || (allModules || [])[0];
+    });
 
     if (!targetModule) {
         // Create a default module
@@ -447,5 +456,94 @@ export async function saveTopic(payload: { course_id: string; title: string }) {
 
     if (error) throw error;
     return data;
+}
+
+export async function updateCapsule(id: string, payload: any) {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            return { success: false, error: "Unauthorized: User session not found." };
+        }
+
+        const adminSupabase = getAdminSupabase() || supabase;
+
+        const updateData: any = {};
+        if (payload.title) updateData.title = payload.title;
+        if (payload.type) updateData.type = payload.type;
+        if (payload.topic_id) updateData.topic_id = payload.topic_id;
+        if (payload.status) updateData.status = payload.status;
+
+        if (payload.content !== undefined || payload.student_id !== undefined) {
+            const { data: existing } = await adminSupabase
+                .from('capsules')
+                .select('content')
+                .eq('id', id)
+                .single();
+
+            const existingContent = existing?.content || {};
+            updateData.content = {
+                ...existingContent,
+                ...(payload.content || {}),
+                student_id: payload.student_id !== undefined ? payload.student_id : existingContent.student_id
+            };
+        }
+
+        const { data, error } = await adminSupabase
+            .from('capsules')
+            .update(updateData)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) {
+            console.error("updateCapsule error:", error);
+            return { success: false, error: error.message };
+        }
+
+        revalidatePath('/(dashboard)/content', 'layout');
+        revalidatePath('/(dashboard)/student', 'layout');
+        return { success: true, data };
+    } catch (err: any) {
+        console.error("updateCapsule unexpected error:", err);
+        return { success: false, error: err?.message || "An unexpected error occurred." };
+    }
+}
+
+export async function deleteCapsule(id: string) {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            return { success: false, error: "Unauthorized: User session not found." };
+        }
+
+        const adminSupabase = getAdminSupabase() || supabase;
+
+        // Delete quiz completions first if any
+        await adminSupabase
+            .from('quiz_completions')
+            .delete()
+            .eq('capsule_id', id);
+
+        const { error } = await adminSupabase
+            .from('capsules')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            console.error("deleteCapsule error:", error);
+            return { success: false, error: error.message };
+        }
+
+        revalidatePath('/(dashboard)/content', 'layout');
+        revalidatePath('/(dashboard)/student', 'layout');
+        return { success: true };
+    } catch (err: any) {
+        console.error("deleteCapsule unexpected error:", err);
+        return { success: false, error: err?.message || "An unexpected error occurred." };
+    }
 }
 

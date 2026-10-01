@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { QuizInterface } from "../QuizInterface";
 import { FlashcardPlayer } from "../FlashcardPlayer";
+import { VideoCompletionButton } from "./VideoCompletionButton";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -14,13 +16,19 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
         notFound();
     }
 
-    const { data: capsule, error } = await supabase
+    const adminSupabase = createAdminClient();
+    const { data: capsule, error } = await adminSupabase
         .from('capsules')
         .select('*')
         .eq('id', id)
         .single();
 
-    if (error || !capsule || (capsule.content?.student_id && capsule.content.student_id !== user.id)) {
+    if (error || !capsule) {
+        notFound();
+    }
+
+    // Allow access if directly assigned to user or no specific student lock
+    if (capsule.content?.student_id && capsule.content.student_id !== user.id) {
         notFound();
     }
 
@@ -69,11 +77,7 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
                     </div>
 
                     <div className="flex justify-center pt-8">
-                        <Link href="/student/learn">
-                            <Button className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-14 px-12 font-black uppercase tracking-widest text-xs shadow-xl shadow-indigo-200">
-                                Complete Lesson
-                            </Button>
-                        </Link>
+                        <VideoCompletionButton capsuleId={capsule.id} />
                     </div>
                 </div>
             )}

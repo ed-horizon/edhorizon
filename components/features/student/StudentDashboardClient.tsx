@@ -985,8 +985,8 @@ export function StudentDashboardClient({
                             ) : (
                                 <div className="space-y-3">
                                     {assignedCapsules.map((cap) => {
-                                        const isQuiz = cap.type === 'mcq';
-                                        const isFlashcard = cap.type === 'flashcard';
+                                        const isQuiz = cap.type === 'quiz' || cap.type === 'mcq';
+                                        const isFlashcard = cap.type === 'flashcards' || cap.type === 'flashcard';
                                         const badgeText = isQuiz ? 'Quiz Task' : isFlashcard ? 'Flashcards' : 'Video Capsule';
                                         const badgeClass = isQuiz 
                                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'

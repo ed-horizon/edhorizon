@@ -31,7 +31,7 @@ export async function getStudentCourses() {
                 *,
                 capsules (
                     *,
-                    quiz_completions (score, user_id)
+                    quiz_completions (score, student_id)
                 )
             )
         `)
@@ -52,14 +52,16 @@ export async function getStudentCourses() {
         ...course,
         topics: (course.topics || []).map((topic: any) => {
             const studentCapsules = (topic.capsules || []).filter((c: any) => {
-                const isDirectAssignment = c.content?.student_id === user.id;
+                const studentIdInContent = String(c.content?.student_id || '').trim();
+                const userIdStr = String(user.id).trim();
+                const isDirectAssignment = Boolean(studentIdInContent && studentIdInContent === userIdStr);
                 const isModuleAssignment = studentModuleIds.includes(course.module_id);
                 return isDirectAssignment || isModuleAssignment;
             });
 
             const totalCapsules = studentCapsules.length;
             const completedCapsules = studentCapsules.filter((c: any) => {
-                const userCompletions = (c.quiz_completions || []).filter((qc: any) => qc.user_id === user.id);
+                const userCompletions = (c.quiz_completions || []).filter((qc: any) => String(qc.student_id).trim() === String(user.id).trim());
                 return userCompletions.length > 0 || c.type === 'video';
             }).length;
 
@@ -90,7 +92,10 @@ export async function getStudentAssignedCapsules(studentId?: string) {
         .select('id, description');
 
     const studentModuleIds = (modulesData || [])
-        .filter(mod => parseDescription(mod.description).studentId === targetUserId)
+        .filter(mod => {
+            const modStudentId = parseDescription(mod.description).studentId;
+            return modStudentId && String(modStudentId).trim() === String(targetUserId).trim();
+        })
         .map(mod => mod.id);
 
     // 2. Query capsules assigned to targetUserId or student's modules
@@ -111,7 +116,7 @@ export async function getStudentAssignedCapsules(studentId?: string) {
                 id,
                 score,
                 completed_at,
-                user_id
+                student_id
             )
         `)
         .order('created_at', { ascending: false });
@@ -123,13 +128,15 @@ export async function getStudentAssignedCapsules(studentId?: string) {
 
     // Filter capsules for targetUserId
     const assigned = capsulesData.filter(c => {
-        const directMatch = c.content?.student_id === targetUserId;
-        const moduleMatch = c.topic?.course?.module_id && studentModuleIds.includes(c.topic.course.module_id);
+        const studentIdInContent = String(c.content?.student_id || '').trim();
+        const targetIdStr = String(targetUserId).trim();
+        const directMatch = Boolean(studentIdInContent && studentIdInContent === targetIdStr);
+        const moduleMatch = Boolean(c.topic?.course?.module_id && studentModuleIds.includes(c.topic.course.module_id));
         return directMatch || moduleMatch;
     });
 
     return assigned.map(c => {
-        const userCompletions = (c.quiz_completions || []).filter((qc: any) => qc.user_id === targetUserId);
+        const userCompletions = (c.quiz_completions || []).filter((qc: any) => String(qc.student_id).trim() === String(targetUserId).trim());
         const isCompleted = userCompletions.length > 0 || c.type === 'video';
         const bestScore = userCompletions.reduce((max: number, qc: any) => Math.max(max, Number(qc.score || 0)), 0);
 
@@ -213,12 +220,17 @@ export async function saveQuizResult(capsuleId: string, score: number, totalQues
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
-    const { error } = await supabase
+    const adminSupabase = createAdminClient();
+
+    // Calculate percentage score (0-100%) if raw correct count was passed
+    const percentageScore = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 100;
+
+    const { error } = await adminSupabase
         .from('quiz_completions')
         .upsert({
             student_id: user.id,
             capsule_id: capsuleId,
-            score,
+            score: percentageScore,
             total_questions: totalQuestions,
             completed_at: new Date().toISOString()
         }, {
@@ -227,11 +239,11 @@ export async function saveQuizResult(capsuleId: string, score: number, totalQues
 
     if (error) throw error;
 
-    // Award XP based on score (e.g., 10 XP per correct answer + 5 base)
+    // Award XP based on correct count or percentage
     const xpAwarded = (score * 10) + 5;
     await awardXPAndStreak(user.id, xpAwarded);
 
-    return { success: true, xpAwarded };
+    return { success: true, xpAwarded, score: percentageScore };
 }
 
 export async function trackVideoCompletion(capsuleId: string) {
@@ -239,14 +251,14 @@ export async function trackVideoCompletion(capsuleId: string) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
-    // Track completion in a generic progress table or specific video_completions
-    // For now, using quiz_completions with perfect score for video
-    const { error } = await supabase
+    const adminSupabase = createAdminClient();
+
+    const { error } = await adminSupabase
         .from('quiz_completions')
         .upsert({
             student_id: user.id,
             capsule_id: capsuleId,
-            score: 1,
+            score: 100,
             total_questions: 1,
             completed_at: new Date().toISOString()
         }, {
