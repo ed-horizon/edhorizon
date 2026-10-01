@@ -90,7 +90,10 @@ export async function getStudentAssignedCapsules(studentId?: string) {
         .select('id, description');
 
     const studentModuleIds = (modulesData || [])
-        .filter(mod => parseDescription(mod.description).studentId === targetUserId)
+        .filter(mod => {
+            const modStudentId = parseDescription(mod.description).studentId;
+            return modStudentId && String(modStudentId).trim() === String(targetUserId).trim();
+        })
         .map(mod => mod.id);
 
     // 2. Query capsules assigned to targetUserId or student's modules
@@ -123,8 +126,10 @@ export async function getStudentAssignedCapsules(studentId?: string) {
 
     // Filter capsules for targetUserId
     const assigned = capsulesData.filter(c => {
-        const directMatch = c.content?.student_id === targetUserId;
-        const moduleMatch = c.topic?.course?.module_id && studentModuleIds.includes(c.topic.course.module_id);
+        const studentIdInContent = String(c.content?.student_id || '').trim();
+        const targetIdStr = String(targetUserId).trim();
+        const directMatch = Boolean(studentIdInContent && studentIdInContent === targetIdStr);
+        const moduleMatch = Boolean(c.topic?.course?.module_id && studentModuleIds.includes(c.topic.course.module_id));
         return directMatch || moduleMatch;
     });
 
