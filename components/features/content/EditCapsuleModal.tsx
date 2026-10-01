@@ -161,6 +161,43 @@ export function EditCapsuleModal({ capsule, isOpen, onClose, onSuccess }: EditCa
                             </>
                         )}
 
+                        {/* Student Completion & Results Status */}
+                        <div className="space-y-3 pt-2 border-t border-border/40">
+                            <Label className="text-xs font-black uppercase tracking-widest text-indigo-600 italic ml-1">
+                                Student Submissions & Performance
+                            </Label>
+
+                            {capsule.quiz_completions && capsule.quiz_completions.length > 0 ? (
+                                <div className="space-y-2">
+                                    {capsule.quiz_completions.map((qc: any) => (
+                                        <div key={qc.id || Math.random()} className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/50 flex items-center justify-between text-xs">
+                                            <div className="flex items-center gap-2">
+                                                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                                <span className="font-bold text-emerald-950 dark:text-emerald-100">
+                                                    {qc.student?.full_name || "Assigned Student"}
+                                                </span>
+                                                <span className="text-emerald-700 dark:text-emerald-300 text-[10px]">
+                                                    ({qc.student?.email || ''})
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-black text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 rounded-md text-[10px]">
+                                                    Score: {qc.score !== undefined ? `${qc.score}%` : 'Completed'}
+                                                </span>
+                                                <span className="text-[10px] text-muted-foreground italic">
+                                                    {qc.completed_at ? new Date(qc.completed_at).toLocaleDateString() : 'Just now'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="p-4 rounded-xl bg-muted/20 border border-dashed border-border/40 text-center text-xs text-muted-foreground italic">
+                                    ⏳ No student submissions recorded yet. Status will update automatically once completed by assigned student.
+                                </div>
+                            )}
+                        </div>
+
                         <div className="flex items-center justify-between pt-4 border-t border-border/40">
                             <Button
                                 type="button"

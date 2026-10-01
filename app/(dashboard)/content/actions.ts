@@ -84,7 +84,17 @@ export async function getTopicsByCourse(courseId: string) {
         .from('topics')
         .select(`
             *,
-            capsules (*)
+            capsules (
+                *,
+                quiz_completions (
+                    id,
+                    score,
+                    total_questions,
+                    completed_at,
+                    student_id,
+                    student:profiles (id, full_name, email)
+                )
+            )
         `)
         .eq('course_id', courseId)
         .order('order', { ascending: true });

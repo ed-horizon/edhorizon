@@ -101,7 +101,22 @@ export function CourseDetailClient({ course, initialTopics }: { course: any, ini
                                                     </Button>
                                                 </div>
                                             </div>
-                                            <h4 className="font-bold text-lg leading-tight group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{capsule.title}</h4>
+                                            <div className="space-y-1">
+                                                <h4 className="font-bold text-lg leading-tight group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{capsule.title}</h4>
+                                                {capsule.quiz_completions && capsule.quiz_completions.length > 0 ? (
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-none text-[9px] font-bold">
+                                                            ✓ Completed by {capsule.quiz_completions[0].student?.full_name || 'Student'} ({capsule.quiz_completions[0].score !== undefined ? `${capsule.quiz_completions[0].score}%` : 'Done'})
+                                                        </Badge>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-none text-[9px] font-bold">
+                                                            Pending Student Completion
+                                                        </Badge>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </CardHeader>
                                         <CardContent className="p-6 pt-0">
                                             <div className="flex items-center justify-between mt-6">
