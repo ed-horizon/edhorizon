@@ -31,7 +31,7 @@ export async function getStudentCourses() {
                 *,
                 capsules (
                     *,
-                    quiz_completions (score, user_id)
+                    quiz_completions (score, student_id)
                 )
             )
         `)
@@ -52,14 +52,16 @@ export async function getStudentCourses() {
         ...course,
         topics: (course.topics || []).map((topic: any) => {
             const studentCapsules = (topic.capsules || []).filter((c: any) => {
-                const isDirectAssignment = c.content?.student_id === user.id;
+                const studentIdInContent = String(c.content?.student_id || '').trim();
+                const userIdStr = String(user.id).trim();
+                const isDirectAssignment = Boolean(studentIdInContent && studentIdInContent === userIdStr);
                 const isModuleAssignment = studentModuleIds.includes(course.module_id);
                 return isDirectAssignment || isModuleAssignment;
             });
 
             const totalCapsules = studentCapsules.length;
             const completedCapsules = studentCapsules.filter((c: any) => {
-                const userCompletions = (c.quiz_completions || []).filter((qc: any) => qc.user_id === user.id);
+                const userCompletions = (c.quiz_completions || []).filter((qc: any) => String(qc.student_id).trim() === String(user.id).trim());
                 return userCompletions.length > 0 || c.type === 'video';
             }).length;
 
@@ -114,7 +116,7 @@ export async function getStudentAssignedCapsules(studentId?: string) {
                 id,
                 score,
                 completed_at,
-                user_id
+                student_id
             )
         `)
         .order('created_at', { ascending: false });
@@ -134,7 +136,7 @@ export async function getStudentAssignedCapsules(studentId?: string) {
     });
 
     return assigned.map(c => {
-        const userCompletions = (c.quiz_completions || []).filter((qc: any) => qc.user_id === targetUserId);
+        const userCompletions = (c.quiz_completions || []).filter((qc: any) => String(qc.student_id).trim() === String(targetUserId).trim());
         const isCompleted = userCompletions.length > 0 || c.type === 'video';
         const bestScore = userCompletions.reduce((max: number, qc: any) => Math.max(max, Number(qc.score || 0)), 0);
 
