@@ -31,6 +31,8 @@ interface LiveClass {
     student: { id: string; full_name: string; email: string } | null;
     tutor_joined_late?: boolean;
     tutor_joined_at?: string;
+    cancellation_reason?: string | null;
+    holiday_id?: string | null;
 }
 
 interface Student {
@@ -298,6 +300,11 @@ export function TeacherDashboardClient({
                                         <p className="text-[9px] text-muted-foreground/60 mt-1">
                                             Was scheduled for: {format(new Date(c.scheduled_at), 'MMM dd, hh:mm a')}
                                         </p>
+                                        {c.cancellation_reason && (
+                                            <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 mt-1">
+                                                {c.cancellation_reason}
+                                            </p>
+                                        )}
                                     </div>
                                     <Button 
                                         size="sm" 

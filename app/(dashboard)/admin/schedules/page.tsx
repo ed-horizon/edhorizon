@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { CreateLiveClassDialog } from "@/components/features/teacher/CreateLiveClassDialog"
 import { ManageSchedulesDialog } from "@/components/features/teacher/ManageSchedulesDialog"
+import { ManageHolidaysDialog } from "@/components/features/holidays/ManageHolidaysDialog"
 import { SchedulesClient } from "@/components/features/admin/SchedulesClient"
 import { redirect } from "next/navigation"
 
@@ -58,6 +59,7 @@ export default async function AdminSchedulesManagement() {
                 <div className="flex items-center gap-4 flex-wrap">
                     <CreateLiveClassDialog />
                     <ManageSchedulesDialog />
+                    <ManageHolidaysDialog currentUserRole={profile?.role} />
                     <div className="hidden md:flex items-center gap-2 bg-indigo-50 border border-indigo-100 px-5 py-2.5 rounded-full shadow-sm">
                         <ShieldCheck className="text-indigo-600" size={16} />
                         <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700">Admin Authority Active</span>

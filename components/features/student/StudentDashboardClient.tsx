@@ -38,6 +38,8 @@ interface LiveClass {
     parent_verified?: boolean | null;
     parent_dispute_reason?: string | null;
     schedule_id?: string | null;
+    cancellation_reason?: string | null;
+    holiday_id?: string | null;
 }
 
 interface Homework {
@@ -839,6 +841,11 @@ export function StudentDashboardClient({
                                         <p className="text-[9px] text-muted-foreground/60 mt-1">
                                             Scheduled was: {format(new Date(c.scheduled_at), 'MMM dd, hh:mm a')}
                                         </p>
+                                        {c.cancellation_reason && (
+                                            <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 mt-1">
+                                                {c.cancellation_reason}
+                                            </p>
+                                        )}
                                     </div>
                                     <Button 
                                         size="sm" 

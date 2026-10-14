@@ -10,13 +10,15 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Edit3, X,
-    Video, Clock, User, BookOpen, AlertCircle, FileText, CheckCircle2, Award, Upload
+    Video, Clock, User, BookOpen, AlertCircle, FileText, CheckCircle2, Award, Upload, Palmtree
 } from "lucide-react"
 import { formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
 import { format } from "date-fns"
 import { getClassLogsForMonth, modifyClassLog } from "@/app/(dashboard)/attendance/actions"
 import { toast } from "sonner"
 import { AssignHomeworkDialog, UploadMaterialDialog } from "@/components/features/teacher/StudentActionDialogs"
+import { ManageHolidaysDialog } from "@/components/features/holidays/ManageHolidaysDialog"
+import { getAcademyHolidays, type AcademyHoliday } from "@/app/(dashboard)/holidays/actions"
 
 interface Profile {
     id: string;
@@ -40,6 +42,7 @@ export function ClassLogsCalendarClient({
     const [year, setYear] = useState(now.getFullYear())
     const [month, setMonth] = useState(now.getMonth() + 1) // 1-indexed (Jan = 1)
     const [classes, setClasses] = useState<any[]>([])
+    const [holidays, setHolidays] = useState<AcademyHoliday[]>([])
     const [isLoading, setIsLoading] = useState(true)
 
     // Admin filters
@@ -68,8 +71,12 @@ export function ClassLogsCalendarClient({
     const fetchLogs = async () => {
         setIsLoading(true)
         try {
-            const data = await getClassLogsForMonth(year, month)
+            const [data, holidayData] = await Promise.all([
+                getClassLogsForMonth(year, month),
+                getAcademyHolidays(year, month)
+            ])
             setClasses(data || [])
+            setHolidays(holidayData || [])
         } catch (error) {
             console.error("Failed to fetch monthly class logs:", error)
             toast.error("Failed to load logs for this month")
@@ -227,7 +234,7 @@ export function ClassLogsCalendarClient({
         "July", "August", "September", "October", "November", "December"
     ]
 
-    const canModify = ["hr", "super_admin"].includes(currentUserProfile.role)
+    const canModify = ["hr", "super_admin", "admin", "operations"].includes(currentUserProfile.role)
 
     return (
         <div className="space-y-8">
@@ -244,22 +251,30 @@ export function ClassLogsCalendarClient({
                     </h1>
                     <p className="text-xs text-muted-foreground italic font-medium">
                         {canModify 
-                            ? "Complete administrative dashboard to review, audit, and modify teacher class sessions and student attendances."
+                            ? "Complete administrative dashboard to review, audit, and modify teacher class sessions, student attendances, and academy holidays."
                             : "Interactive schedule log calendar showing taken, cancelled, and upcoming sessions."}
                     </p>
                 </div>
                 
-                {/* Month Picker Controls */}
-                <div className="flex items-center gap-3 bg-muted/30 p-1.5 rounded-2xl border border-border/40">
-                    <Button variant="ghost" size="icon" onClick={handlePrevMonth} className="h-9 w-9 rounded-xl">
-                        <ChevronLeft size={16} />
-                    </Button>
-                    <span className="text-sm font-black uppercase tracking-wider min-w-[120px] text-center">
-                        {monthNames[month - 1]} {year}
-                    </span>
-                    <Button variant="ghost" size="icon" onClick={handleNextMonth} className="h-9 w-9 rounded-xl">
-                        <ChevronRight size={16} />
-                    </Button>
+                <div className="flex items-center gap-3 flex-wrap">
+                    {/* Academy Holidays Trigger */}
+                    <ManageHolidaysDialog 
+                        currentUserRole={currentUserProfile.role}
+                        onHolidayChanged={fetchLogs}
+                    />
+
+                    {/* Month Picker Controls */}
+                    <div className="flex items-center gap-3 bg-muted/30 p-1.5 rounded-2xl border border-border/40">
+                        <Button variant="ghost" size="icon" onClick={handlePrevMonth} className="h-9 w-9 rounded-xl">
+                            <ChevronLeft size={16} />
+                        </Button>
+                        <span className="text-sm font-black uppercase tracking-wider min-w-[120px] text-center">
+                            {monthNames[month - 1]} {year}
+                        </span>
+                        <Button variant="ghost" size="icon" onClick={handleNextMonth} className="h-9 w-9 rounded-xl">
+                            <ChevronRight size={16} />
+                        </Button>
+                    </div>
                 </div>
             </div>
 
@@ -360,6 +375,8 @@ export function ClassLogsCalendarClient({
                                 const isSelected = selectedDate && selectedDate.toDateString() === dayItem.date.toDateString()
                                 const isToday = new Date().toDateString() === dayItem.date.toDateString()
                                 const dateClasses = getClassesForDate(dayItem.date)
+                                const dayDateStr = format(dayItem.date, 'yyyy-MM-dd')
+                                const holidayForDay = holidays.find(h => h.holiday_date === dayDateStr)
                                 
                                 return (
                                     <button
@@ -368,6 +385,7 @@ export function ClassLogsCalendarClient({
                                         className={cn(
                                             "min-h-[55px] sm:min-h-[90px] p-1.5 sm:p-3 rounded-xl sm:rounded-2xl border text-left flex flex-col justify-between transition-all duration-300 relative group overflow-hidden bg-card",
                                             dayItem.isCurrentMonth ? "border-border/40" : "opacity-35 border-transparent bg-transparent",
+                                            holidayForDay && "border-amber-500/50 bg-amber-500/5 dark:bg-amber-950/15",
                                             isSelected 
                                                 ? "ring-2 ring-indigo-500 border-indigo-500 scale-[1.01] shadow-lg shadow-indigo-500/5" 
                                                 : "hover:border-indigo-500/40 hover:scale-[1.01]",
@@ -392,6 +410,15 @@ export function ClassLogsCalendarClient({
                                                 </Badge>
                                             )}
                                         </div>
+
+                                        {/* Holiday Badge on Day Cell */}
+                                        {holidayForDay && (
+                                            <div className="mt-1 truncate w-full">
+                                                <span className="inline-flex items-center gap-1 bg-amber-500 text-white text-[7px] sm:text-[8px] font-bold px-1.5 py-0.5 rounded-full truncate max-w-full shadow-sm">
+                                                    🌴 {holidayForDay.title}
+                                                </span>
+                                            </div>
+                                        )}
                                         
                                         {/* Status Dots */}
                                         <div className="flex flex-wrap gap-1 mt-2">
@@ -423,90 +450,157 @@ export function ClassLogsCalendarClient({
 
                 {/* 2. Right Side: Date Detail panel */}
                 <div className="lg:col-span-4 text-left">
-                    <Card className="rounded-[2rem] border-border/40 shadow-xl bg-card overflow-hidden h-full flex flex-col min-h-[480px]">
-                        <CardHeader className="border-b border-border/10 pb-4 shrink-0 bg-muted/20">
-                            <div className="flex items-center gap-2.5">
-                                <CalendarIcon className="text-indigo-600" size={18} />
-                                <CardTitle className="text-base font-bold">
-                                    {selectedDate ? selectedDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short', weekday: 'short' }) : "Select a Date"}
-                                </CardTitle>
-                            </div>
-                            <CardDescription className="text-xs">Classes scheduled for this day</CardDescription>
-                        </CardHeader>
-                        
-                        <CardContent className="p-6 flex-1 overflow-y-auto space-y-4">
-                            {!selectedDate ? (
-                                <p className="text-xs text-muted-foreground italic text-center py-12">Click a date on the calendar to view its session records.</p>
-                            ) : getClassesForDate(selectedDate).length === 0 ? (
-                                <p className="text-xs text-muted-foreground italic text-center py-12">No classes scheduled on this day.</p>
-                            ) : (
-                                getClassesForDate(selectedDate).map(c => {
-                                    const att = c.student_attendance?.[0]
-                                    const elapsed = new Date().getTime() - new Date(c.scheduled_at).getTime();
-                                    const isNotMarked = (c.status === 'scheduled' || c.status === 'ongoing') && elapsed > 24 * 60 * 60 * 1000;
-                                    return (
-                                        <div 
-                                            key={c.id} 
-                                            className={cn(
-                                                "p-4 border rounded-2xl text-xs space-y-3 relative overflow-hidden group transition-all",
-                                                c.tutor_joined_late 
-                                                    ? "bg-rose-50/30 border-rose-500/30 dark:bg-rose-950/10 dark:border-rose-950/30" 
-                                                    : "bg-muted/20 border-border/20"
-                                            )}
-                                        >
-                                            <div className="flex justify-between items-start gap-2">
+                    {(() => {
+                        const selectedDateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null;
+                        const selectedHoliday = selectedDateStr ? holidays.find(h => h.holiday_date === selectedDateStr) : null;
+
+                        return (
+                            <Card className="rounded-[2rem] border-border/40 shadow-xl bg-card overflow-hidden h-full flex flex-col min-h-[480px]">
+                                <CardHeader className="border-b border-border/10 pb-4 shrink-0 bg-muted/20">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2.5">
+                                            <CalendarIcon className="text-indigo-600" size={18} />
+                                            <CardTitle className="text-base font-bold">
+                                                {selectedDate ? selectedDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short', weekday: 'short' }) : "Select a Date"}
+                                            </CardTitle>
+                                        </div>
+
+                                        {/* Quick Mark as Holiday Button */}
+                                        {selectedDate && canModify && !selectedHoliday && (
+                                            <ManageHolidaysDialog
+                                                currentUserRole={currentUserProfile.role}
+                                                initialDate={selectedDateStr!}
+                                                onHolidayChanged={fetchLogs}
+                                                triggerButton={
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="sm" 
+                                                        className="h-7 px-2 text-[10px] font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-500/15 rounded-lg gap-1"
+                                                    >
+                                                        <Palmtree size={12} />
+                                                        <span>Mark Holiday</span>
+                                                    </Button>
+                                                }
+                                            />
+                                        )}
+                                    </div>
+                                    <CardDescription className="text-xs">Classes scheduled for this day</CardDescription>
+                                </CardHeader>
+                                
+                                <CardContent className="p-6 flex-1 overflow-y-auto space-y-4">
+                                    {/* Academy Holiday Banner */}
+                                    {selectedHoliday && (
+                                        <div className="p-3.5 bg-amber-500/10 border border-amber-500/25 rounded-2xl flex items-start justify-between gap-3 animate-in fade-in">
+                                            <div className="flex items-start gap-2.5">
+                                                <Palmtree className="text-amber-600 mt-0.5 shrink-0" size={18} />
                                                 <div>
-                                                    {(() => {
-                                                        const { title: displayTitle, isCompensation } = formatClassTitle(c.title);
-                                                        return (
-                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                <h4 className="font-bold text-foreground tracking-tight text-sm uppercase">{displayTitle}</h4>
-                                                                {isCompensation && (
-                                                                    <Badge className="bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 border border-amber-500/30 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-full scale-90">
-                                                                        Comp
+                                                    <h4 className="font-bold text-xs text-amber-800 dark:text-amber-300">
+                                                        🎉 Academy Holiday: {selectedHoliday.title}
+                                                    </h4>
+                                                    <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
+                                                        {selectedHoliday.description || "Academy closed in observance of this holiday. All scheduled tutor sessions suspended."}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {canModify && (
+                                                <ManageHolidaysDialog
+                                                    currentUserRole={currentUserProfile.role}
+                                                    onHolidayChanged={fetchLogs}
+                                                    triggerButton={
+                                                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[9px] font-bold text-amber-700 hover:bg-amber-500/20 rounded-md shrink-0">
+                                                            Manage
+                                                        </Button>
+                                                    }
+                                                />
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {!selectedDate ? (
+                                        <p className="text-xs text-muted-foreground italic text-center py-12">Click a date on the calendar to view its session records.</p>
+                                    ) : getClassesForDate(selectedDate).length === 0 ? (
+                                        <p className="text-xs text-muted-foreground italic text-center py-12">
+                                            {selectedHoliday 
+                                                ? `No active classes. All sessions on this day are suspended for ${selectedHoliday.title}.`
+                                                : "No classes scheduled on this day."}
+                                        </p>
+                                    ) : (
+                                        getClassesForDate(selectedDate).map(c => {
+                                            const att = c.student_attendance?.[0]
+                                            const elapsed = new Date().getTime() - new Date(c.scheduled_at).getTime();
+                                            const isNotMarked = (c.status === 'scheduled' || c.status === 'ongoing') && elapsed > 24 * 60 * 60 * 1000;
+                                            return (
+                                                <div 
+                                                    key={c.id} 
+                                                    className={cn(
+                                                        "p-4 border rounded-2xl text-xs space-y-3 relative overflow-hidden group transition-all",
+                                                        c.tutor_joined_late 
+                                                            ? "bg-rose-50/30 border-rose-500/30 dark:bg-rose-950/10 dark:border-rose-950/30" 
+                                                            : "bg-muted/20 border-border/20"
+                                                    )}
+                                                >
+                                                    <div className="flex justify-between items-start gap-2">
+                                                        <div>
+                                                            {(() => {
+                                                                const { title: displayTitle, isCompensation } = formatClassTitle(c.title);
+                                                                return (
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <h4 className="font-bold text-foreground tracking-tight text-sm uppercase">{displayTitle}</h4>
+                                                                        {isCompensation && (
+                                                                            <Badge className="bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 border border-amber-500/30 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-full scale-90">
+                                                                                Comp
+                                                                            </Badge>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                            <div className="flex items-center gap-2 mt-1.5 text-muted-foreground text-[10px] flex-wrap">
+                                                                <Clock size={12} className="text-indigo-500" />
+                                                                <span>{format(new Date(c.scheduled_at), 'hh:mm a')}</span>
+                                                                {c.tutor_joined_late && (
+                                                                    <Badge className="bg-rose-500/15 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 border border-rose-500/30 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-full">
+                                                                        Tutor Joined Late
                                                                     </Badge>
                                                                 )}
                                                             </div>
-                                                        );
-                                                    })()}
-                                                    <div className="flex items-center gap-2 mt-1.5 text-muted-foreground text-[10px] flex-wrap">
-                                                        <Clock size={12} className="text-indigo-500" />
-                                                        <span>{format(new Date(c.scheduled_at), 'hh:mm a')}</span>
-                                                        {c.tutor_joined_late && (
-                                                            <Badge className="bg-rose-500/15 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 border border-rose-500/30 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-full">
-                                                                Tutor Joined Late
-                                                            </Badge>
-                                                        )}
+                                                        </div>
+                                                        <Badge className={cn("text-[8px] font-black uppercase border-none rounded-full px-2 py-0.5",
+                                                            c.status === 'completed' && 'bg-emerald-100 text-emerald-800',
+                                                            c.status === 'cancelled' && 'bg-rose-100 text-rose-800',
+                                                            !isNotMarked && (c.status === 'scheduled' || c.status === 'ongoing') && 'bg-indigo-100 text-indigo-800',
+                                                            isNotMarked && 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400'
+                                                        )}>
+                                                            {isNotMarked ? "Attendance Not Marked" : c.status}
+                                                        </Badge>
                                                     </div>
-                                                </div>
-                                                <Badge className={cn("text-[8px] font-black uppercase border-none rounded-full px-2 py-0.5",
-                                                    c.status === 'completed' && 'bg-emerald-100 text-emerald-800',
-                                                    c.status === 'cancelled' && 'bg-rose-100 text-rose-800',
-                                                    !isNotMarked && (c.status === 'scheduled' || c.status === 'ongoing') && 'bg-indigo-100 text-indigo-800',
-                                                    isNotMarked && 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400'
-                                                )}>
-                                                    {isNotMarked ? "Attendance Not Marked" : c.status}
-                                                </Badge>
-                                            </div>
- 
-                                            <div className="space-y-1.5 border-t border-border/10 pt-2.5">
-                                                <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
-                                                    <User size={12} className="text-indigo-500" />
-                                                    <span className="font-bold text-foreground">Tutor:</span>
-                                                    <span>
-                                                        {c.teacher?.full_name || 'N/A'}
-                                                        {c.tutor_joined_at && (
-                                                            <span className="text-[9px] text-muted-foreground/60 italic ml-1">
-                                                                (In: {format(new Date(c.tutor_joined_at), 'hh:mm a')})
+
+                                                    {/* Cancellation Reason if present */}
+                                                    {c.cancellation_reason && (
+                                                        <div className="pt-0.5">
+                                                            <span className="text-[10px] font-semibold text-rose-700 dark:text-rose-300 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-md inline-block">
+                                                                {c.cancellation_reason}
                                                             </span>
-                                                        )}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
-                                                    <User size={12} className="text-indigo-500" />
-                                                    <span className="font-bold text-foreground">Student:</span>
-                                                    <span>{c.student?.full_name || 'N/A'}</span>
-                                                </div>
+                                                        </div>
+                                                    )}
+     
+                                                    <div className="space-y-1.5 border-t border-border/10 pt-2.5">
+                                                        <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
+                                                            <User size={12} className="text-indigo-500" />
+                                                            <span className="font-bold text-foreground">Tutor:</span>
+                                                            <span>
+                                                                {c.teacher?.full_name || 'N/A'}
+                                                                {c.tutor_joined_at && (
+                                                                    <span className="text-[9px] text-muted-foreground/60 italic ml-1">
+                                                                        (In: {format(new Date(c.tutor_joined_at), 'hh:mm a')})
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
+                                                            <User size={12} className="text-indigo-500" />
+                                                            <span className="font-bold text-foreground">Student:</span>
+                                                            <span>{c.student?.full_name || 'N/A'}</span>
+                                                        </div>
                                                 
                                                 {/* Attendance status display */}
                                                 <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
@@ -529,13 +623,13 @@ export function ClassLogsCalendarClient({
                                                     {c.topic_taught && (
                                                         <div>
                                                             <span className="block text-[8px] font-black uppercase text-muted-foreground tracking-wider">Topic Taught</span>
-                                                            <p className="text-[10px] text-foreground italic mt-0.5">"{c.topic_taught}"</p>
+                                                            <p className="text-[10px] text-foreground italic mt-0.5">&ldquo;{c.topic_taught}&rdquo;</p>
                                                         </div>
                                                     )}
                                                     {c.homework_given && (
                                                         <div>
                                                             <span className="block text-[8px] font-black uppercase text-muted-foreground tracking-wider">Homework Assigned</span>
-                                                            <p className="text-[10px] text-foreground italic mt-0.5">"{c.homework_given}"</p>
+                                                            <p className="text-[10px] text-foreground italic mt-0.5">&ldquo;{c.homework_given}&rdquo;</p>
                                                         </div>
                                                     )}
                                                     {c.student_performance && (
@@ -600,6 +694,8 @@ export function ClassLogsCalendarClient({
                             )}
                         </CardContent>
                     </Card>
+                        );
+                    })()}
                 </div>
 
             </div>
@@ -616,7 +712,7 @@ export function ClassLogsCalendarClient({
                                 {(() => {
                                     const { title: displayTitle } = formatClassTitle(editingClass.title);
                                     return (
-                                        <p className="text-[10px] text-muted-foreground italic font-medium mt-0.5">Edit log records for "{displayTitle}"</p>
+                                        <p className="text-[10px] text-muted-foreground italic font-medium mt-0.5">Edit log records for &ldquo;{displayTitle}&rdquo;</p>
                                     );
                                 })()}
                             </div>
