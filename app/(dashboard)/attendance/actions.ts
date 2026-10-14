@@ -889,7 +889,11 @@ export async function getStudentAttendance(studentId?: string) {
         .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data;
+    // Exclude attendance records where the class was rejected
+    return (data || []).filter((record: any) => 
+        record.class?.status !== 'rejected' && 
+        record.class?.verification_status !== 'rejected'
+    );
 }
 
 // --- Teacher Attendance ---
@@ -1480,7 +1484,11 @@ export async function updateStudentAttendanceHR(classId: string, studentId: stri
     return { success: true };
 }
 
-export async function verifyClassAttendance(classId: string, verificationStatus: 'verified' | 'rejected') {
+export async function verifyClassAttendance(
+    classId: string, 
+    verificationStatus: 'verified' | 'rejected',
+    rejectionReason?: string
+) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
@@ -1494,11 +1502,19 @@ export async function verifyClassAttendance(classId: string, verificationStatus:
         return { success: false, error: "Unauthorized: Only admins, HR, and Operations can verify classes." };
     }
 
+    if (verificationStatus === 'rejected') {
+        const cleanReason = (rejectionReason || '').trim();
+        if (!cleanReason || cleanReason.length < 3) {
+            return { success: false, error: "A valid reason for rejecting the class session is mandatory (at least 3 characters)." };
+        }
+    }
+
     const adminClient = createAdminClient();
     const { error } = await adminClient.rpc('verify_class_attendance_with_payroll', {
         p_class_id: classId,
         p_verified_by: user.id,
         p_verification_status: verificationStatus,
+        p_rejection_reason: verificationStatus === 'rejected' ? (rejectionReason || '').trim() : null,
     });
     if (error) {
         console.error("verifyClassAttendance transaction error:", error);
@@ -1507,6 +1523,9 @@ export async function verifyClassAttendance(classId: string, verificationStatus:
 
     revalidatePath('/(dashboard)/hr', 'page');
     revalidatePath('/(dashboard)/admin', 'page');
+    revalidatePath('/(dashboard)/class-logs', 'page');
+    revalidatePath('/(dashboard)/teacher', 'page');
+    revalidatePath('/(dashboard)', 'layout');
     return { success: true };
 }
 
@@ -1864,15 +1883,20 @@ export async function getStudentDashboardData() {
         .eq('id', user.id)
         .maybeSingle();
 
-    // 5. Fetch attendance logs
+    // 5. Fetch attendance logs (strictly exclude rejected classes)
     const { data: attendanceData } = await supabase
         .from('student_attendance')
         .select(`
             *,
-            class:live_classes(title, scheduled_at)
+            class:live_classes(title, scheduled_at, status, verification_status)
         `)
         .eq('student_id', user.id)
         .order('created_at', { ascending: false });
+
+    const activeAttendanceHistory = (attendanceData || []).filter(a => 
+        (a as any).class?.status !== 'rejected' && 
+        (a as any).class?.verification_status !== 'rejected'
+    );
 
     // 6. Fetch reschedule requests
     const { data: rescheduleRequests } = await supabase
@@ -1905,29 +1929,35 @@ export async function getStudentDashboardData() {
 
     const activeSchedule = schedulesData && schedulesData.length > 0 ? schedulesData[0] : null;
 
+    // Filter out rejected classes completely from the student's dashboard
+    const activeStudentClasses = (classesData || []).filter(c => 
+        c.status !== 'rejected' && 
+        c.verification_status !== 'rejected'
+    );
+
     // Process classes: today's classes, next upcoming class, other classes
     const todayStr = new Date().toDateString();
     const now = new Date();
 
-    const todayClasses = (classesData || []).filter(c => new Date(c.scheduled_at).toDateString() === todayStr);
+    const todayClasses = activeStudentClasses.filter(c => new Date(c.scheduled_at).toDateString() === todayStr);
     
     // Future classes scheduled after today (or after right now)
-    const futureClasses = (classesData || []).filter(c => {
+    const futureClasses = activeStudentClasses.filter(c => {
         const date = new Date(c.scheduled_at);
         return date.toDateString() !== todayStr && isAfter(date, now);
     });
 
     const upcomingClass = futureClasses.length > 0 ? futureClasses[0] : null;
-    const completedClasses = (classesData || []).filter(c => c.status === 'completed');
+    const completedClasses = activeStudentClasses.filter(c => c.status === 'completed');
 
     return {
         todayClasses,
         upcomingClass,
-        allCalendarClasses: classesData || [],
+        allCalendarClasses: activeStudentClasses,
         homework: resolvedHomeworkData,
         materials: resolvedMaterialsData,
         details: detailsData || null,
-        attendanceHistory: attendanceData || [],
+        attendanceHistory: activeAttendanceHistory,
         completedClasses,
         rescheduleRequests: rescheduleRequests || [],
         leaveRequests: leaveRequests || [],
@@ -2830,7 +2860,10 @@ export async function getClassLogsForMonth(year: number, month: number) {
         if (profile.role === 'teacher') {
             query = query.eq('teacher_id', user.id);
         } else if (profile.role === 'student' || profile.role === 'parent') {
-            query = query.eq('student_id', user.id);
+            query = query
+                .eq('student_id', user.id)
+                .neq('status', 'rejected')
+                .neq('verification_status', 'rejected');
         }
     }
 
@@ -2856,7 +2889,8 @@ export async function modifyClassLog(
     topicTaught: string,
     homeworkGiven: string,
     studentPerformance: string,
-    parentNote: string
+    parentNote: string,
+    rejectionReason?: string
 ) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -2868,21 +2902,33 @@ export async function modifyClassLog(
         .eq('id', user.id)
         .single();
 
-    if (!profile || !['hr', 'super_admin'].includes(profile.role)) {
-        return { success: false, error: "Access denied. Only HR and Super Admin can modify class logs." };
+    if (!profile || !['admin', 'super_admin', 'hr', 'operations'].includes(profile.role)) {
+        return { success: false, error: "Access denied. Only HR, Operations, and Admin can modify class logs." };
     }
 
     // 1. Update live class status, scheduled_at and post-class logging details
+    const updatePayload: Record<string, any> = {
+        status: status,
+        scheduled_at: scheduledAt,
+        topic_taught: topicTaught || null,
+        homework_given: homeworkGiven || null,
+        student_performance: studentPerformance || null,
+        parent_note: parentNote || null
+    };
+
+    if (status === 'rejected') {
+        updatePayload.verification_status = 'rejected';
+        if (rejectionReason && rejectionReason.trim()) {
+            updatePayload.rejection_reason = rejectionReason.trim();
+        }
+        updatePayload.rejected_at = new Date().toISOString();
+        updatePayload.verified_by = user.id;
+        updatePayload.payroll_amount = 0;
+    }
+
     const { error: updateClassError } = await supabase
         .from('live_classes')
-        .update({
-            status: status,
-            scheduled_at: scheduledAt,
-            topic_taught: topicTaught || null,
-            homework_given: homeworkGiven || null,
-            student_performance: studentPerformance || null,
-            parent_note: parentNote || null
-        })
+        .update(updatePayload)
         .eq('id', classId);
 
     if (updateClassError) {
@@ -3086,3 +3132,82 @@ export async function getDeletedClasses(year?: number, month?: number): Promise<
     return (data || []) as DeletedClassRecord[];
 }
 
+export interface RejectedClassRecord {
+    id: string;
+    title: string;
+    scheduled_at: string;
+    duration_hours: number;
+    status: string;
+    verification_status: string;
+    rejection_reason: string;
+    rejected_at: string;
+    teacher_id: string | null;
+    student_id: string | null;
+    topic_taught?: string | null;
+    homework_given?: string | null;
+    student_performance?: string | null;
+    parent_note?: string | null;
+    course?: { title: string } | null;
+    teacher?: { id: string; full_name: string; email: string } | null;
+    student?: { id: string; full_name: string; email: string } | null;
+    verified_by_profile?: { id: string; full_name: string; email: string } | null;
+}
+
+export async function getRejectedClasses(year?: number, month?: number): Promise<RejectedClassRecord[]> {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    // STRICT CHECK: Only Admin, Super Admin, HR, Operations can access rejected classes
+    const isAuthorized = ['admin', 'super_admin', 'hr', 'operations'].includes(profile?.role || '');
+    if (!isAuthorized) {
+        return [];
+    }
+
+    const adminClient = createAdminClient();
+    let query = adminClient
+        .from('live_classes')
+        .select(`
+            id,
+            title,
+            scheduled_at,
+            duration_hours,
+            status,
+            verification_status,
+            rejection_reason,
+            rejected_at,
+            teacher_id,
+            student_id,
+            topic_taught,
+            homework_given,
+            student_performance,
+            parent_note,
+            course:courses(title),
+            teacher:profiles!teacher_id(id, full_name, email),
+            student:profiles!student_id(id, full_name, email),
+            verified_by_profile:profiles!verified_by(id, full_name, email)
+        `)
+        .or('verification_status.eq.rejected,status.eq.rejected');
+
+    if (year && month) {
+        const startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+        const endDate = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+        query = query
+            .gte('scheduled_at', startDate.toISOString())
+            .lt('scheduled_at', endDate.toISOString());
+    }
+
+    const { data, error } = await query.order('rejected_at', { ascending: false });
+    if (error) {
+        console.error("Error fetching rejected classes:", error);
+        return [];
+    }
+
+    return (data || []) as unknown as RejectedClassRecord[];
+}

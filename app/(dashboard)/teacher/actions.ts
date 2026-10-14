@@ -94,33 +94,39 @@ export async function getTeacherStats() {
     const startOfCurrentMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)).toISOString();
     const startOfNextMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0)).toISOString();
 
-    // 3. Completed teaching hours in current month
+    // 3. Completed teaching hours in current month (strictly excludes rejected and Student No Show / absent sessions)
     const { data: classData } = await supabase
         .from('live_classes')
-        .select('duration_hours, student_attendance(status)')
+        .select('duration_hours, status, verification_status, student_attendance(status)')
         .eq('teacher_id', user.id)
         .eq('status', 'completed')
+        .neq('verification_status', 'rejected')
         .gte('scheduled_at', startOfCurrentMonth)
         .lt('scheduled_at', startOfNextMonth);
 
     const validClassesForHours = (classData || []).filter((c: any) => {
+        if (c.status === 'rejected' || c.verification_status === 'rejected') return false;
         const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
+        // Exclude Student No Show (absent)
         return att?.status !== 'absent';
     });
 
     const totalHours = validClassesForHours.reduce((acc, curr) => acc + Number(curr.duration_hours || 0), 0) || 0;
 
-    // 4. Completed classes in current month
+    // 4. Completed classes in current month (strictly excludes rejected and Student No Show / absent sessions)
     const { data: monthlyClassesData } = await supabase
         .from('live_classes')
-        .select('id, student_attendance(status)')
+        .select('id, status, verification_status, student_attendance(status)')
         .eq('teacher_id', user.id)
         .eq('status', 'completed')
+        .neq('verification_status', 'rejected')
         .gte('scheduled_at', startOfCurrentMonth)
         .lt('scheduled_at', startOfNextMonth);
 
     const monthlyClassCount = (monthlyClassesData || []).filter((c: any) => {
+        if (c.status === 'rejected' || c.verification_status === 'rejected') return false;
         const att = Array.isArray(c.student_attendance) ? c.student_attendance[0] : c.student_attendance;
+        // Exclude Student No Show (absent)
         return att?.status !== 'absent';
     }).length;
 
