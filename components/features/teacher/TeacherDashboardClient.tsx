@@ -13,8 +13,9 @@ import { format } from "date-fns"
 import { 
     Video, Calendar, Clock, ExternalLink, CheckCircle2, AlertCircle,
     Users, ChevronDown, ChevronUp, BookOpen, Upload, Download,
-    FileText, Award, Star, Loader2, Sparkles, LogOut, Check, X, Plus
+    FileText, Award, Star, Loader2, Sparkles, LogOut, Check, X, Plus, Palmtree
 } from "lucide-react"
+import { ManageHolidaysDialog } from "@/components/features/holidays/ManageHolidaysDialog"
 import { formatTime12Hour, ensureAbsoluteUrl, formatClassTitle, getEpochMs } from "@/lib/utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
@@ -409,6 +410,18 @@ export function TeacherDashboardClient({
                                 <Clock size={14} />
                                 <span>Apply for Leave</span>
                             </Button>
+                            <ManageHolidaysDialog 
+                                currentUserRole="teacher"
+                                triggerButton={
+                                    <Button 
+                                        variant="outline"
+                                        className="h-10 px-4 rounded-xl border-amber-500/40 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 font-black uppercase tracking-widest text-[10px] gap-2 transition-all hover:scale-105"
+                                    >
+                                        <Palmtree size={14} className="text-amber-400" />
+                                        <span>Annual Holidays</span>
+                                    </Button>
+                                }
+                            />
                         </div>
                     </div>
 

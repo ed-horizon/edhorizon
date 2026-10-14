@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,14 +10,21 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Edit3, X,
-    Video, Clock, User, BookOpen, AlertCircle, FileText, CheckCircle2, Award, Upload, Palmtree
+    Video, Clock, User, BookOpen, AlertCircle, FileText, CheckCircle2, 
+    Award, Upload, Palmtree, Trash2, Search, ShieldAlert, Sparkles
 } from "lucide-react"
 import { formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
 import { format } from "date-fns"
-import { getClassLogsForMonth, modifyClassLog } from "@/app/(dashboard)/attendance/actions"
+import { 
+    getClassLogsForMonth, 
+    modifyClassLog, 
+    getDeletedClasses, 
+    type DeletedClassRecord 
+} from "@/app/(dashboard)/attendance/actions"
 import { toast } from "sonner"
 import { AssignHomeworkDialog, UploadMaterialDialog } from "@/components/features/teacher/StudentActionDialogs"
 import { ManageHolidaysDialog } from "@/components/features/holidays/ManageHolidaysDialog"
+import { DeleteClassDialog } from "@/components/features/class-logs/DeleteClassDialog"
 import { getAcademyHolidays, type AcademyHoliday } from "@/app/(dashboard)/holidays/actions"
 
 interface Profile {
@@ -43,7 +50,11 @@ export function ClassLogsCalendarClient({
     const [month, setMonth] = useState(now.getMonth() + 1) // 1-indexed (Jan = 1)
     const [classes, setClasses] = useState<any[]>([])
     const [holidays, setHolidays] = useState<AcademyHoliday[]>([])
+    const [deletedClasses, setDeletedClasses] = useState<DeletedClassRecord[]>([])
     const [isLoading, setIsLoading] = useState(true)
+
+    const canModify = ["hr", "super_admin", "admin", "operations"].includes(currentUserProfile.role)
+    const [activeViewTab, setActiveViewTab] = useState<'calendar' | 'deleted'>('calendar')
 
     // Admin filters
     const [selectedTeacherId, setSelectedTeacherId] = useState<string>("all")
@@ -71,12 +82,20 @@ export function ClassLogsCalendarClient({
     const fetchLogs = async () => {
         setIsLoading(true)
         try {
-            const [data, holidayData] = await Promise.all([
+            const promises: Promise<any>[] = [
                 getClassLogsForMonth(year, month),
                 getAcademyHolidays(year, month)
-            ])
+            ]
+            if (canModify) {
+                promises.push(getDeletedClasses(year, month))
+            }
+
+            const [data, holidayData, deletedData] = await Promise.all(promises)
             setClasses(data || [])
             setHolidays(holidayData || [])
+            if (canModify && deletedData) {
+                setDeletedClasses(deletedData || [])
+            }
         } catch (error) {
             console.error("Failed to fetch monthly class logs:", error)
             toast.error("Failed to load logs for this month")
@@ -109,74 +128,77 @@ export function ClassLogsCalendarClient({
         setSelectedDate(null)
     }
 
-    // Filter classes on client side
+    // Filter classes based on active controls
     const filteredClasses = classes.filter(c => {
-        const matchesTeacher = selectedTeacherId === "all" || c.teacher_id === selectedTeacherId
-        const matchesStudent = selectedStudentId === "all" || c.student_id === selectedStudentId
-        const matchesLate = !showLateJoiningsOnly || c.tutor_joined_late === true
+        if (selectedTeacherId !== "all" && c.teacher_id !== selectedTeacherId) return false
+        if (selectedStudentId !== "all" && c.student_id !== selectedStudentId) return false
+        if (showLateJoiningsOnly && !c.tutor_joined_late) return false
 
-        const q = searchQuery.trim().toLowerCase();
-        let matchesQuery = true;
-        if (q) {
-            const studentName = c.student?.full_name?.toLowerCase() || '';
-            const teacherName = c.teacher?.full_name?.toLowerCase() || '';
-            const courseTitle = c.course?.title?.toLowerCase() || '';
-            const classTitle = c.title?.toLowerCase() || '';
-            matchesQuery = studentName.includes(q) || teacherName.includes(q) || courseTitle.includes(q) || classTitle.includes(q);
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase()
+            const matchTitle = c.title?.toLowerCase().includes(query)
+            const matchTeacher = c.teacher?.full_name?.toLowerCase().includes(query)
+            const matchStudent = c.student?.full_name?.toLowerCase().includes(query)
+            const matchTopic = c.topic_taught?.toLowerCase().includes(query)
+            if (!matchTitle && !matchTeacher && !matchStudent && !matchTopic) return false
         }
 
-        return matchesTeacher && matchesStudent && matchesLate && matchesQuery
+        return true
     })
 
-    // Calendar generation
-    const getDaysForCalendar = () => {
-        const startOfMonth = new Date(year, month - 1, 1)
-        const days = []
-        
-        // Find starting Sunday of the calendar view
-        const firstDayOfWeek = startOfMonth.getDay() // 0 = Sun, 1 = Mon, etc.
-        const prevMonthDate = new Date(year, month - 1, 0)
-        const prevMonthLastDay = prevMonthDate.getDate()
-        
-        for (let i = firstDayOfWeek - 1; i >= 0; i--) {
-            days.push({
-                date: new Date(year, month - 2, prevMonthLastDay - i),
-                isCurrentMonth: false
-            })
+    // Filter deleted classes based on search and filters (Staff Only)
+    const filteredDeletedClasses = useMemo(() => {
+        return deletedClasses.filter(d => {
+            if (selectedTeacherId !== "all" && d.teacher_id !== selectedTeacherId) return false
+            if (selectedStudentId !== "all" && d.student_id !== selectedStudentId) return false
+            if (searchQuery.trim()) {
+                const query = searchQuery.toLowerCase()
+                const matchTitle = d.title?.toLowerCase().includes(query)
+                const matchTeacher = d.teacher_name?.toLowerCase().includes(query)
+                const matchStudent = d.student_name?.toLowerCase().includes(query)
+                const matchReason = d.deletion_reason?.toLowerCase().includes(query)
+                const matchDeletedBy = d.deleted_by_name?.toLowerCase().includes(query)
+                if (!matchTitle && !matchTeacher && !matchStudent && !matchReason && !matchDeletedBy) return false
+            }
+            return true
+        })
+    }, [deletedClasses, selectedTeacherId, selectedStudentId, searchQuery])
+
+    // Generate Calendar Days for Month
+    const daysInMonth = new Date(year, month, 0).getDate()
+    const firstDayOfWeek = new Date(year, month - 1, 1).getDay() // 0 = Sun
+    
+    // Group classes by day (1 to daysInMonth) using local date of scheduled_at
+    const classesByDay: { [key: number]: any[] } = {}
+    filteredClasses.forEach(c => {
+        const d = new Date(c.scheduled_at)
+        // Check if class belongs to this month and year in local time
+        if (d.getFullYear() === year && (d.getMonth() + 1) === month) {
+            const dayNum = d.getDate()
+            if (!classesByDay[dayNum]) classesByDay[dayNum] = []
+            classesByDay[dayNum].push(c)
         }
-        
-        // Days of current month
-        const lastDayOfMonth = new Date(year, month, 0).getDate()
-        for (let i = 1; i <= lastDayOfMonth; i++) {
-            days.push({
-                date: new Date(year, month - 1, i),
-                isCurrentMonth: true
-            })
-        }
-        
-        // Remaining days to pad the end of the grid (6 weeks = 42 cells)
-        const remainingCells = 42 - days.length
-        for (let i = 1; i <= remainingCells; i++) {
-            days.push({
-                date: new Date(year, month, i),
-                isCurrentMonth: false
-            })
-        }
-        
-        return days
+    })
+
+    // Map holidays by day string "YYYY-MM-DD"
+    const holidaysByDateStr = useMemo(() => {
+        const map = new Map<string, AcademyHoliday>()
+        holidays.forEach(h => {
+            map.set(h.holiday_date, h)
+        })
+        return map
+    }, [holidays])
+
+    // Selected Date Classes
+    const getClassesForDate = (date: Date | null) => {
+        if (!date) return []
+        const day = date.getDate()
+        return classesByDay[day] || []
     }
 
-    const calendarDays = getDaysForCalendar()
-
-    const getClassesForDate = (date: Date) => {
-        const dateStr = date.toDateString()
-        return filteredClasses.filter(c => new Date(c.scheduled_at).toDateString() === dateStr)
-    }
-
-    // Open Edit Modal
     const handleOpenEdit = (cls: any) => {
         setEditingClass(cls)
-        setFormStatus(cls.status || "scheduled")
+        setFormStatus(cls.status)
         
         // Convert ISO scheduled_at to local datetime-local format
         const dateObj = new Date(cls.scheduled_at)
@@ -234,8 +256,6 @@ export function ClassLogsCalendarClient({
         "July", "August", "September", "October", "November", "December"
     ]
 
-    const canModify = ["hr", "super_admin", "admin", "operations"].includes(currentUserProfile.role)
-
     return (
         <div className="space-y-8">
             
@@ -278,6 +298,41 @@ export function ClassLogsCalendarClient({
                 </div>
             </div>
 
+            {/* TAB NAVIGATION: Strictly for Staff (Admin, Super Admin, HR, Operations) */}
+            {canModify && (
+                <div className="flex items-center gap-2 border-b border-border/20 pb-3">
+                    <Button
+                        type="button"
+                        variant={activeViewTab === 'calendar' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setActiveViewTab('calendar')}
+                        className="rounded-xl text-xs font-bold gap-2"
+                    >
+                        <CalendarIcon size={14} />
+                        <span>Class Logs Calendar</span>
+                    </Button>
+                    <Button
+                        type="button"
+                        variant={activeViewTab === 'deleted' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setActiveViewTab('deleted')}
+                        className={`rounded-xl text-xs font-bold gap-2 ${
+                            activeViewTab === 'deleted' 
+                                ? 'bg-rose-600 hover:bg-rose-700 text-white' 
+                                : 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
+                        }`}
+                    >
+                        <Trash2 size={14} />
+                        <span>Deleted Classes</span>
+                        {filteredDeletedClasses.length > 0 && (
+                            <Badge className="bg-white/20 text-current text-[10px] font-mono px-1.5 py-0 h-4 rounded-full border-none">
+                                {filteredDeletedClasses.length}
+                            </Badge>
+                        )}
+                    </Button>
+                </div>
+            )}
+
             {/* Filters Row */}
             <div className="bg-muted/10 p-4 md:p-6 rounded-[2rem] border border-border/30 space-y-4">
                 {canModify && (
@@ -318,387 +373,516 @@ export function ClassLogsCalendarClient({
                     <div className="relative flex-1 text-left space-y-1">
                         <Label htmlFor="search-logs" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Search Logs</Label>
                         <div className="relative">
-                            <Input 
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
+                            <Input
                                 id="search-logs"
-                                placeholder="Search Student, Tutor or Course..."
+                                placeholder={activeViewTab === 'deleted' ? "Search deleted classes, reasons, staff..." : "Search classes, topics, tutors, students..."}
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="h-11 pl-4 pr-10 rounded-2xl bg-card border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs w-full"
+                                className="h-11 pl-9 rounded-2xl bg-card border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
                             />
-                            {searchQuery && (
-                                <button 
-                                    onClick={() => setSearchQuery("")}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full flex items-center justify-center bg-muted/65 hover:bg-muted text-muted-foreground transition-colors"
-                                >
-                                    <X size={12} />
-                                </button>
-                            )}
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3 bg-card px-4 h-11 rounded-2xl border border-border/45 select-none hover:bg-muted/5 transition-colors shrink-0 w-full sm:w-auto mt-5 sm:mt-0">
-                        <input 
-                            type="checkbox" 
-                            id="late-joinings-filter" 
-                            checked={showLateJoiningsOnly}
-                            onChange={(e) => setShowLateJoiningsOnly(e.target.checked)}
-                            className="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500 accent-rose-500 cursor-pointer"
-                        />
-                        <Label htmlFor="late-joinings-filter" className="text-xs font-bold text-foreground cursor-pointer flex-1 text-left sm:text-right">
-                            Late Joinings Only
-                        </Label>
-                    </div>
-                </div>
-            </div>
-
-            {/* Main Content Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                
-                {/* 1. Calendar Grid (7 Columns) */}
-                <div className="lg:col-span-8 space-y-4">
-                    <div className="grid grid-cols-7 gap-2 text-center">
-                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
-                            <span key={day} className="text-[10px] font-black uppercase tracking-widest text-muted-foreground py-2">{day}</span>
-                        ))}
-                    </div>
-
-                    {isLoading ? (
-                        <div className="flex items-center justify-center h-[50vh] bg-card border border-border/40 rounded-[2rem] animate-pulse">
-                            <div className="flex flex-col items-center gap-3 text-indigo-600/60">
-                                <CalendarIcon className="animate-bounce" size={32} />
-                                <span className="text-xs font-black uppercase tracking-widest italic">Syncing session calendars...</span>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-7 gap-2">
-                            {calendarDays.map((dayItem, idx) => {
-                                const isSelected = selectedDate && selectedDate.toDateString() === dayItem.date.toDateString()
-                                const isToday = new Date().toDateString() === dayItem.date.toDateString()
-                                const dateClasses = getClassesForDate(dayItem.date)
-                                const dayDateStr = format(dayItem.date, 'yyyy-MM-dd')
-                                const holidayForDay = holidays.find(h => h.holiday_date === dayDateStr)
-                                
-                                return (
-                                    <button
-                                        key={idx}
-                                        onClick={() => setSelectedDate(dayItem.date)}
-                                        className={cn(
-                                            "min-h-[55px] sm:min-h-[90px] p-1.5 sm:p-3 rounded-xl sm:rounded-2xl border text-left flex flex-col justify-between transition-all duration-300 relative group overflow-hidden bg-card",
-                                            dayItem.isCurrentMonth ? "border-border/40" : "opacity-35 border-transparent bg-transparent",
-                                            holidayForDay && "border-amber-500/50 bg-amber-500/5 dark:bg-amber-950/15",
-                                            isSelected 
-                                                ? "ring-2 ring-indigo-500 border-indigo-500 scale-[1.01] shadow-lg shadow-indigo-500/5" 
-                                                : "hover:border-indigo-500/40 hover:scale-[1.01]",
-                                            isToday && "ring-1 ring-emerald-500/50 border-emerald-500/50 shadow-md shadow-emerald-500/5"
-                                        )}
-                                    >
-                                        <div className="flex items-center justify-between w-full">
-                                            <div className="flex items-center gap-1">
-                                                <span className={cn(
-                                                    "text-xs font-bold font-mono",
-                                                    isToday && "bg-emerald-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]"
-                                                )}>
-                                                    {dayItem.date.getDate()}
-                                                </span>
-                                                {dateClasses.some(c => c.tutor_joined_late === true) && (
-                                                    <Clock size={12} className="text-rose-500 animate-pulse ml-0.5 shrink-0" />
-                                                )}
-                                            </div>
-                                            {dateClasses.length > 0 && (
-                                                <Badge className="bg-muted text-muted-foreground text-[8px] font-black px-1.5 py-0.5 border-none">
-                                                    {dateClasses.length}
-                                                </Badge>
-                                            )}
-                                        </div>
-
-                                        {/* Holiday Badge on Day Cell */}
-                                        {holidayForDay && (
-                                            <div className="mt-1 truncate w-full">
-                                                <span className="inline-flex items-center gap-1 bg-amber-500 text-white text-[7px] sm:text-[8px] font-bold px-1.5 py-0.5 rounded-full truncate max-w-full shadow-sm">
-                                                    🌴 {holidayForDay.title}
-                                                </span>
-                                            </div>
-                                        )}
-                                        
-                                        {/* Status Dots */}
-                                        <div className="flex flex-wrap gap-1 mt-2">
-                                            {dateClasses.slice(0, 3).map((c, i) => {
-                                                const elapsed = new Date().getTime() - new Date(c.scheduled_at).getTime();
-                                                const isNotMarked = (c.status === 'scheduled' || c.status === 'ongoing') && elapsed > 24 * 60 * 60 * 1000;
-                                                return (
-                                                    <span 
-                                                        key={i} 
-                                                        className={cn("w-1.5 h-1.5 rounded-full block",
-                                                            c.status === 'completed' && 'bg-emerald-500',
-                                                            c.status === 'cancelled' && 'bg-rose-500',
-                                                            isNotMarked && 'bg-rose-500 animate-pulse',
-                                                            !isNotMarked && (c.status === 'scheduled' || c.status === 'ongoing') && 'bg-indigo-500'
-                                                        )} 
-                                                    />
-                                                );
-                                            })}
-                                            {dateClasses.length > 3 && (
-                                                <span className="text-[7px] font-bold opacity-60 text-muted-foreground leading-none">+ {dateClasses.length - 3}</span>
-                                            )}
-                                        </div>
-                                    </button>
-                                )
-                             })}
+                    {activeViewTab === 'calendar' && (
+                        <div className="flex items-center gap-2 self-end sm:self-auto pt-4 sm:pt-0">
+                            <Button 
+                                variant={showLateJoiningsOnly ? "default" : "outline"} 
+                                size="sm" 
+                                onClick={() => setShowLateJoiningsOnly(!showLateJoiningsOnly)}
+                                className="rounded-2xl text-[10px] font-black uppercase tracking-wider h-11 px-4 gap-1.5"
+                            >
+                                <AlertCircle size={14} className={showLateJoiningsOnly ? "text-white" : "text-rose-500"} />
+                                <span>Late Joinings Only</span>
+                            </Button>
                         </div>
                     )}
                 </div>
+            </div>
 
-                {/* 2. Right Side: Date Detail panel */}
-                <div className="lg:col-span-4 text-left">
-                    {(() => {
-                        const selectedDateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null;
-                        const selectedHoliday = selectedDateStr ? holidays.find(h => h.holiday_date === selectedDateStr) : null;
+            {/* TAB VIEW 1: REGULAR INTERACTIVE CALENDAR */}
+            {activeViewTab === 'calendar' && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                    
+                    {/* Left/Center: Calendar Grid (8 Cols) */}
+                    <Card className="lg:col-span-8 rounded-[2rem] border-border/40 shadow-xl overflow-hidden bg-card text-left">
+                        <CardHeader className="bg-muted/15 px-6 py-5 border-b border-border/20 flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle className="text-xl font-bold flex items-center gap-2">
+                                    <CalendarIcon className="text-indigo-600" size={20} />
+                                    <span>{monthNames[month - 1]} {year} Overview</span>
+                                </CardTitle>
+                                <CardDescription className="text-xs">
+                                    Click any date on the grid to inspect classes, student attendances, and log notes.
+                                </CardDescription>
+                            </div>
+                            <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border-border/40">
+                                {filteredClasses.length} Scheduled Sessions
+                            </Badge>
+                        </CardHeader>
 
-                        return (
-                            <Card className="rounded-[2rem] border-border/40 shadow-xl bg-card overflow-hidden h-full flex flex-col min-h-[480px]">
-                                <CardHeader className="border-b border-border/10 pb-4 shrink-0 bg-muted/20">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2.5">
-                                            <CalendarIcon className="text-indigo-600" size={18} />
-                                            <CardTitle className="text-base font-bold">
-                                                {selectedDate ? selectedDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short', weekday: 'short' }) : "Select a Date"}
-                                            </CardTitle>
+                        <CardContent className="p-6">
+                            {/* Days of week header */}
+                            <div className="grid grid-cols-7 gap-2 mb-2 text-center">
+                                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
+                                    <div key={day} className="text-[10px] font-black uppercase tracking-widest text-muted-foreground py-2">
+                                        {day}
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Calendar Days */}
+                            <div className="grid grid-cols-7 gap-2">
+                                {/* Padding for the first week */}
+                                {Array.from({ length: firstDayOfWeek }).map((_, i) => (
+                                    <div key={`empty-${i}`} className="min-h-[90px] rounded-2xl bg-muted/5 border border-dashed border-border/10 p-2 opacity-30" />
+                                ))}
+
+                                {/* Day Cells */}
+                                {Array.from({ length: daysInMonth }).map((_, i) => {
+                                    const day = i + 1
+                                    const cellDate = new Date(year, month - 1, day)
+                                    const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                                    const holiday = holidaysByDateStr.get(dateKey)
+                                    const isSelected = selectedDate && selectedDate.getDate() === day && selectedDate.getMonth() === (month - 1)
+                                    const isToday = now.getDate() === day && now.getMonth() === (month - 1) && now.getFullYear() === year
+                                    const dayClasses = classesByDay[day] || []
+                                    const completedCount = dayClasses.filter(c => c.status === 'completed').length
+                                    const scheduledCount = dayClasses.filter(c => c.status === 'scheduled' || c.status === 'ongoing').length
+                                    const cancelledCount = dayClasses.filter(c => c.status === 'cancelled').length
+                                    const hasLate = dayClasses.some(c => c.tutor_joined_late)
+
+                                    return (
+                                        <button
+                                            key={day}
+                                            onClick={() => setSelectedDate(cellDate)}
+                                            className={`min-h-[105px] rounded-2xl p-2.5 flex flex-col justify-between text-left transition-all border relative overflow-hidden group ${
+                                                holiday 
+                                                    ? 'bg-amber-500/10 border-amber-500/35 hover:border-amber-500 hover:bg-amber-500/15'
+                                                    : isSelected 
+                                                    ? 'bg-indigo-600/10 border-indigo-600 ring-2 ring-indigo-600/20 shadow-md' 
+                                                    : 'bg-muted/10 border-border/20 hover:border-border/60 hover:bg-muted/20'
+                                            }`}
+                                        >
+                                            {/* Top Row: Date Number and Indicators */}
+                                            <div className="flex items-center justify-between w-full">
+                                                <span className={`text-xs font-black rounded-lg px-1.5 py-0.5 ${
+                                                    isToday 
+                                                        ? 'bg-indigo-600 text-white' 
+                                                        : isSelected 
+                                                        ? 'text-indigo-600 font-extrabold' 
+                                                        : holiday
+                                                        ? 'text-amber-700 dark:text-amber-400 font-extrabold'
+                                                        : 'text-foreground'
+                                                }`}>
+                                                    {day}
+                                                </span>
+                                                <div className="flex items-center gap-1">
+                                                    {holiday && (
+                                                        <span title={`Academy Holiday: ${holiday.title}`} className="text-amber-600 dark:text-amber-400">
+                                                            <Palmtree size={13} />
+                                                        </span>
+                                                    )}
+                                                    {hasLate && (
+                                                        <span title="Tutor Joined Late Recorded" className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Holiday Banner Tag inside Cell */}
+                                            {holiday && (
+                                                <div className="w-full my-1">
+                                                    <span className="block truncate text-[9px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded-md text-left">
+                                                        🌴 {holiday.title}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {/* Session Stats Pills */}
+                                            <div className="space-y-1 w-full pt-1">
+                                                {completedCount > 0 && (
+                                                    <div className="flex items-center justify-between text-[9px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md">
+                                                        <span>Completed</span>
+                                                        <span>{completedCount}</span>
+                                                    </div>
+                                                )}
+                                                {scheduledCount > 0 && (
+                                                    <div className="flex items-center justify-between text-[9px] font-bold text-indigo-700 dark:text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded-md">
+                                                        <span>Scheduled</span>
+                                                        <span>{scheduledCount}</span>
+                                                    </div>
+                                                )}
+                                                {cancelledCount > 0 && (
+                                                    <div className="flex items-center justify-between text-[9px] font-bold text-rose-700 dark:text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded-md">
+                                                        <span>Cancelled</span>
+                                                        <span>{cancelledCount}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Right: Selected Date Details & Actions (4 Cols) */}
+                    <div className="lg:col-span-4 space-y-4 text-left">
+                        {(() => {
+                            const selectedDateStr = selectedDate 
+                                ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`
+                                : null;
+                            const selectedHoliday = selectedDateStr ? holidaysByDateStr.get(selectedDateStr) : null;
+
+                            return (
+                        <Card className="rounded-[2rem] border-border/40 shadow-xl overflow-hidden bg-card flex flex-col max-h-[700px]">
+                            <CardHeader className="bg-muted/15 px-6 py-5 border-b border-border/20">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2.5">
+                                        <CalendarIcon className="text-indigo-600" size={18} />
+                                        <CardTitle className="text-base font-bold">
+                                            {selectedDate ? selectedDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short', weekday: 'short' }) : "Select a Date"}
+                                        </CardTitle>
+                                    </div>
+
+                                    {/* Quick Mark as Holiday Button (Staff only) */}
+                                    {selectedDate && canModify && !selectedHoliday && (
+                                        <ManageHolidaysDialog
+                                            currentUserRole={currentUserProfile.role}
+                                            initialDate={selectedDateStr!}
+                                            onHolidayChanged={fetchLogs}
+                                            triggerButton={
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="sm" 
+                                                    className="h-7 px-2 text-[10px] font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-500/15 rounded-lg gap-1"
+                                                >
+                                                    <Palmtree size={12} />
+                                                    <span>Mark Holiday</span>
+                                                </Button>
+                                            }
+                                        />
+                                    )}
+                                </div>
+                                <CardDescription className="text-xs">Classes scheduled for this day</CardDescription>
+                            </CardHeader>
+                            
+                            <CardContent className="p-6 flex-1 overflow-y-auto space-y-4">
+                                {/* Academy Holiday Banner */}
+                                {selectedHoliday && (
+                                    <div className="p-3.5 bg-amber-500/10 border border-amber-500/25 rounded-2xl flex items-start justify-between gap-3 animate-in fade-in">
+                                        <div className="flex items-start gap-2.5">
+                                            <Palmtree className="text-amber-600 mt-0.5 shrink-0" size={18} />
+                                            <div>
+                                                <h4 className="font-bold text-xs text-amber-800 dark:text-amber-300">
+                                                    🎉 Academy Holiday: {selectedHoliday.title}
+                                                </h4>
+                                                <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
+                                                    {selectedHoliday.description || "Academy closed in observance of this holiday. All scheduled tutor sessions suspended."}
+                                                </p>
+                                            </div>
                                         </div>
-
-                                        {/* Quick Mark as Holiday Button */}
-                                        {selectedDate && canModify && !selectedHoliday && (
+                                        {canModify && (
                                             <ManageHolidaysDialog
                                                 currentUserRole={currentUserProfile.role}
-                                                initialDate={selectedDateStr!}
                                                 onHolidayChanged={fetchLogs}
                                                 triggerButton={
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="sm" 
-                                                        className="h-7 px-2 text-[10px] font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-500/15 rounded-lg gap-1"
-                                                    >
-                                                        <Palmtree size={12} />
-                                                        <span>Mark Holiday</span>
+                                                    <Button variant="ghost" size="sm" className="h-6 px-2 text-[9px] font-bold text-amber-700 hover:bg-amber-500/20 rounded-md shrink-0">
+                                                        Manage
                                                     </Button>
                                                 }
                                             />
                                         )}
                                     </div>
-                                    <CardDescription className="text-xs">Classes scheduled for this day</CardDescription>
-                                </CardHeader>
-                                
-                                <CardContent className="p-6 flex-1 overflow-y-auto space-y-4">
-                                    {/* Academy Holiday Banner */}
-                                    {selectedHoliday && (
-                                        <div className="p-3.5 bg-amber-500/10 border border-amber-500/25 rounded-2xl flex items-start justify-between gap-3 animate-in fade-in">
-                                            <div className="flex items-start gap-2.5">
-                                                <Palmtree className="text-amber-600 mt-0.5 shrink-0" size={18} />
-                                                <div>
-                                                    <h4 className="font-bold text-xs text-amber-800 dark:text-amber-300">
-                                                        🎉 Academy Holiday: {selectedHoliday.title}
-                                                    </h4>
-                                                    <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
-                                                        {selectedHoliday.description || "Academy closed in observance of this holiday. All scheduled tutor sessions suspended."}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            {canModify && (
-                                                <ManageHolidaysDialog
-                                                    currentUserRole={currentUserProfile.role}
-                                                    onHolidayChanged={fetchLogs}
-                                                    triggerButton={
-                                                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[9px] font-bold text-amber-700 hover:bg-amber-500/20 rounded-md shrink-0">
-                                                            Manage
-                                                        </Button>
-                                                    }
-                                                />
-                                            )}
-                                        </div>
-                                    )}
+                                )}
 
-                                    {!selectedDate ? (
-                                        <p className="text-xs text-muted-foreground italic text-center py-12">Click a date on the calendar to view its session records.</p>
-                                    ) : getClassesForDate(selectedDate).length === 0 ? (
-                                        <p className="text-xs text-muted-foreground italic text-center py-12">
-                                            {selectedHoliday 
-                                                ? `No active classes. All sessions on this day are suspended for ${selectedHoliday.title}.`
-                                                : "No classes scheduled on this day."}
-                                        </p>
-                                    ) : (
-                                        getClassesForDate(selectedDate).map(c => {
-                                            const att = c.student_attendance?.[0]
-                                            const elapsed = new Date().getTime() - new Date(c.scheduled_at).getTime();
-                                            const isNotMarked = (c.status === 'scheduled' || c.status === 'ongoing') && elapsed > 24 * 60 * 60 * 1000;
-                                            return (
-                                                <div 
-                                                    key={c.id} 
-                                                    className={cn(
-                                                        "p-4 border rounded-2xl text-xs space-y-3 relative overflow-hidden group transition-all",
-                                                        c.tutor_joined_late 
-                                                            ? "bg-rose-50/30 border-rose-500/30 dark:bg-rose-950/10 dark:border-rose-950/30" 
-                                                            : "bg-muted/20 border-border/20"
-                                                    )}
-                                                >
-                                                    <div className="flex justify-between items-start gap-2">
-                                                        <div>
-                                                            {(() => {
-                                                                const { title: displayTitle, isCompensation } = formatClassTitle(c.title);
-                                                                return (
-                                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                                        <h4 className="font-bold text-foreground tracking-tight text-sm uppercase">{displayTitle}</h4>
-                                                                        {isCompensation && (
-                                                                            <Badge className="bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 border border-amber-500/30 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-full scale-90">
-                                                                                Comp
-                                                                            </Badge>
-                                                                        )}
-                                                                    </div>
-                                                                );
-                                                            })()}
-                                                            <div className="flex items-center gap-2 mt-1.5 text-muted-foreground text-[10px] flex-wrap">
-                                                                <Clock size={12} className="text-indigo-500" />
-                                                                <span>{format(new Date(c.scheduled_at), 'hh:mm a')}</span>
-                                                                {c.tutor_joined_late && (
-                                                                    <Badge className="bg-rose-500/15 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 border border-rose-500/30 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-full">
-                                                                        Tutor Joined Late
-                                                                    </Badge>
-                                                                )}
-                                                            </div>
+                                {!selectedDate ? (
+                                    <p className="text-xs text-muted-foreground italic text-center py-12">Click a date on the calendar to view its session records.</p>
+                                ) : getClassesForDate(selectedDate).length === 0 ? (
+                                    <p className="text-xs text-muted-foreground italic text-center py-12">
+                                        {selectedHoliday 
+                                            ? `No active classes. All sessions on this day are suspended for ${selectedHoliday.title}.`
+                                            : "No classes scheduled on this day."}
+                                    </p>
+                                ) : (
+                                    getClassesForDate(selectedDate).map(c => {
+                                        const att = c.student_attendance?.[0]
+                                        const elapsed = new Date().getTime() - new Date(c.scheduled_at).getTime();
+                                        const isNotMarked = (c.status === 'scheduled' || c.status === 'ongoing') && elapsed > 24 * 60 * 60 * 1000;
+                                        return (
+                                            <div 
+                                                key={c.id} 
+                                                className={`p-4 border rounded-2xl text-xs space-y-3 relative overflow-hidden group transition-all ${
+                                                    c.tutor_joined_late 
+                                                        ? "bg-rose-50/30 border-rose-500/30 dark:bg-rose-950/10 dark:border-rose-950/30" 
+                                                        : "bg-muted/20 border-border/20"
+                                                }`}
+                                            >
+                                                <div className="flex justify-between items-start gap-2">
+                                                    <div>
+                                                        {(() => {
+                                                            const { title: displayTitle, isCompensation } = formatClassTitle(c.title);
+                                                            return (
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <h4 className="font-bold text-foreground tracking-tight text-sm uppercase">{displayTitle}</h4>
+                                                                    {isCompensation && (
+                                                                        <Badge className="bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 border border-amber-500/30 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-full scale-90">
+                                                                            Comp
+                                                                        </Badge>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                        <div className="flex items-center gap-2 mt-1.5 text-muted-foreground text-[10px] flex-wrap">
+                                                            <Clock size={12} className="text-indigo-500" />
+                                                            <span>{format(new Date(c.scheduled_at), 'hh:mm a')}</span>
+                                                            {c.tutor_joined_late && (
+                                                                <Badge className="bg-rose-500/15 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 border border-rose-500/30 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.2 rounded-full">
+                                                                    Tutor Joined Late
+                                                                </Badge>
+                                                            )}
                                                         </div>
-                                                        <Badge className={cn("text-[8px] font-black uppercase border-none rounded-full px-2 py-0.5",
-                                                            c.status === 'completed' && 'bg-emerald-100 text-emerald-800',
-                                                            c.status === 'cancelled' && 'bg-rose-100 text-rose-800',
-                                                            !isNotMarked && (c.status === 'scheduled' || c.status === 'ongoing') && 'bg-indigo-100 text-indigo-800',
-                                                            isNotMarked && 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400'
-                                                        )}>
-                                                            {isNotMarked ? "Attendance Not Marked" : c.status}
-                                                        </Badge>
                                                     </div>
-
-                                                    {/* Cancellation Reason if present */}
-                                                    {c.cancellation_reason && (
-                                                        <div className="pt-0.5">
-                                                            <span className="text-[10px] font-semibold text-rose-700 dark:text-rose-300 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-md inline-block">
-                                                                {c.cancellation_reason}
-                                                            </span>
-                                                        </div>
-                                                    )}
-     
-                                                    <div className="space-y-1.5 border-t border-border/10 pt-2.5">
-                                                        <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
-                                                            <User size={12} className="text-indigo-500" />
-                                                            <span className="font-bold text-foreground">Tutor:</span>
-                                                            <span>
-                                                                {c.teacher?.full_name || 'N/A'}
-                                                                {c.tutor_joined_at && (
-                                                                    <span className="text-[9px] text-muted-foreground/60 italic ml-1">
-                                                                        (In: {format(new Date(c.tutor_joined_at), 'hh:mm a')})
-                                                                    </span>
-                                                                )}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
-                                                            <User size={12} className="text-indigo-500" />
-                                                            <span className="font-bold text-foreground">Student:</span>
-                                                            <span>{c.student?.full_name || 'N/A'}</span>
-                                                        </div>
-                                                
-                                                {/* Attendance status display */}
-                                                <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
-                                                    <CheckCircle2 size={12} className="text-indigo-500" />
-                                                    <span className="font-bold text-foreground">Attendance:</span>
-                                                    <span className={cn("font-bold uppercase tracking-wider text-[9px]",
-                                                        att?.status === 'present' && 'text-emerald-600',
-                                                        att?.status === 'absent' && 'text-rose-600',
-                                                        att?.status === 'late' && 'text-amber-600',
-                                                        !att?.status && 'text-muted-foreground italic normal-case'
-                                                    )}>
-                                                        {att?.status === 'absent' ? 'Student No Show' : (att?.status || 'Not Marked')}
-                                                    </span>
+                                                    <Badge className={`text-[8px] font-black uppercase border-none rounded-full px-2 py-0.5 ${
+                                                        c.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                                                        c.status === 'cancelled' ? 'bg-rose-100 text-rose-800' :
+                                                        !isNotMarked && (c.status === 'scheduled' || c.status === 'ongoing') ? 'bg-indigo-100 text-indigo-800' :
+                                                        isNotMarked ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400' : ''
+                                                    }`}>
+                                                        {isNotMarked ? "Attendance Not Marked" : c.status}
+                                                    </Badge>
                                                 </div>
+
+                                                {/* Cancellation Reason if present */}
+                                                {c.cancellation_reason && (
+                                                    <div className="pt-0.5">
+                                                        <span className="text-[10px] font-semibold text-rose-700 dark:text-rose-300 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-md inline-block">
+                                                            {c.cancellation_reason}
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                <div className="space-y-1.5 border-t border-border/10 pt-2.5">
+                                                    <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
+                                                        <User size={12} className="text-indigo-500" />
+                                                        <span className="font-bold text-foreground">Tutor:</span>
+                                                        <span>
+                                                            {c.teacher?.full_name || 'N/A'}
+                                                            {c.tutor_joined_at && (
+                                                                <span className="text-[9px] text-muted-foreground/60 italic ml-1">
+                                                                    (In: {format(new Date(c.tutor_joined_at), 'hh:mm a')})
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
+                                                        <User size={12} className="text-indigo-500" />
+                                                        <span className="font-bold text-foreground">Student:</span>
+                                                        <span>{c.student?.full_name || 'N/A'}</span>
+                                                    </div>
+                                            
+                                                    {/* Attendance status display */}
+                                                    <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
+                                                        <CheckCircle2 size={12} className="text-indigo-500" />
+                                                        <span className="font-bold text-foreground">Attendance:</span>
+                                                        <span className={`font-bold uppercase tracking-wider text-[9px] ${
+                                                            att?.status === 'present' ? 'text-emerald-600' :
+                                                            att?.status === 'absent' ? 'text-rose-600' :
+                                                            att?.status === 'late' ? 'text-amber-600' :
+                                                            !att?.status ? 'text-muted-foreground italic normal-case' : ''
+                                                        }`}>
+                                                            {att?.status === 'absent' ? 'Student No Show' : (att?.status || 'Not Marked')}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Post-class logs display */}
+                                                {c.status === 'completed' && (
+                                                    <div className="bg-background/40 border border-border/10 p-3 rounded-xl space-y-2 mt-1">
+                                                        {c.topic_taught && (
+                                                            <div>
+                                                                <span className="block text-[8px] font-black uppercase text-muted-foreground tracking-wider">Topic Taught</span>
+                                                                <p className="text-[10px] text-foreground italic mt-0.5">&ldquo;{c.topic_taught}&rdquo;</p>
+                                                            </div>
+                                                        )}
+                                                        {c.homework_given && (
+                                                            <div>
+                                                                <span className="block text-[8px] font-black uppercase text-muted-foreground tracking-wider">Homework Assigned</span>
+                                                                <p className="text-[10px] text-foreground italic mt-0.5">&ldquo;{c.homework_given}&rdquo;</p>
+                                                            </div>
+                                                        )}
+                                                        {c.student_performance && (
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-[8px] font-black uppercase text-muted-foreground tracking-wider">Performance:</span>
+                                                                <Badge variant="outline" className="text-[8px] px-2 py-0.5 border-indigo-500/25 text-indigo-600 bg-indigo-50 dark:bg-indigo-950/20 font-bold uppercase">{c.student_performance}</Badge>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* HR & Admin Controls */}
+                                                {canModify && (
+                                                    <div className="flex justify-end gap-2 pt-2 flex-wrap items-center">
+                                                        <Button 
+                                                            size="sm"
+                                                            onClick={() => handleOpenEdit(c)}
+                                                            className="h-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-widest text-[9px] gap-1 shadow-md shadow-indigo-600/10"
+                                                        >
+                                                            <Edit3 size={10} />
+                                                            <span>Edit Log</span>
+                                                        </Button>
+
+                                                        {/* Delete Class with Reason Dialog */}
+                                                        <DeleteClassDialog
+                                                            classSession={{
+                                                                id: c.id,
+                                                                title: c.title,
+                                                                scheduled_at: c.scheduled_at,
+                                                                teacher_name: c.teacher?.full_name,
+                                                                student_name: c.student?.full_name,
+                                                                status: c.status
+                                                            }}
+                                                            onDeleted={fetchLogs}
+                                                        />
+
+                                                        {c.student && (
+                                                            <>
+                                                                <AssignHomeworkDialog 
+                                                                    studentId={c.student.id} 
+                                                                    studentName={c.student.full_name} 
+                                                                    onSuccess={() => {}} 
+                                                                    trigger={
+                                                                        <Button 
+                                                                            size="sm" 
+                                                                            variant="outline" 
+                                                                            className="h-8 text-[9px] font-bold uppercase tracking-wider rounded-lg border-2 border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-indigo-950/20 gap-1"
+                                                                        >
+                                                                            <BookOpen size={10} />
+                                                                            <span>Homework</span>
+                                                                        </Button>
+                                                                    }
+                                                                />
+                                                                <UploadMaterialDialog 
+                                                                    studentId={c.student.id} 
+                                                                    studentName={c.student.full_name} 
+                                                                    onSuccess={() => {}} 
+                                                                    trigger={
+                                                                        <Button 
+                                                                            size="sm" 
+                                                                            variant="outline" 
+                                                                            className="h-8 text-[9px] font-bold uppercase tracking-wider rounded-lg border-2 border-amber-500/20 text-amber-600 hover:bg-amber-50 dark:hover:bg-indigo-950/20 gap-1"
+                                                                        >
+                                                                            <Upload size={10} />
+                                                                            <span>Worksheet</span>
+                                                                        </Button>
+                                                                    }
+                                                                />
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
+                                        )
+                                    })
+                                )}
+                            </CardContent>
+                        </Card>
+                            );
+                        })()}
+                    </div>
 
-                                            {/* Post-class logs display */}
-                                            {c.status === 'completed' && (
-                                                <div className="bg-background/40 border border-border/10 p-3 rounded-xl space-y-2 mt-1">
-                                                    {c.topic_taught && (
-                                                        <div>
-                                                            <span className="block text-[8px] font-black uppercase text-muted-foreground tracking-wider">Topic Taught</span>
-                                                            <p className="text-[10px] text-foreground italic mt-0.5">&ldquo;{c.topic_taught}&rdquo;</p>
-                                                        </div>
-                                                    )}
-                                                    {c.homework_given && (
-                                                        <div>
-                                                            <span className="block text-[8px] font-black uppercase text-muted-foreground tracking-wider">Homework Assigned</span>
-                                                            <p className="text-[10px] text-foreground italic mt-0.5">&ldquo;{c.homework_given}&rdquo;</p>
-                                                        </div>
-                                                    )}
-                                                    {c.student_performance && (
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="text-[8px] font-black uppercase text-muted-foreground tracking-wider">Performance:</span>
-                                                            <Badge variant="outline" className="text-[8px] px-2 py-0.5 border-indigo-500/25 text-indigo-600 bg-indigo-50 dark:bg-indigo-950/20 font-bold uppercase">{c.student_performance}</Badge>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {/* HR & Admin Controls */}
-                                            {canModify && (
-                                                <div className="flex justify-end gap-2 pt-2 flex-wrap">
-                                                    <Button 
-                                                        size="sm"
-                                                        onClick={() => handleOpenEdit(c)}
-                                                        className="h-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-widest text-[9px] gap-1 shadow-md shadow-indigo-600/10"
-                                                    >
-                                                        <Edit3 size={10} />
-                                                        <span>Edit Log</span>
-                                                    </Button>
-                                                    {c.student && (
-                                                        <>
-                                                            <AssignHomeworkDialog 
-                                                                studentId={c.student.id} 
-                                                                studentName={c.student.full_name} 
-                                                                onSuccess={() => {}} 
-                                                                trigger={
-                                                                    <Button 
-                                                                        size="sm" 
-                                                                        variant="outline" 
-                                                                        className="h-8 text-[9px] font-bold uppercase tracking-wider rounded-lg border-2 border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-indigo-950/20 gap-1"
-                                                                    >
-                                                                        <BookOpen size={10} />
-                                                                        <span>Homework</span>
-                                                                    </Button>
-                                                                }
-                                                            />
-                                                            <UploadMaterialDialog 
-                                                                studentId={c.student.id} 
-                                                                studentName={c.student.full_name} 
-                                                                onSuccess={() => {}} 
-                                                                trigger={
-                                                                    <Button 
-                                                                        size="sm" 
-                                                                        variant="outline" 
-                                                                        className="h-8 text-[9px] font-bold uppercase tracking-wider rounded-lg border-2 border-amber-500/20 text-amber-600 hover:bg-amber-50 dark:hover:bg-indigo-950/20 gap-1"
-                                                                    >
-                                                                        <Upload size={10} />
-                                                                        <span>Worksheet</span>
-                                                                    </Button>
-                                                                }
-                                                            />
-                                                        </>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )
-                                })
-                            )}
-                        </CardContent>
-                    </Card>
-                        );
-                    })()}
                 </div>
+            )}
 
-            </div>
+            {/* TAB VIEW 2: DELETED CLASSES AUDIT LOG (STAFF ONLY) */}
+            {canModify && activeViewTab === 'deleted' && (
+                <Card className="rounded-[2rem] border-border/40 shadow-xl overflow-hidden bg-card text-left">
+                    <CardHeader className="bg-rose-500/5 px-6 py-5 border-b border-border/20 flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle className="text-xl font-bold flex items-center gap-2 text-rose-700 dark:text-rose-400">
+                                <Trash2 size={20} />
+                                <span>Deleted Classes Audit Log</span>
+                            </CardTitle>
+                            <CardDescription className="text-xs">
+                                Complete permanent record of all class sessions deleted for {monthNames[month - 1]} {year} with mandatory justification.
+                            </CardDescription>
+                        </div>
+                        <Badge className="bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30 text-[10px] font-bold px-3 py-1 rounded-full">
+                            {filteredDeletedClasses.length} Deleted Records
+                        </Badge>
+                    </CardHeader>
+
+                    <CardContent className="p-6">
+                        {filteredDeletedClasses.length === 0 ? (
+                            <div className="py-16 text-center text-xs text-muted-foreground bg-muted/10 rounded-2xl border border-dashed border-border/40 space-y-2">
+                                <Trash2 size={32} className="mx-auto text-muted-foreground opacity-30" />
+                                <p className="font-semibold text-sm">No deleted classes found.</p>
+                                <p className="text-[11px] opacity-75">
+                                    No class sessions have been deleted for {monthNames[month - 1]} {year} matching the current filters.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-xs">
+                                    <thead>
+                                        <tr className="border-b border-border/20 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                                            <th className="py-3 px-3">Class Subject</th>
+                                            <th className="py-3 px-3">Scheduled Date</th>
+                                            <th className="py-3 px-3">Tutor</th>
+                                            <th className="py-3 px-3">Student</th>
+                                            <th className="py-3 px-3">Prior Status</th>
+                                            <th className="py-3 px-3">Reason for Deletion</th>
+                                            <th className="py-3 px-3">Deleted By</th>
+                                            <th className="py-3 px-3">Deleted At</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/10">
+                                        {filteredDeletedClasses.map((item) => (
+                                            <tr key={item.id} className="hover:bg-muted/15 transition-colors group">
+                                                <td className="py-3.5 px-3 font-bold text-foreground">
+                                                    {item.title}
+                                                </td>
+                                                <td className="py-3.5 px-3 font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+                                                    {format(new Date(item.scheduled_at), 'MMM dd, yyyy • hh:mm a')}
+                                                </td>
+                                                <td className="py-3.5 px-3 font-medium text-foreground">
+                                                    {item.teacher_name || 'N/A'}
+                                                </td>
+                                                <td className="py-3.5 px-3 font-medium text-foreground">
+                                                    {item.student_name || 'N/A'}
+                                                </td>
+                                                <td className="py-3.5 px-3">
+                                                    <Badge className={`text-[8px] font-bold uppercase rounded-full px-2 py-0.5 border-none ${
+                                                        item.status_before_deletion === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                                                        item.status_before_deletion === 'cancelled' ? 'bg-rose-100 text-rose-800' :
+                                                        'bg-indigo-100 text-indigo-800'
+                                                    }`}>
+                                                        {item.status_before_deletion}
+                                                    </Badge>
+                                                </td>
+                                                <td className="py-3.5 px-3 max-w-xs">
+                                                    <div className="p-2 bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 rounded-xl text-[11px] font-medium leading-relaxed">
+                                                        &ldquo;{item.deletion_reason}&rdquo;
+                                                    </div>
+                                                </td>
+                                                <td className="py-3.5 px-3 font-medium text-muted-foreground whitespace-nowrap">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <ShieldAlert size={12} className="text-amber-500" />
+                                                        <span>{item.deleted_by_name || 'Staff Member'}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="py-3.5 px-3 font-mono text-[10px] text-muted-foreground whitespace-nowrap">
+                                                    {format(new Date(item.deleted_at), 'MMM dd, yyyy • hh:mm a')}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             {/* 3. Administrative Edit Modal */}
             {isEditModalOpen && editingClass && (
@@ -817,22 +1001,40 @@ export function ClassLogsCalendarClient({
                             </div>
 
                             {/* Actions */}
-                            <div className="flex justify-end gap-3 pt-4 border-t border-border/10">
-                                <Button 
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={() => { setIsEditModalOpen(false); setEditingClass(null); }}
-                                    className="rounded-xl h-10 font-bold uppercase tracking-wider text-[10px]"
-                                >
-                                    Cancel
-                                </Button>
-                                <Button 
-                                    type="submit"
-                                    disabled={isSaving}
-                                    className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-10 px-6 font-bold uppercase tracking-wider text-[10px] shadow-lg shadow-indigo-600/15"
-                                >
-                                    {isSaving ? "Saving Logs..." : "Save Log Changes"}
-                                </Button>
+                            <div className="flex items-center justify-between pt-4 border-t border-border/10">
+                                <DeleteClassDialog
+                                    classSession={{
+                                        id: editingClass.id,
+                                        title: editingClass.title,
+                                        scheduled_at: editingClass.scheduled_at,
+                                        teacher_name: editingClass.teacher?.full_name,
+                                        student_name: editingClass.student?.full_name,
+                                        status: editingClass.status
+                                    }}
+                                    onDeleted={() => {
+                                        setIsEditModalOpen(false)
+                                        setEditingClass(null)
+                                        fetchLogs()
+                                    }}
+                                />
+
+                                <div className="flex items-center gap-2">
+                                    <Button 
+                                        type="button" 
+                                        variant="ghost" 
+                                        onClick={() => { setIsEditModalOpen(false); setEditingClass(null); }}
+                                        className="rounded-xl h-10 font-bold uppercase tracking-wider text-[10px]"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button 
+                                        type="submit" 
+                                        disabled={isSaving}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-10 px-6 font-bold uppercase tracking-wider text-[10px] shadow-lg shadow-indigo-600/15"
+                                    >
+                                        {isSaving ? "Saving Logs..." : "Save Log Changes"}
+                                    </Button>
+                                </div>
                             </div>
 
                         </form>
@@ -842,8 +1044,4 @@ export function ClassLogsCalendarClient({
 
         </div>
     )
-}
-
-function cn(...inputs: any[]) {
-    return inputs.filter(Boolean).join(" ")
 }

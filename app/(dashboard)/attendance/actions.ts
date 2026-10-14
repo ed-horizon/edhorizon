@@ -2932,22 +2932,106 @@ export async function modifyClassLog(
     return { success: true };
 }
 
-export async function deleteClassLogOrSession(classId: string, action: 'revert' | 'delete') {
+export interface DeletedClassRecord {
+    id: string;
+    original_class_id: string;
+    title: string;
+    teacher_id: string | null;
+    teacher_name: string | null;
+    student_id: string | null;
+    student_name: string | null;
+    scheduled_at: string;
+    status_before_deletion: string;
+    deletion_reason: string;
+    deleted_by: string | null;
+    deleted_by_name: string | null;
+    deleted_at: string;
+    metadata?: Record<string, any>;
+}
+
+export async function deleteClassLogOrSession(classId: string, action: 'revert' | 'delete', deletionReason?: string) {
     const supabase = await createClient();
     const adminClient = createAdminClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Unauthorized: Please log in." };
 
-    // Get user role to authorize deletion
+    // Get user role and name to authorize deletion
     const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('id, full_name, role')
         .eq('id', user.id)
         .single();
 
     const isAuthorized = ['admin', 'super_admin', 'hr', 'operations'].includes(profile?.role || '');
     if (!isAuthorized) {
         return { success: false, error: "Unauthorized: Only admins, HR, and Operations can perform this action." };
+    }
+
+    if (action === 'delete') {
+        const cleanReason = (deletionReason || '').trim();
+        if (!cleanReason) {
+            return { success: false, error: "A reason for deleting the class session is mandatory." };
+        }
+
+        // Fetch snapshot of target class before deletion
+        const { data: targetClass, error: fetchErr } = await adminClient
+            .from('live_classes')
+            .select(`
+                id,
+                title,
+                scheduled_at,
+                status,
+                teacher_id,
+                student_id,
+                topic_taught,
+                homework_given,
+                student_performance,
+                parent_note,
+                payroll_amount,
+                teacher:profiles!teacher_id(full_name),
+                student:profiles!student_id(full_name),
+                student_attendance(status)
+            `)
+            .eq('id', classId)
+            .single();
+
+        if (fetchErr || !targetClass) {
+            return { success: false, error: "Class session not found." };
+        }
+
+        const teacherName = (targetClass.teacher as any)?.full_name || 'N/A';
+        const studentName = (targetClass.student as any)?.full_name || 'N/A';
+        const attendanceStatus = (targetClass.student_attendance as any)?.[0]?.status || null;
+
+        // Archive into deleted_classes audit table
+        const { error: insertErr } = await adminClient
+            .from('deleted_classes')
+            .insert({
+                original_class_id: targetClass.id,
+                title: targetClass.title,
+                teacher_id: targetClass.teacher_id,
+                teacher_name: teacherName,
+                student_id: targetClass.student_id,
+                student_name: studentName,
+                scheduled_at: targetClass.scheduled_at,
+                status_before_deletion: targetClass.status,
+                deletion_reason: cleanReason,
+                deleted_by: profile?.id,
+                deleted_by_name: profile?.full_name || 'Staff Member',
+                metadata: {
+                    topic_taught: targetClass.topic_taught,
+                    homework_given: targetClass.homework_given,
+                    student_performance: targetClass.student_performance,
+                    parent_note: targetClass.parent_note,
+                    payroll_amount: targetClass.payroll_amount,
+                    attendance_status: attendanceStatus
+                }
+            });
+
+        if (insertErr) {
+            console.error("Failed to archive deleted class in audit table:", insertErr);
+            return { success: false, error: `Failed to archive deleted class: ${insertErr.message}` };
+        }
     }
 
     const { error } = await adminClient.rpc('change_class_log_with_payroll', {
@@ -2962,3 +3046,43 @@ export async function deleteClassLogOrSession(classId: string, action: 'revert' 
     revalidatePath('/(dashboard)', 'layout');
     return { success: true };
 }
+
+export async function getDeletedClasses(year?: number, month?: number): Promise<DeletedClassRecord[]> {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    // STRICT CHECK: Only Admin, Super Admin, HR, Operations can access deleted classes
+    const isAuthorized = ['admin', 'super_admin', 'hr', 'operations'].includes(profile?.role || '');
+    if (!isAuthorized) {
+        return [];
+    }
+
+    const adminClient = createAdminClient();
+    let query = adminClient
+        .from('deleted_classes')
+        .select('*');
+
+    if (year && month) {
+        const startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+        const endDate = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+        query = query
+            .gte('scheduled_at', startDate.toISOString())
+            .lt('scheduled_at', endDate.toISOString());
+    }
+
+    const { data, error } = await query.order('deleted_at', { ascending: false });
+    if (error) {
+        console.error("Error fetching deleted classes:", error);
+        return [];
+    }
+
+    return (data || []) as DeletedClassRecord[];
+}
+
