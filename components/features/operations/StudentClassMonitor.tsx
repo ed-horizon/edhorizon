@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
     Select,
     SelectContent,
@@ -87,6 +88,8 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
     const [updatingTutorId, setUpdatingTutorId] = useState<string | null>(null);
     const [userRole, setUserRole] = useState<string>("");
     const [deletingClassId, setDeletingClassId] = useState<string | null>(null);
+    const [deleteReason, setDeleteReason] = useState<string>("");
+    const [isDeletingSession, setIsDeletingSession] = useState<boolean>(false);
 
     useEffect(() => {
         setStudents(initialStudents);
@@ -202,32 +205,9 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
         }
     };
 
-    const handleDeleteClass = async (classId: string, title: string) => {
+    const handleDeleteClass = (classId: string, title: string) => {
         setDeletingClassId(classId);
-        try {
-            const result = await deleteClassLogOrSession(classId, 'delete');
-            if (result.success) {
-                toast.success(`Deleted log for "${title}"`);
-                setStudents(prev => prev.map(s => ({
-                    ...s,
-                    classes: s.classes.filter(c => c.id !== classId)
-                })));
-                setLoadedClassesByStudent(prev => {
-                    const updated = { ...prev };
-                    Object.keys(updated).forEach(sId => {
-                        updated[sId] = updated[sId].filter(c => c.id !== classId);
-                    });
-                    return updated;
-                });
-                if (onRefresh) onRefresh();
-            } else {
-                toast.error(result.error || "Failed to delete class log");
-            }
-        } catch (error) {
-            toast.error("An unexpected error occurred.");
-        } finally {
-            setDeletingClassId(null);
-        }
+        setDeleteReason("");
     };
 
     const getScheduleStats = (sch: ClassSchedule, allClasses: LiveClass[]) => {
@@ -721,7 +701,7 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                                 You can either revert the post-class logs (restoring the scheduled session and clearing all logs/attendance) or completely delete the session row.
                             </p>
                         </div>
-                        <div className="flex flex-col gap-2.5">
+                        <div className="flex flex-col gap-3">
                             <Button
                                 onClick={async () => {
                                     const classId = deletingClassId;
@@ -742,26 +722,61 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                             >
                                 Revert Log to Scheduled (Clears logs & attendance)
                             </Button>
-                            <Button
-                                onClick={async () => {
-                                    const classId = deletingClassId;
-                                    setDeletingClassId(null);
-                                    try {
-                                        const res = await deleteClassLogOrSession(classId, 'delete');
-                                        if (res.success) {
-                                            toast.success("Class session deleted successfully!");
-                                            window.location.reload();
-                                        } else {
-                                            toast.error(res.error || "Failed to delete session");
+
+                            <div className="p-3 bg-muted/20 border border-border/30 rounded-xl space-y-2">
+                                <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                                    Reason to Delete Completely <span className="text-rose-500">*</span>
+                                </Label>
+                                <div className="flex flex-wrap gap-1">
+                                    {["Scheduled by mistake", "Student cancellation", "Tutor rescheduled", "Batch generation error"].map(tag => (
+                                        <Badge
+                                            key={tag}
+                                            variant="outline"
+                                            onClick={() => setDeleteReason(tag)}
+                                            className={`cursor-pointer text-[9px] px-1.5 py-0.2 rounded-md ${deleteReason === tag ? 'bg-rose-500/15 border-rose-500/40 text-rose-600' : 'text-muted-foreground'}`}
+                                        >
+                                            {tag}
+                                        </Badge>
+                                    ))}
+                                </div>
+                                <Textarea
+                                    value={deleteReason}
+                                    onChange={(e) => setDeleteReason(e.target.value)}
+                                    placeholder="Enter mandatory reason for complete deletion..."
+                                    className="text-xs min-h-[60px] rounded-xl bg-background border-border/40"
+                                />
+                                <Button
+                                    disabled={!deleteReason.trim() || isDeletingSession}
+                                    onClick={async () => {
+                                        const classId = deletingClassId;
+                                        const cleanReason = deleteReason.trim();
+                                        if (!cleanReason) {
+                                            toast.error("Please enter a reason for deleting this class session.");
+                                            return;
                                         }
-                                    } catch (err) {
-                                        toast.error("Failed to delete session");
-                                    }
-                                }}
-                                className="w-full bg-rose-600 hover:bg-rose-700 text-white rounded-xl h-10 font-bold text-xs"
-                            >
-                                Delete Class Session Completely
-                            </Button>
+                                        setIsDeletingSession(true);
+                                        try {
+                                            const res = await deleteClassLogOrSession(classId, 'delete', cleanReason);
+                                            if (res.success) {
+                                                toast.success("Class session deleted and archived in Deleted Classes log!");
+                                                setDeletingClassId(null);
+                                                setDeleteReason("");
+                                                window.location.reload();
+                                            } else {
+                                                toast.error(res.error || "Failed to delete session");
+                                            }
+                                        } catch (err) {
+                                            toast.error("Failed to delete session");
+                                        } finally {
+                                            setIsDeletingSession(false);
+                                        }
+                                    }}
+                                    className="w-full bg-rose-600 hover:bg-rose-700 text-white rounded-xl h-10 font-bold text-xs"
+                                >
+                                    {isDeletingSession ? "Archiving & Deleting..." : "Delete Class Session Completely"}
+                                </Button>
+                            </div>
+
                             <Button
                                 variant="outline"
                                 onClick={() => setDeletingClassId(null)}
@@ -770,6 +785,7 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                                 Cancel
                             </Button>
                         </div>
+
                     </div>
                 </div>
             )}

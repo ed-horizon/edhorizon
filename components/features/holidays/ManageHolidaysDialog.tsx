@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,10 +8,10 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { 
-    CalendarDays, Plus, Trash2, AlertCircle, CheckCircle2, 
-    RefreshCw, Palmtree, ShieldAlert, Sparkles 
+    CalendarDays, Plus, Trash2, AlertCircle, CheckCircle2,
+    RefreshCw, Palmtree, ShieldAlert, Sparkles, Clock, CalendarCheck
 } from "lucide-react"
-import { format } from "date-fns"
+import { format, isFuture, isToday } from "date-fns"
 import { toast } from "sonner"
 import { 
     getAcademyHolidays, 
@@ -38,21 +38,22 @@ export function ManageHolidaysDialog({
     const isManager = ['super_admin', 'admin', 'operations', 'hr'].includes(currentUserRole || '');
 
     const [isOpen, setIsOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<'declare' | 'list'>('declare');
+    // Non-managers must always view the annual list, never the declare form
+    const [activeTab, setActiveTab] = useState<'declare' | 'list'>(isManager ? 'declare' : 'list');
     const [holidays, setHolidays] = useState<AcademyHoliday[]>([]);
     const [isLoadingHolidays, setIsLoadingHolidays] = useState(false);
 
-    // Form State
+    // Form State (Managers only)
     const [title, setTitle] = useState("");
     const [holidayDate, setHolidayDate] = useState(initialDate || format(new Date(), 'yyyy-MM-dd'));
     const [description, setDescription] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Impact preview state
+    // Impact preview state (Managers only)
     const [impactPreview, setImpactPreview] = useState<HolidayImpactPreview | null>(null);
     const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
-    // Delete Modal State
+    // Delete Modal State (Managers only)
     const [deletingHoliday, setDeletingHoliday] = useState<AcademyHoliday | null>(null);
     const [restoreClassesOnDelete, setRestoreClassesOnDelete] = useState(true);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -70,9 +71,9 @@ export function ManageHolidaysDialog({
         }
     };
 
-    // Load impact preview whenever holidayDate changes
+    // Load impact preview whenever holidayDate changes (Managers only)
     useEffect(() => {
-        if (!isOpen || !holidayDate) return;
+        if (!isOpen || !holidayDate || !isManager) return;
 
         let isCancelled = false;
         const checkPreview = async () => {
@@ -93,19 +94,32 @@ export function ManageHolidaysDialog({
         return () => {
             isCancelled = true;
         };
-    }, [holidayDate, isOpen]);
+    }, [holidayDate, isOpen, isManager]);
 
     useEffect(() => {
         if (isOpen) {
             fetchHolidays();
-            if (initialDate) {
+            if (isManager && initialDate) {
                 setHolidayDate(initialDate);
+                setActiveTab('declare');
+            } else if (!isManager) {
+                setActiveTab('list');
             }
         }
-    }, [isOpen, initialDate]);
+    }, [isOpen, initialDate, isManager]);
+
+    // Separate upcoming/today holidays for students & tutors view
+    const upcomingHolidays = useMemo(() => {
+        return holidays.filter(h => {
+            const d = new Date(`${h.holiday_date}T23:59:59`);
+            return isFuture(d) || isToday(new Date(`${h.holiday_date}T00:00:00`));
+        });
+    }, [holidays]);
 
     const handleDeclareHoliday = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!isManager) return;
+
         if (!title.trim()) {
             toast.error("Please enter a holiday title");
             return;
@@ -144,7 +158,7 @@ export function ManageHolidaysDialog({
     };
 
     const handleDeleteHoliday = async () => {
-        if (!deletingHoliday) return;
+        if (!deletingHoliday || !isManager) return;
 
         setIsDeleting(true);
         try {
@@ -181,7 +195,7 @@ export function ManageHolidaysDialog({
                         className="rounded-2xl border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 font-bold uppercase tracking-wider text-xs gap-2"
                     >
                         <Palmtree size={14} className="text-amber-600 dark:text-amber-400" />
-                        <span>Academy Holidays</span>
+                        <span>{isManager ? "Academy Holidays" : "Annual Holidays"}</span>
                         {holidays.length > 0 && (
                             <Badge className="bg-amber-500 text-white text-[9px] font-black px-1.5 py-0 h-4 rounded-full border-none">
                                 {holidays.length}
@@ -199,52 +213,49 @@ export function ManageHolidaysDialog({
                         </div>
                         <div>
                             <DialogTitle className="text-xl font-bold tracking-tight">
-                                Academy Holidays & Class Cancellations
+                                {isManager ? "Academy Holidays & Class Cancellations" : "Academy Holidays & Academic Calendar"}
                             </DialogTitle>
                             <DialogDescription className="text-xs text-muted-foreground">
-                                Declare holidays to automatically cancel all scheduled sessions across all teachers for that day.
+                                {isManager 
+                                    ? "Declare holidays to automatically cancel all scheduled sessions across all teachers for that day."
+                                    : "Annual and upcoming holidays observed across the academy."}
                             </DialogDescription>
                         </div>
                     </div>
                 </DialogHeader>
 
-                {/* Navigation Tabs */}
-                <div className="flex items-center gap-2 border-b border-border/20 pt-2 pb-3">
-                    <Button
-                        type="button"
-                        variant={activeTab === 'declare' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => setActiveTab('declare')}
-                        className="rounded-xl text-xs font-bold gap-1.5"
-                    >
-                        <Plus size={14} />
-                        Declare Holiday
-                    </Button>
-                    <Button
-                        type="button"
-                        variant={activeTab === 'list' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => {
-                            setActiveTab('list');
-                            fetchHolidays();
-                        }}
-                        className="rounded-xl text-xs font-bold gap-1.5"
-                    >
-                        <CalendarDays size={14} />
-                        Annual Holidays List ({holidays.length})
-                    </Button>
-                </div>
+                {/* Navigation Tabs - VISIBLE TO MANAGERS ONLY */}
+                {isManager && (
+                    <div className="flex items-center gap-2 border-b border-border/20 pt-2 pb-3">
+                        <Button
+                            type="button"
+                            variant={activeTab === 'declare' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setActiveTab('declare')}
+                            className="rounded-xl text-xs font-bold gap-1.5"
+                        >
+                            <Plus size={14} />
+                            Declare Holiday
+                        </Button>
+                        <Button
+                            type="button"
+                            variant={activeTab === 'list' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => {
+                                setActiveTab('list');
+                                fetchHolidays();
+                            }}
+                            className="rounded-xl text-xs font-bold gap-1.5"
+                        >
+                            <CalendarDays size={14} />
+                            Annual Holidays List ({holidays.length})
+                        </Button>
+                    </div>
+                )}
 
-                {/* TAB 1: DECLARE HOLIDAY */}
-                {activeTab === 'declare' && (
+                {/* TAB 1: DECLARE HOLIDAY (MANAGERS ONLY) */}
+                {isManager && activeTab === 'declare' && (
                     <form onSubmit={handleDeclareHoliday} className="space-y-5 pt-2">
-                        {!isManager && (
-                            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-600 rounded-xl text-xs flex items-center gap-2">
-                                <AlertCircle size={16} />
-                                <span>You have read-only access. Only Admin, HR, and Operations can declare holidays.</span>
-                            </div>
-                        )}
-
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                                 <Label htmlFor="holiday-date" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -255,7 +266,7 @@ export function ManageHolidaysDialog({
                                     type="date"
                                     value={holidayDate}
                                     onChange={(e) => setHolidayDate(e.target.value)}
-                                    disabled={!isManager || isSubmitting}
+                                    disabled={isSubmitting}
                                     className="rounded-xl bg-muted/20 border-border/40 text-xs font-mono font-bold"
                                     required
                                 />
@@ -270,7 +281,7 @@ export function ManageHolidaysDialog({
                                     placeholder="e.g. Independence Day, Diwali Break"
                                     value={title}
                                     onChange={(e) => setTitle(e.target.value)}
-                                    disabled={!isManager || isSubmitting}
+                                    disabled={isSubmitting}
                                     className="rounded-xl bg-muted/20 border-border/40 text-xs"
                                     required
                                 />
@@ -286,7 +297,7 @@ export function ManageHolidaysDialog({
                                 placeholder="e.g. Academy closed in observance of national holiday. All tutor sessions suspended."
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
-                                disabled={!isManager || isSubmitting}
+                                disabled={isSubmitting}
                                 className="rounded-xl bg-muted/20 border-border/40 text-xs min-h-[70px]"
                             />
                         </div>
@@ -305,37 +316,44 @@ export function ManageHolidaysDialog({
                                 )}
                             </div>
 
-                            {impactPreview && !isLoadingPreview && (
+                            {impactPreview && (
                                 <div className="space-y-2">
-                                    {impactPreview.classesCount > 0 ? (
-                                        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-1 text-xs">
-                                            <div className="flex items-center gap-2 font-bold text-amber-800 dark:text-amber-300">
-                                                <AlertCircle size={16} className="text-amber-600 shrink-0" />
-                                                <span>
-                                                    {impactPreview.classesCount} class session{impactPreview.classesCount === 1 ? '' : 's'} across {impactPreview.teachersCount} teacher{impactPreview.teachersCount === 1 ? '' : 's'} will be automatically cancelled.
-                                                </span>
-                                            </div>
-                                            <p className="text-[11px] text-muted-foreground pl-6">
-                                                Tutors and students will see the holiday cancellation notice, and payroll will safely exclude them.
-                                            </p>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div className="p-2.5 bg-background rounded-xl border border-border/30 text-center">
+                                            <span className="text-[10px] text-muted-foreground block font-medium">Classes</span>
+                                            <span className="text-base font-black text-rose-600 dark:text-rose-400">
+                                                {impactPreview.classesCount}
+                                            </span>
+                                        </div>
+                                        <div className="p-2.5 bg-background rounded-xl border border-border/30 text-center">
+                                            <span className="text-[10px] text-muted-foreground block font-medium">Tutors</span>
+                                            <span className="text-base font-black text-foreground">
+                                                {impactPreview.teachersCount}
+                                            </span>
+                                        </div>
+                                        <div className="p-2.5 bg-background rounded-xl border border-border/30 text-center">
+                                            <span className="text-[10px] text-muted-foreground block font-medium">Students</span>
+                                            <span className="text-base font-black text-foreground">
+                                                {impactPreview.studentsCount}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {impactPreview.classesCount === 0 ? (
+                                        <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs flex items-center gap-2">
+                                            <CheckCircle2 size={15} />
+                                            <span>No scheduled classes currently exist on this date.</span>
                                         </div>
                                     ) : (
-                                        <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-1 text-xs">
-                                            <div className="flex items-center gap-2 font-bold text-emerald-800 dark:text-emerald-300">
-                                                <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                                                <span>No scheduled classes currently exist on this date.</span>
+                                        <div className="p-3 bg-rose-500/10 border border-rose-500/25 text-rose-700 dark:text-rose-400 rounded-xl text-xs space-y-1.5">
+                                            <div className="flex items-center gap-1.5 font-bold">
+                                                <AlertCircle size={15} />
+                                                <span>
+                                                    {impactPreview.classesCount} class session{impactPreview.classesCount === 1 ? '' : 's'} will be automatically cancelled with reason &ldquo;Academy Holiday: {title || 'Holiday'}&rdquo;.
+                                                </span>
                                             </div>
-                                            <p className="text-[11px] text-muted-foreground pl-6">
-                                                Marking this holiday will ensure recurring schedule generation skips this date.
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    {/* Sample classes preview if any */}
-                                    {impactPreview.classes.length > 0 && (
-                                        <div className="max-h-36 overflow-y-auto space-y-1.5 pt-1">
-                                            {impactPreview.classes.slice(0, 5).map((c) => (
-                                                <div key={c.id} className="p-2 bg-card rounded-lg border border-border/20 text-[11px] flex items-center justify-between gap-2">
+                                            {impactPreview.classes.slice(0, 5).map(c => (
+                                                <div key={c.id} className="text-[11px] pl-5 flex items-center justify-between text-muted-foreground">
                                                     <div>
                                                         <span className="font-bold">{c.title}</span>
                                                         <span className="text-muted-foreground text-[10px] ml-2">
@@ -370,7 +388,7 @@ export function ManageHolidaysDialog({
                             </Button>
                             <Button
                                 type="submit"
-                                disabled={!isManager || isSubmitting}
+                                disabled={isSubmitting}
                                 className="rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white gap-2 shadow-lg shadow-amber-600/20"
                             >
                                 {isSubmitting ? (
@@ -391,9 +409,37 @@ export function ManageHolidaysDialog({
                     </form>
                 )}
 
-                {/* TAB 2: ANNUAL HOLIDAYS LIST */}
-                {activeTab === 'list' && (
+                {/* TAB 2 / MAIN VIEW: ANNUAL HOLIDAYS LIST */}
+                {(activeTab === 'list' || !isManager) && (
                     <div className="space-y-4 pt-2">
+                        {/* Upcoming / Current Holiday Highlight Card for Tutors & Students */}
+                        {!isManager && upcomingHolidays.length > 0 && (
+                            <div className="p-4 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent border border-amber-500/30 rounded-2xl space-y-2">
+                                <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-xs uppercase tracking-wider">
+                                    <Clock size={14} className="text-amber-600" />
+                                    <span>Next Upcoming Holiday</span>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-extrabold text-base text-foreground">
+                                            {upcomingHolidays[0].title}
+                                        </span>
+                                        <Badge className="bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                            {upcomingHolidays[0].holiday_date}
+                                        </Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground font-medium">
+                                        {format(new Date(`${upcomingHolidays[0].holiday_date}T00:00:00`), 'EEEE, MMMM dd, yyyy')}
+                                    </p>
+                                    {upcomingHolidays[0].description && (
+                                        <p className="text-xs text-muted-foreground italic pt-1">
+                                            &ldquo;{upcomingHolidays[0].description}&rdquo;
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {isLoadingHolidays ? (
                             <div className="p-8 text-center text-xs text-muted-foreground animate-pulse flex items-center justify-center gap-2">
                                 <RefreshCw size={14} className="animate-spin" />
@@ -403,10 +449,14 @@ export function ManageHolidaysDialog({
                             <div className="p-8 text-center text-xs text-muted-foreground bg-muted/10 rounded-2xl border border-dashed border-border/40 space-y-2">
                                 <Palmtree size={28} className="mx-auto text-amber-500/50" />
                                 <p className="font-semibold">No academy holidays declared yet.</p>
-                                <p className="text-[11px] opacity-75">Click &quot;Declare Holiday&quot; above to mark national or academy holidays.</p>
+                                <p className="text-[11px] opacity-75">
+                                    {isManager 
+                                        ? "Click \"Declare Holiday\" above to mark national or academy holidays."
+                                        : "Academy holidays will appear here once announced by the administration."}
+                                </p>
                             </div>
                         ) : (
-                            <div className="space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
+                            <div className="space-y-2.5 max-h-[55vh] overflow-y-auto pr-1">
                                 {holidays.map((h) => {
                                     const parsedDate = new Date(`${h.holiday_date}T00:00:00`);
                                     return (
@@ -421,15 +471,16 @@ export function ManageHolidaysDialog({
                                                         {h.holiday_date}
                                                     </Badge>
                                                 </div>
-                                                <p className="text-xs text-muted-foreground font-medium">
-                                                    {format(parsedDate, 'EEEE, MMMM dd, yyyy')}
+                                                <p className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                                                    <CalendarCheck size={12} className="text-amber-500" />
+                                                    <span>{format(parsedDate, 'EEEE, MMMM dd, yyyy')}</span>
                                                 </p>
                                                 {h.description && (
                                                     <p className="text-[11px] text-muted-foreground/80 italic">
                                                         &ldquo;{h.description}&rdquo;
                                                     </p>
                                                 )}
-                                                {typeof h.cancelled_classes_count === 'number' && h.cancelled_classes_count > 0 && (
+                                                {isManager && typeof h.cancelled_classes_count === 'number' && h.cancelled_classes_count > 0 && (
                                                     <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
                                                         • {h.cancelled_classes_count} class{h.cancelled_classes_count === 1 ? '' : 'es'} auto-cancelled
                                                     </p>
@@ -459,8 +510,8 @@ export function ManageHolidaysDialog({
                 )}
             </DialogContent>
 
-            {/* DELETE CONFIRMATION MODAL */}
-            {deletingHoliday && (
+            {/* DELETE CONFIRMATION MODAL (MANAGERS ONLY) */}
+            {isManager && deletingHoliday && (
                 <Dialog open={!!deletingHoliday} onOpenChange={(open) => !open && setDeletingHoliday(null)}>
                     <DialogContent className="max-w-md rounded-[2rem] p-6 bg-card border-border/40 text-left">
                         <DialogHeader>
