@@ -11,8 +11,9 @@ import {
     Video, Calendar, Clock, FileText, ChevronLeft, ChevronRight, 
     Download, GraduationCap, Flame, Sparkles, CreditCard, 
     Megaphone, Upload, Check, Image as ImageIcon, Camera, 
-    ListTodo, ClipboardCheck, Activity, AlertCircle, Loader2
+    ListTodo, ClipboardCheck, Activity, AlertCircle, Loader2, Palmtree
 } from "lucide-react"
+import { ManageHolidaysDialog } from "@/components/features/holidays/ManageHolidaysDialog"
 import { isSameDay, format, isAfter } from "date-fns"
 import { cn, formatTime12Hour, ensureAbsoluteUrl, formatClassTitle, isSubjectMatch } from "@/lib/utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
@@ -38,6 +39,8 @@ interface LiveClass {
     parent_verified?: boolean | null;
     parent_dispute_reason?: string | null;
     schedule_id?: string | null;
+    cancellation_reason?: string | null;
+    holiday_id?: string | null;
 }
 
 interface Homework {
@@ -839,6 +842,11 @@ export function StudentDashboardClient({
                                         <p className="text-[9px] text-muted-foreground/60 mt-1">
                                             Scheduled was: {format(new Date(c.scheduled_at), 'MMM dd, hh:mm a')}
                                         </p>
+                                        {c.cancellation_reason && (
+                                            <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 mt-1">
+                                                {c.cancellation_reason}
+                                            </p>
+                                        )}
                                     </div>
                                     <Button 
                                         size="sm" 
@@ -872,6 +880,20 @@ export function StudentDashboardClient({
                         <p className="text-indigo-100 text-sm md:text-base opacity-95 leading-relaxed">
                             Welcome to your learning page! Here, parents can easily join daily live video sessions, download worksheets, check tuition status, and upload photos of children&apos;s homework.
                         </p>
+                        <div className="flex flex-wrap items-center gap-3 pt-2">
+                            <ManageHolidaysDialog 
+                                currentUserRole="student"
+                                triggerButton={
+                                    <Button 
+                                        variant="outline"
+                                        className="h-8 px-3 rounded-xl border-white/20 bg-white/10 hover:bg-white/20 text-white font-bold uppercase tracking-wider text-[10px] gap-1.5 backdrop-blur-md transition-all hover:scale-105"
+                                    >
+                                        <Palmtree size={13} className="text-amber-300" />
+                                        <span>Annual Holidays</span>
+                                    </Button>
+                                }
+                            />
+                        </div>
                     </div>
                     
                     <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 shrink-0">
