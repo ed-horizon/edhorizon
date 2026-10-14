@@ -75,7 +75,8 @@ function computeDatesForPattern(
     patternDays: number[], 
     timeOfDay: string, 
     clientOffsetMinutes: number = 0,
-    dayTimings?: Record<number, string>
+    dayTimings?: Record<number, string>,
+    holidayDateStrings?: Set<string>
 ) {
     const dates = []
     let current = startOfDay(startDate)
@@ -83,8 +84,8 @@ function computeDatesForPattern(
 
     while (!isAfter(current, end)) {
         const dayOfWeek = current.getDay();
-        if (patternDays.includes(dayOfWeek)) {
-            const dateStr = format(current, 'yyyy-MM-dd')
+        const dateStr = format(current, 'yyyy-MM-dd')
+        if (patternDays.includes(dayOfWeek) && !holidayDateStrings?.has(dateStr)) {
             let specificTime = (dayTimings && dayTimings[dayOfWeek]) ? dayTimings[dayOfWeek] : timeOfDay;
             if (!specificTime) {
                 specificTime = "00:00:00";
@@ -253,6 +254,12 @@ export async function createClassSchedule(payload: SchedulePayload) {
 
         const maxClasses = resolveMaxClassesForSubject(payload.title, studentDetails);
 
+        // Fetch declared academy holidays to skip them automatically
+        const { data: holidays } = await supabase
+            .from('academy_holidays')
+            .select('holiday_date');
+        const holidayDateSet = new Set<string>((holidays || []).map((h: any) => String(h.holiday_date)));
+
         // 2. Compute individual class dates
         let computedDates = computeDatesForPattern(
             parseISO(payload.start_date),
@@ -260,7 +267,8 @@ export async function createClassSchedule(payload: SchedulePayload) {
             payload.pattern_days,
             payload.time_of_day,
             payload.clientOffsetMinutes || 0,
-            payload.day_timings
+            payload.day_timings,
+            holidayDateSet
         )
 
         // Limit occurrences by student's monthly limit
@@ -401,6 +409,12 @@ export async function updateClassSchedule(scheduleId: string, payload: Partial<S
 
         const maxClasses = resolveMaxClassesForSubject(updatedSchedule.title, studentDetails);
 
+        // Fetch declared academy holidays to skip them automatically
+        const { data: updateHolidays } = await supabase
+            .from('academy_holidays')
+            .select('holiday_date');
+        const updateHolidayDateSet = new Set<string>((updateHolidays || []).map((h: any) => String(h.holiday_date)));
+
         // 3. Regenerate future live_classes based on the new pattern
         // The effective start date for new calculations is Tomorrow (or Today if safe)
         const computedDates = computeDatesForPattern(
@@ -409,7 +423,8 @@ export async function updateClassSchedule(scheduleId: string, payload: Partial<S
             updatedSchedule.pattern_days,
             updatedSchedule.time_of_day,
             payload.clientOffsetMinutes || 0,
-            payload.day_timings || updatedSchedule.day_timings
+            payload.day_timings || updatedSchedule.day_timings,
+            updateHolidayDateSet
         )
 
         // Filter out dates that are inherently in the past relative to right now 
