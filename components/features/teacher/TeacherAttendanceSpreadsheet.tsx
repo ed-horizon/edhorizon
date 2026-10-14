@@ -110,7 +110,7 @@ export function TeacherAttendanceSpreadsheet({ classes }: { classes: ClassData[]
                     studentNames.map(sName => {
                         const studentClasses = studentGroups[sName]
                         const isExpanded = expandedStudent === sName
-                        const pendingCount = studentClasses.filter(c => c.status === 'completed' && c.verification_status !== 'verified').length
+                        const pendingCount = studentClasses.filter(c => c.status === 'completed' && c.verification_status === 'pending').length
                         
                         return (
                             <div key={sName} className="border-2 border-muted/30 rounded-[2rem] overflow-hidden bg-muted/5 transition-all">

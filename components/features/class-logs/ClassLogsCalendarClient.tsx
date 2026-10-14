@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { 
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Edit3, X,
     Video, Clock, User, BookOpen, AlertCircle, FileText, CheckCircle2, 
-    Award, Upload, Palmtree, Trash2, Search, ShieldAlert, Sparkles
+    Award, Upload, Palmtree, Trash2, Search, ShieldAlert, Sparkles, XCircle
 } from "lucide-react"
 import { formatTime12Hour, ensureAbsoluteUrl, formatClassTitle } from "@/lib/utils"
 import { format } from "date-fns"
@@ -19,7 +19,9 @@ import {
     getClassLogsForMonth, 
     modifyClassLog, 
     getDeletedClasses, 
-    type DeletedClassRecord 
+    type DeletedClassRecord,
+    getRejectedClasses,
+    type RejectedClassRecord
 } from "@/app/(dashboard)/attendance/actions"
 import { toast } from "sonner"
 import { AssignHomeworkDialog, UploadMaterialDialog } from "@/components/features/teacher/StudentActionDialogs"
@@ -51,10 +53,11 @@ export function ClassLogsCalendarClient({
     const [classes, setClasses] = useState<any[]>([])
     const [holidays, setHolidays] = useState<AcademyHoliday[]>([])
     const [deletedClasses, setDeletedClasses] = useState<DeletedClassRecord[]>([])
+    const [rejectedClasses, setRejectedClasses] = useState<RejectedClassRecord[]>([])
     const [isLoading, setIsLoading] = useState(true)
 
     const canModify = ["hr", "super_admin", "admin", "operations"].includes(currentUserProfile.role)
-    const [activeViewTab, setActiveViewTab] = useState<'calendar' | 'deleted'>('calendar')
+    const [activeViewTab, setActiveViewTab] = useState<'calendar' | 'rejected' | 'deleted'>('calendar')
 
     // Admin filters
     const [selectedTeacherId, setSelectedTeacherId] = useState<string>("all")
@@ -78,6 +81,7 @@ export function ClassLogsCalendarClient({
     const [formHomeworkGiven, setFormHomeworkGiven] = useState("")
     const [formStudentPerformance, setFormStudentPerformance] = useState("")
     const [formParentNote, setFormParentNote] = useState("")
+    const [formRejectionReason, setFormRejectionReason] = useState("")
 
     const fetchLogs = async () => {
         setIsLoading(true)
@@ -88,13 +92,19 @@ export function ClassLogsCalendarClient({
             ]
             if (canModify) {
                 promises.push(getDeletedClasses(year, month))
+                promises.push(getRejectedClasses(year, month))
             }
 
-            const [data, holidayData, deletedData] = await Promise.all(promises)
+            const [data, holidayData, deletedData, rejectedData] = await Promise.all(promises)
             setClasses(data || [])
             setHolidays(holidayData || [])
-            if (canModify && deletedData) {
-                setDeletedClasses(deletedData || [])
+            if (canModify) {
+                if (deletedData) {
+                    setDeletedClasses(deletedData || [])
+                }
+                if (rejectedData) {
+                    setRejectedClasses(rejectedData || [])
+                }
             }
         } catch (error) {
             console.error("Failed to fetch monthly class logs:", error)
@@ -164,6 +174,25 @@ export function ClassLogsCalendarClient({
         })
     }, [deletedClasses, selectedTeacherId, selectedStudentId, searchQuery])
 
+    // Filter rejected classes based on search and filters (Staff Only)
+    const filteredRejectedClasses = useMemo(() => {
+        return rejectedClasses.filter(r => {
+            if (selectedTeacherId !== "all" && r.teacher_id !== selectedTeacherId) return false
+            if (selectedStudentId !== "all" && r.student_id !== selectedStudentId) return false
+            if (searchQuery.trim()) {
+                const query = searchQuery.toLowerCase()
+                const matchTitle = r.title?.toLowerCase().includes(query)
+                const matchTeacher = r.teacher?.full_name?.toLowerCase().includes(query) || r.teacher?.email?.toLowerCase().includes(query)
+                const matchStudent = r.student?.full_name?.toLowerCase().includes(query) || r.student?.email?.toLowerCase().includes(query)
+                const matchTopic = r.topic_taught?.toLowerCase().includes(query)
+                const matchReason = r.rejection_reason?.toLowerCase().includes(query)
+                const matchVerifiedBy = r.verified_by_profile?.full_name?.toLowerCase().includes(query) || r.verified_by_profile?.email?.toLowerCase().includes(query)
+                if (!matchTitle && !matchTeacher && !matchStudent && !matchTopic && !matchReason && !matchVerifiedBy) return false
+            }
+            return true
+        })
+    }, [rejectedClasses, selectedTeacherId, selectedStudentId, searchQuery])
+
     // Generate Calendar Days for Month
     const daysInMonth = new Date(year, month, 0).getDate()
     const firstDayOfWeek = new Date(year, month - 1, 1).getDay() // 0 = Sun
@@ -212,6 +241,7 @@ export function ClassLogsCalendarClient({
         setFormHomeworkGiven(cls.homework_given || "")
         setFormStudentPerformance(cls.student_performance || "")
         setFormParentNote(cls.parent_note || "")
+        setFormRejectionReason(cls.rejection_reason || "")
         
         setIsEditModalOpen(true)
     }
@@ -233,7 +263,8 @@ export function ClassLogsCalendarClient({
                 formTopicTaught,
                 formHomeworkGiven,
                 formStudentPerformance,
-                formParentNote
+                formParentNote,
+                formStatus === 'rejected' ? formRejectionReason : undefined
             )
 
             if (res.success) {
@@ -300,7 +331,7 @@ export function ClassLogsCalendarClient({
 
             {/* TAB NAVIGATION: Strictly for Staff (Admin, Super Admin, HR, Operations) */}
             {canModify && (
-                <div className="flex items-center gap-2 border-b border-border/20 pb-3">
+                <div className="flex items-center gap-2 border-b border-border/20 pb-3 flex-wrap">
                     <Button
                         type="button"
                         variant={activeViewTab === 'calendar' ? 'default' : 'ghost'}
@@ -313,19 +344,40 @@ export function ClassLogsCalendarClient({
                     </Button>
                     <Button
                         type="button"
+                        variant={activeViewTab === 'rejected' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setActiveViewTab('rejected')}
+                        className={`rounded-xl text-xs font-bold gap-2 ${
+                            activeViewTab === 'rejected' 
+                                ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm' 
+                                : 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
+                        }`}
+                    >
+                        <XCircle size={14} />
+                        <span>Rejected Classes</span>
+                        {filteredRejectedClasses.length > 0 && (
+                            <Badge className={`text-[10px] font-mono px-1.5 py-0 h-4 rounded-full border-none ${
+                                activeViewTab === 'rejected' ? 'bg-white/20 text-white' : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                            }`}>
+                                {filteredRejectedClasses.length}
+                            </Badge>
+                        )}
+                    </Button>
+                    <Button
+                        type="button"
                         variant={activeViewTab === 'deleted' ? 'default' : 'ghost'}
                         size="sm"
                         onClick={() => setActiveViewTab('deleted')}
                         className={`rounded-xl text-xs font-bold gap-2 ${
                             activeViewTab === 'deleted' 
-                                ? 'bg-rose-600 hover:bg-rose-700 text-white' 
-                                : 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
+                                ? 'bg-neutral-800 dark:bg-neutral-200 text-white dark:text-black shadow-sm' 
+                                : 'text-muted-foreground hover:bg-muted/30'
                         }`}
                     >
                         <Trash2 size={14} />
                         <span>Deleted Classes</span>
                         {filteredDeletedClasses.length > 0 && (
-                            <Badge className="bg-white/20 text-current text-[10px] font-mono px-1.5 py-0 h-4 rounded-full border-none">
+                            <Badge className="bg-muted text-muted-foreground text-[10px] font-mono px-1.5 py-0 h-4 rounded-full border-none">
                                 {filteredDeletedClasses.length}
                             </Badge>
                         )}
@@ -376,7 +428,13 @@ export function ClassLogsCalendarClient({
                             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
                             <Input
                                 id="search-logs"
-                                placeholder={activeViewTab === 'deleted' ? "Search deleted classes, reasons, staff..." : "Search classes, topics, tutors, students..."}
+                                placeholder={
+                                    activeViewTab === 'deleted' 
+                                        ? "Search deleted classes, reasons, staff..." 
+                                        : activeViewTab === 'rejected'
+                                        ? "Search rejected classes, reasons, staff..."
+                                        : "Search classes, topics, tutors, students..."
+                                }
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="h-11 pl-9 rounded-2xl bg-card border-none outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 text-xs"
@@ -447,9 +505,14 @@ export function ClassLogsCalendarClient({
                                     const isSelected = selectedDate && selectedDate.getDate() === day && selectedDate.getMonth() === (month - 1)
                                     const isToday = now.getDate() === day && now.getMonth() === (month - 1) && now.getFullYear() === year
                                     const dayClasses = classesByDay[day] || []
-                                    const completedCount = dayClasses.filter(c => c.status === 'completed').length
+                                    const completedCount = dayClasses.filter(c => 
+                                        c.status === 'completed' && 
+                                        c.verification_status !== 'rejected' && 
+                                        c.student_attendance?.[0]?.status !== 'absent'
+                                    ).length
                                     const scheduledCount = dayClasses.filter(c => c.status === 'scheduled' || c.status === 'ongoing').length
                                     const cancelledCount = dayClasses.filter(c => c.status === 'cancelled').length
+                                    const rejectedCount = dayClasses.filter(c => c.status === 'rejected' || c.verification_status === 'rejected').length
                                     const hasLate = dayClasses.some(c => c.tutor_joined_late)
 
                                     return (
@@ -516,6 +579,12 @@ export function ClassLogsCalendarClient({
                                                     <div className="flex items-center justify-between text-[9px] font-bold text-rose-700 dark:text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded-md">
                                                         <span>Cancelled</span>
                                                         <span>{cancelledCount}</span>
+                                                    </div>
+                                                )}
+                                                {rejectedCount > 0 && (
+                                                    <div className="flex items-center justify-between text-[9px] font-bold text-rose-800 dark:text-rose-300 bg-rose-500/20 px-1.5 py-0.5 rounded-md border border-rose-500/30">
+                                                        <span>Rejected</span>
+                                                        <span>{rejectedCount}</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -644,12 +713,13 @@ export function ClassLogsCalendarClient({
                                                         </div>
                                                     </div>
                                                     <Badge className={`text-[8px] font-black uppercase border-none rounded-full px-2 py-0.5 ${
-                                                        c.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                                                        c.status === 'completed' && c.verification_status !== 'rejected' ? 'bg-emerald-100 text-emerald-800' :
                                                         c.status === 'cancelled' ? 'bg-rose-100 text-rose-800' :
+                                                        c.status === 'rejected' || c.verification_status === 'rejected' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400 font-bold' :
                                                         !isNotMarked && (c.status === 'scheduled' || c.status === 'ongoing') ? 'bg-indigo-100 text-indigo-800' :
                                                         isNotMarked ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400' : ''
                                                     }`}>
-                                                        {isNotMarked ? "Attendance Not Marked" : c.status}
+                                                        {c.status === 'rejected' || c.verification_status === 'rejected' ? 'Rejected' : isNotMarked ? "Attendance Not Marked" : c.status}
                                                     </Badge>
                                                 </div>
 
@@ -659,6 +729,28 @@ export function ClassLogsCalendarClient({
                                                         <span className="text-[10px] font-semibold text-rose-700 dark:text-rose-300 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-md inline-block">
                                                             {c.cancellation_reason}
                                                         </span>
+                                                    </div>
+                                                )}
+
+                                                {/* Rejection Reason if present */}
+                                                {(c.rejection_reason || c.status === 'rejected' || c.verification_status === 'rejected') && (
+                                                    <div className="pt-0.5">
+                                                        <div className="flex items-start gap-2 p-2.5 bg-rose-50/80 dark:bg-rose-950/30 border border-rose-500/25 rounded-xl text-rose-800 dark:text-rose-300 text-[11px] leading-relaxed text-left">
+                                                            <AlertCircle size={15} className="shrink-0 text-rose-600 mt-0.5" />
+                                                            <div className="space-y-0.5">
+                                                                <span className="font-bold uppercase tracking-wider text-[8px] block text-rose-600 dark:text-rose-400">
+                                                                    HR Verification Rejection Reason:
+                                                                </span>
+                                                                <p className="italic font-medium">
+                                                                    &ldquo;{c.rejection_reason || 'Class attendance verification was rejected.'}&rdquo;
+                                                                </p>
+                                                                {c.rejected_at && (
+                                                                    <span className="text-[9px] text-muted-foreground block font-mono">
+                                                                        Rejected on {format(new Date(c.rejected_at), 'MMM dd, yyyy • hh:mm a')}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 )}
 
@@ -884,6 +976,110 @@ export function ClassLogsCalendarClient({
                 </Card>
             )}
 
+            {/* TAB VIEW 3: REJECTED CLASSES AUDIT LOG (STAFF ONLY) */}
+            {canModify && activeViewTab === 'rejected' && (
+                <Card className="rounded-[2rem] border-border/40 shadow-xl overflow-hidden bg-card text-left">
+                    <CardHeader className="bg-rose-500/5 px-6 py-5 border-b border-border/20 flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle className="text-xl font-bold flex items-center gap-2 text-rose-700 dark:text-rose-400">
+                                <XCircle size={20} />
+                                <span>Rejected Classes Audit Log</span>
+                            </CardTitle>
+                            <CardDescription className="text-xs">
+                                Complete verification audit log of all classes rejected during HR review for {monthNames[month - 1]} {year} with mandatory rejection reasons.
+                            </CardDescription>
+                        </div>
+                        <Badge className="bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30 text-[10px] font-bold px-3 py-1 rounded-full">
+                            {filteredRejectedClasses.length} Rejected Records
+                        </Badge>
+                    </CardHeader>
+
+                    <CardContent className="p-6">
+                        {filteredRejectedClasses.length === 0 ? (
+                            <div className="py-16 text-center text-xs text-muted-foreground bg-muted/10 rounded-2xl border border-dashed border-border/40 space-y-2">
+                                <XCircle size={32} className="mx-auto text-muted-foreground opacity-30" />
+                                <p className="font-semibold text-sm">No rejected classes found.</p>
+                                <p className="text-[11px] opacity-75">
+                                    No class sessions have been rejected during verification for {monthNames[month - 1]} {year} matching the current filters.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-xs">
+                                    <thead>
+                                        <tr className="border-b border-border/20 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                                            <th className="py-3 px-3">Class Subject</th>
+                                            <th className="py-3 px-3">Scheduled Date</th>
+                                            <th className="py-3 px-3">Tutor</th>
+                                            <th className="py-3 px-3">Student</th>
+                                            <th className="py-3 px-3">Topic / Info</th>
+                                            <th className="py-3 px-3">Reason for Rejection</th>
+                                            <th className="py-3 px-3">Rejected By</th>
+                                            <th className="py-3 px-3">Rejected At</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/10">
+                                        {filteredRejectedClasses.map((item) => (
+                                            <tr key={item.id} className="hover:bg-muted/15 transition-colors group">
+                                                <td className="py-3.5 px-3 font-bold text-foreground">
+                                                    {item.title}
+                                                    {item.course?.title && (
+                                                        <span className="block text-[10px] font-normal text-muted-foreground">
+                                                            {item.course.title}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-3 font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+                                                    {format(new Date(item.scheduled_at), 'MMM dd, yyyy • hh:mm a')}
+                                                    {item.duration_hours && (
+                                                        <span className="block text-[10px] text-muted-foreground/75">
+                                                            Duration: {item.duration_hours}h
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-3 font-medium text-foreground">
+                                                    {item.teacher?.full_name || 'N/A'}
+                                                </td>
+                                                <td className="py-3.5 px-3 font-medium text-foreground">
+                                                    {item.student?.full_name || 'N/A'}
+                                                </td>
+                                                <td className="py-3.5 px-3 max-w-xs">
+                                                    {item.topic_taught ? (
+                                                        <span className="text-[11px] text-foreground italic">
+                                                            &ldquo;{item.topic_taught}&rdquo;
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] text-muted-foreground italic">No topic logged</span>
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-3 max-w-sm">
+                                                    <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 rounded-xl text-[11px] font-medium leading-relaxed">
+                                                        &ldquo;{item.rejection_reason || 'Class attendance verification was rejected.'}&rdquo;
+                                                    </div>
+                                                </td>
+                                                <td className="py-3.5 px-3 font-medium text-muted-foreground whitespace-nowrap">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <ShieldAlert size={12} className="text-amber-500" />
+                                                        <span>{item.verified_by_profile?.full_name || 'HR / Admin'}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="py-3.5 px-3 font-mono text-[10px] text-muted-foreground whitespace-nowrap">
+                                                    {item.rejected_at ? (
+                                                        format(new Date(item.rejected_at), 'MMM dd, yyyy • hh:mm a')
+                                                    ) : (
+                                                        <span className="text-muted-foreground/60 italic">—</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
             {/* 3. Administrative Edit Modal */}
             {isEditModalOpen && editingClass && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -923,6 +1119,7 @@ export function ClassLogsCalendarClient({
                                             <SelectItem value="ongoing" className="rounded-xl">Ongoing</SelectItem>
                                             <SelectItem value="completed" className="rounded-xl">Completed</SelectItem>
                                             <SelectItem value="cancelled" className="rounded-xl">Cancelled</SelectItem>
+                                            <SelectItem value="rejected" className="rounded-xl">Rejected</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -942,6 +1139,22 @@ export function ClassLogsCalendarClient({
                                     </Select>
                                 </div>
                             </div>
+
+                            {formStatus === 'rejected' && (
+                                <div className="space-y-1.5 p-3 rounded-2xl bg-rose-50/60 dark:bg-rose-950/25 border border-rose-500/25 animate-in fade-in">
+                                    <Label className="text-[10px] font-black uppercase tracking-widest text-rose-700 dark:text-rose-400 ml-1 flex items-center gap-1.5">
+                                        <AlertCircle size={12} />
+                                        <span>HR Rejection Reason (Mandatory)</span>
+                                    </Label>
+                                    <Textarea 
+                                        value={formRejectionReason}
+                                        onChange={(e) => setFormRejectionReason(e.target.value)}
+                                        className="rounded-xl bg-card border-none outline-none focus-visible:ring-1 focus-visible:ring-rose-500 text-xs min-h-[60px]"
+                                        placeholder="Enter the justification for rejecting this class..."
+                                        required={formStatus === 'rejected'}
+                                    />
+                                </div>
+                            )}
 
                             <div className="space-y-1.5">
                                 <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Scheduled Date & Time (Local)</Label>

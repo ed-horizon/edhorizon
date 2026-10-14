@@ -27,6 +27,9 @@ interface LiveClass {
     meeting_link: string;
     scheduled_at: string;
     status: string;
+    verification_status?: string;
+    rejection_reason?: string | null;
+    rejected_at?: string | null;
     module?: { title: string };
     course?: { title: string };
     student: { id: string; full_name: string; email: string } | null;
@@ -501,9 +504,11 @@ export function TeacherDashboardClient({
                                                         ? 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' 
                                                         : c.status === 'cancelled'
                                                         ? 'bg-rose-500/10 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400'
+                                                        : c.status === 'rejected' || c.verification_status === 'rejected'
+                                                        ? 'bg-rose-500/15 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-500/30'
                                                         : 'bg-indigo-500/10 text-indigo-600 dark:bg-indigo-950/20'
                                                 }`}>
-                                                    {c.status}
+                                                    {c.status === 'rejected' || c.verification_status === 'rejected' ? 'Rejected' : c.status}
                                                 </Badge>
                                             </div>
                                         </div>
@@ -521,6 +526,23 @@ export function TeacherDashboardClient({
                                                 const elapsedMinutes = scheduledTime > 0
                                                     ? (currentTime.getTime() - scheduledTime) / (1000 * 60)
                                                     : 0;
+
+                                                if (c.status === 'rejected' || c.verification_status === 'rejected') {
+                                                    return (
+                                                        <div className="flex flex-col gap-1.5 w-full">
+                                                            <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/10 border border-rose-500/25 rounded-xl px-4 py-2 text-xs font-bold w-full justify-center">
+                                                                <AlertCircle size={15} />
+                                                                <span>Verification Rejected</span>
+                                                            </div>
+                                                            {c.rejection_reason && (
+                                                                <div className="p-2 bg-rose-50/60 dark:bg-rose-950/30 border border-rose-500/20 rounded-xl text-[10px] text-rose-700 dark:text-rose-300 font-medium leading-relaxed text-left">
+                                                                    <span className="font-bold block uppercase text-[8px] text-rose-600">Rejection Reason:</span>
+                                                                    &ldquo;{c.rejection_reason}&rdquo;
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                }
 
                                                 if (c.status === 'completed') {
                                                     return (

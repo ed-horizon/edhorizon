@@ -9,6 +9,7 @@ import { toast } from "sonner"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { formatClassTitle } from "@/lib/utils"
+import { RejectClassDialog } from "@/components/features/admin/RejectClassDialog"
 
 interface PendingClass {
     id: string; // class_id
@@ -31,15 +32,38 @@ interface AttendanceVerificationListProps {
 export function AttendanceVerificationList({ pendingClasses: initialData }: AttendanceVerificationListProps) {
     const [pending, setPending] = useState(initialData)
     const [verifying, setVerifying] = useState<string | null>(null)
+    const [rejectModalItem, setRejectModalItem] = useState<PendingClass | null>(null)
 
-    const handleVerify = async (id: string, status: 'verified' | 'rejected') => {
+    const handleVerify = async (id: string) => {
         setVerifying(id)
         try {
-            await verifyClassAttendance(id, status)
+            const res = await verifyClassAttendance(id, 'verified')
+            if (res && !res.success) {
+                toast.error(res.error || "Action failed")
+                return
+            }
             setPending(prev => prev.filter(item => item.id !== id))
-            toast.success(`Class ${status === 'verified' ? 'verified' : 'rejected'} for payroll!`)
+            toast.success("Class verified and converted to payroll!")
         } catch (error) {
             toast.error("Action failed")
+        } finally {
+            setVerifying(null)
+        }
+    }
+
+    const handleConfirmReject = async (id: string, reason: string) => {
+        setVerifying(id)
+        try {
+            const res = await verifyClassAttendance(id, 'rejected', reason)
+            if (res && !res.success) {
+                toast.error(res.error || "Rejection failed")
+                return
+            }
+            setPending(prev => prev.filter(item => item.id !== id))
+            toast.success("Class rejected and excluded from payroll!")
+            setRejectModalItem(null)
+        } catch (error: any) {
+            toast.error(error.message || "Rejection failed")
         } finally {
             setVerifying(null)
         }
@@ -123,15 +147,16 @@ export function AttendanceVerificationList({ pendingClasses: initialData }: Atte
                                 </div>
                                 <div className="flex items-center gap-2 self-center shrink-0">
                                     <Button 
-                                        onClick={() => handleVerify(item.id, 'rejected')}
+                                        onClick={() => setRejectModalItem(item)}
                                         disabled={!!verifying}
                                         variant="ghost" 
-                                        className="h-10 w-10 p-0 rounded-full text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                                        title="Reject Class Session"
+                                        className="h-10 w-10 p-0 rounded-full text-rose-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40"
                                     >
                                         <X size={18} />
                                     </Button>
                                     <Button 
-                                        onClick={() => handleVerify(item.id, 'verified')}
+                                        onClick={() => handleVerify(item.id)}
                                         disabled={!!verifying}
                                         className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-widest text-[10px] gap-2 shadow-lg shadow-emerald-600/20"
                                     >
@@ -144,6 +169,15 @@ export function AttendanceVerificationList({ pendingClasses: initialData }: Atte
                     </div>
                 )}
             </CardContent>
+
+            {/* Rejection Dialog with Mandatory Reason */}
+            <RejectClassDialog
+                open={!!rejectModalItem}
+                onOpenChange={(open) => !open && setRejectModalItem(null)}
+                classItem={rejectModalItem}
+                onConfirm={handleConfirmReject}
+                isSubmitting={!!verifying}
+            />
         </Card>
     )
 }
