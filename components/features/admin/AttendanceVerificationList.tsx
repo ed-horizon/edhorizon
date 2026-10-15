@@ -6,7 +6,7 @@ import { Check, X, User, Calendar as CalendarIcon, Clock } from "lucide-react"
 import { format } from "date-fns"
 import { verifyClassAttendance } from "@/app/(dashboard)/attendance/actions"
 import { toast } from "sonner"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { formatClassTitle } from "@/lib/utils"
 import { RejectClassDialog } from "@/components/features/admin/RejectClassDialog"
@@ -33,6 +33,11 @@ export function AttendanceVerificationList({ pendingClasses: initialData }: Atte
     const [pending, setPending] = useState(initialData)
     const [verifying, setVerifying] = useState<string | null>(null)
     const [rejectModalItem, setRejectModalItem] = useState<PendingClass | null>(null)
+
+    // Synchronize client state when initialData changes from server revalidation
+    useEffect(() => {
+        setPending(initialData)
+    }, [initialData])
 
     const handleVerify = async (id: string) => {
         setVerifying(id)

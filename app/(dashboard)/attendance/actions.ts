@@ -798,7 +798,7 @@ export async function completeLiveClass(classId: string) {
     // Check if scheduled more than 24 hours ago
     const { data: classObj } = await supabase
         .from('live_classes')
-        .select('scheduled_at')
+        .select('scheduled_at, status, verification_status')
         .eq('id', classId)
         .single();
 
@@ -812,12 +812,17 @@ export async function completeLiveClass(classId: string) {
         }
     }
 
-    // Just mark class as completed and pending verification
+    // Preserve existing verification status if already verified or rejected
+    const targetVerificationStatus = (classObj?.verification_status === 'verified' || classObj?.verification_status === 'rejected')
+        ? classObj.verification_status
+        : 'pending';
+
+    // Mark class as completed while preserving verified or rejected status
     const { error: updateError } = await supabase
         .from('live_classes')
         .update({ 
             status: 'completed',
-            verification_status: 'pending'
+            verification_status: targetVerificationStatus
         })
         .eq('id', classId);
 
@@ -919,7 +924,7 @@ export async function finalizeClassSession(
 
     const { data: classObj } = await supabase
         .from('live_classes')
-        .select('status, scheduled_at, tutor_joined_at, student_joined_at')
+        .select('status, verification_status, scheduled_at, tutor_joined_at, student_joined_at')
         .eq('id', classId)
         .single();
 
@@ -959,12 +964,17 @@ export async function finalizeClassSession(
         }
     }
 
+    // Preserve existing verification status if already verified or rejected
+    const targetVerificationStatus = (classObj?.verification_status === 'verified' || classObj?.verification_status === 'rejected')
+        ? classObj.verification_status
+        : 'pending';
+
     // Update live_classes with status, verification_status and post-class logs
     const { error: updateError } = await supabase
         .from('live_classes')
         .update({ 
             status: 'completed',
-            verification_status: 'pending',
+            verification_status: targetVerificationStatus,
             topic_taught: topicTaught,
             homework_given: homeworkGiven,
             student_performance: studentPerformance,
@@ -1558,7 +1568,14 @@ export async function getPendingClassVerifications() {
 
     if (error) throw error;
 
-    const filtered = (data || []).filter(c => {
+    // Defensive check: explicitly exclude any class that is verified or rejected
+    const validPending = (data || []).filter(c => 
+        c.verification_status !== 'verified' && 
+        c.verification_status !== 'rejected' &&
+        c.status !== 'rejected'
+    );
+
+    const filtered = validPending.filter(c => {
         if (currentUserRole === 'super_admin') return true;
         const teacherDetails = Array.isArray(c.teacher?.staff_details) ? c.teacher?.staff_details[0] : c.teacher?.staff_details;
         return teacherDetails?.status !== 'locked';
@@ -3089,6 +3106,11 @@ export async function deleteClassLogOrSession(classId: string, action: 'revert' 
         return { success: false, error: error.message };
     }
 
+    revalidatePath('/(dashboard)/hr', 'page');
+    revalidatePath('/(dashboard)/hr/payroll', 'page');
+    revalidatePath('/(dashboard)/admin', 'page');
+    revalidatePath('/(dashboard)/class-logs', 'page');
+    revalidatePath('/(dashboard)/teacher', 'page');
     revalidatePath('/(dashboard)', 'layout');
     return { success: true };
 }
