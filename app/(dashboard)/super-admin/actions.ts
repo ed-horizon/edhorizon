@@ -1,7 +1,8 @@
 'use server'
 
 import { createClient } from "@/lib/supabase/server";
-import { unstable_noStore as noStore } from "next/cache";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { unstable_noStore as noStore, revalidatePath } from "next/cache";
 
 export async function getSuperAdminAnalytics() {
     noStore();
@@ -246,13 +247,113 @@ export async function getSuperAdminAnalytics() {
     };
 }
 
+// Helper: Verify administrative / operations manager role
+async function verifyManagerAccess() {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        throw new Error("Unauthorized: Authentication required.");
+    }
+    const adminClient = createAdminClient();
+    const { data: profile } = await adminClient
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+    
+    if (!profile || !['super_admin', 'admin', 'operations'].includes(profile.role)) {
+        throw new Error("Unauthorized: Only administrators and operations can manage monthly expenses.");
+    }
+    return { user, role: profile.role };
+}
+
+// Action: Add a manual operational other expense for a specific month
+export async function addMonthlyExpense(payload: {
+    title: string;
+    category: string;
+    amount: number;
+    expenseDate?: string;
+    month: number;
+    year: number;
+    notes?: string;
+}) {
+    try {
+        const { user } = await verifyManagerAccess();
+
+        if (!payload.title || !payload.title.trim()) {
+            return { success: false, error: "Expense title is required." };
+        }
+        const numericAmount = Number(payload.amount);
+        if (isNaN(numericAmount) || numericAmount < 0) {
+            return { success: false, error: "A valid positive expense amount is required." };
+        }
+
+        const adminClient = createAdminClient();
+        const expenseDate = payload.expenseDate || new Date().toISOString().split('T')[0];
+
+        const { data, error } = await adminClient
+            .from('monthly_expenses')
+            .insert({
+                title: payload.title.trim(),
+                category: payload.category || 'Other',
+                amount: numericAmount,
+                expense_date: expenseDate,
+                month: Number(payload.month),
+                year: Number(payload.year),
+                notes: payload.notes?.trim() || null,
+                created_by: user.id
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error("Error adding monthly expense:", error);
+            return { success: false, error: error.message };
+        }
+
+        revalidatePath('/super-admin/monthly-report');
+        return { success: true, expense: data };
+    } catch (err: any) {
+        console.error("addMonthlyExpense error:", err);
+        return { success: false, error: err.message || "Failed to add expense." };
+    }
+}
+
+// Action: Delete a manual other expense
+export async function deleteMonthlyExpense(expenseId: string) {
+    try {
+        await verifyManagerAccess();
+
+        if (!expenseId) {
+            return { success: false, error: "Expense ID is required." };
+        }
+
+        const adminClient = createAdminClient();
+        const { error } = await adminClient
+            .from('monthly_expenses')
+            .delete()
+            .eq('id', expenseId);
+
+        if (error) {
+            console.error("Error deleting monthly expense:", error);
+            return { success: false, error: error.message };
+        }
+
+        revalidatePath('/super-admin/monthly-report');
+        return { success: true };
+    } catch (err: any) {
+        console.error("deleteMonthlyExpense error:", err);
+        return { success: false, error: err.message || "Failed to delete expense." };
+    }
+}
+
 export async function getMonthlyReportData(year: number, month: number) {
     noStore();
-    const supabase = await createClient();
+    const supabase = createAdminClient();
 
-    // 1. Calculate boundaries for that month (for leads and admissions)
-    const startDate = new Date(year, month - 1, 1).toISOString();
-    const endDate = new Date(year, month, 1).toISOString();
+    // 1. Calculate canonical UTC boundaries for that month
+    const startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0)).toISOString();
+    const endDate = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0)).toISOString();
 
     // 2. Fetch Admissions count for this month
     const { count: admissionsCount } = await supabase
@@ -284,8 +385,9 @@ export async function getMonthlyReportData(year: number, month: number) {
         .eq('billing_year', year);
 
     const revenueCollected = completedPayments?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0;
+    const paidStudentIds = new Set((completedPayments || []).map(p => p.student_id));
 
-    // 5. Fetch Pending Payments for this month
+    // 5. Fetch Pending Payments & Outstanding Student Tuition Dues for this month
     const { data: pendingPaymentsData } = await supabase
         .from('payments')
         .select(`
@@ -299,9 +401,69 @@ export async function getMonthlyReportData(year: number, month: number) {
         .eq('billing_month', month)
         .eq('billing_year', year);
 
-    const pendingPayments = pendingPaymentsData?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0;
+    // Query active enrolled students to detect outstanding fee balances
+    const { data: activeStudentsData } = await supabase
+        .from('student_details')
+        .select(`
+            id,
+            monthly_fee,
+            monthly_fee_2,
+            monthly_fee_3,
+            monthly_fee_4,
+            monthly_fee_5,
+            status,
+            enrollment_date,
+            student:profiles!student_details_id_fkey(
+                full_name,
+                email
+            )
+        `)
+        .eq('status', 'active');
 
-    // 6. Fetch Expenses: the selected month's payroll, including hourly wages & payroll pulse.
+    const pendingPaymentsList: any[] = (pendingPaymentsData || []).map(p => ({
+        ...p,
+        is_payment_submission: true,
+        type: 'Pending Offline Confirm'
+    }));
+
+    let pendingDuesTotal = 0;
+    const endOfMonthDate = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+
+    (activeStudentsData || []).forEach((s: any) => {
+        // If student already paid or has a pending payment submission, skip adding duplicate fee due
+        if (paidStudentIds.has(s.id)) return;
+        if (pendingPaymentsList.some(p => p.student_id === s.id)) return;
+
+        // Skip students enrolled after the end of this month
+        if (s.enrollment_date && new Date(s.enrollment_date) > endOfMonthDate) return;
+
+        const totalStudentMonthlyFee = (Number(s.monthly_fee) || 0) +
+                                       (Number(s.monthly_fee_2) || 0) +
+                                       (Number(s.monthly_fee_3) || 0) +
+                                       (Number(s.monthly_fee_4) || 0) +
+                                       (Number(s.monthly_fee_5) || 0);
+
+        if (totalStudentMonthlyFee > 0) {
+            pendingDuesTotal += totalStudentMonthlyFee;
+            pendingPaymentsList.push({
+                id: `due-${s.id}`,
+                student_id: s.id,
+                amount: totalStudentMonthlyFee,
+                status: 'pending_fee',
+                type: 'Fee Due / Unpaid',
+                billing_month: month,
+                billing_year: year,
+                created_at: s.enrollment_date ? new Date(s.enrollment_date).toISOString() : startDate,
+                student: s.student || { full_name: 'Enrolled Student', email: '' },
+                is_payment_submission: false
+            });
+        }
+    });
+
+    const pendingSubmissionsTotal = pendingPaymentsData?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0;
+    const pendingPayments = pendingSubmissionsTotal + pendingDuesTotal;
+
+    // 6. Fetch Expenses: Tutor & Staff Salaries (Payroll run items OR live accrued payroll pulse)
     let totalSalaries = 0;
     const { data: payrollRun } = await supabase
         .from('payroll_runs')
@@ -313,17 +475,21 @@ export async function getMonthlyReportData(year: number, month: number) {
     if (payrollRun) {
         const { data: payrollItems } = await supabase
             .from('payroll_items')
-            .select('basic_amount, hourly_amount, bonus_amount, deductions_amount, net_amount')
-            .eq('run_id', payrollRun.id);
+            .select('basic_amount, bonus_amount, deductions_amount, net_amount, amount')
+            .or(`run_id.eq.${payrollRun.id},payroll_run_id.eq.${payrollRun.id}`);
 
-        totalSalaries = (payrollItems || []).reduce((acc, item) => {
-            const itemNet = item.net_amount !== null && item.net_amount !== undefined 
-                ? Number(item.net_amount) 
-                : (Number(item.basic_amount) || 0) + (Number(item.hourly_amount) || 0) + (Number(item.bonus_amount) || 0) - (Number(item.deductions_amount) || 0);
-            return acc + itemNet;
-        }, 0);
-    } else {
-        // Compute live payroll pulse for un-submitted month
+        if (payrollItems && payrollItems.length > 0) {
+            totalSalaries = payrollItems.reduce((acc, item) => {
+                const itemNet = item.net_amount !== null && item.net_amount !== undefined 
+                    ? Number(item.net_amount) 
+                    : (Number(item.amount) || (Number(item.basic_amount) || 0) + (Number(item.bonus_amount) || 0) - (Number(item.deductions_amount) || 0));
+                return acc + itemNet;
+            }, 0);
+        }
+    }
+
+    // Fallback: If no payroll run exists OR if the run had 0 items, compute live accrued payroll pulse
+    if (totalSalaries === 0) {
         const { data: staffMembers } = await supabase
             .from('profiles')
             .select(`
@@ -385,16 +551,25 @@ export async function getMonthlyReportData(year: number, month: number) {
         totalSalaries = activeFixedSalaries + verifiedClassPayouts;
     }
 
-    // 7. Expenses: Overhead (Marketing, Tech)
+    // 7. Expenses: Manual Other Expenses & Legacy Overhead
+    const { data: monthlyExpenses } = await supabase
+        .from('monthly_expenses')
+        .select('*')
+        .eq('month', month)
+        .eq('year', year)
+        .order('expense_date', { ascending: false });
+
     const monthStr = `${year}-${String(month).padStart(2, '0')}-01`;
     const { data: overhead } = await supabase
         .from('financial_overhead')
         .select('amount')
         .eq('month_date', monthStr);
 
-    const totalOverhead = overhead?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0;
+    const legacyOverheadTotal = overhead?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0;
+    const manualExpensesTotal = (monthlyExpenses || []).reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+    const otherExpensesTotal = manualExpensesTotal + legacyOverheadTotal;
 
-    const totalExpenses = totalSalaries + totalOverhead;
+    const totalExpenses = totalSalaries + otherExpensesTotal;
     const netProfit = revenueCollected - totalExpenses;
 
     // 8. Fetch detailed leads for this month
@@ -412,11 +587,13 @@ export async function getMonthlyReportData(year: number, month: number) {
         revenueCollected,
         pendingPayments,
         totalSalaries,
-        totalOverhead,
+        otherExpensesTotal,
+        totalOverhead: otherExpensesTotal, // backwards compatibility
         totalExpenses,
         netProfit,
         payments: completedPayments || [],
-        pendingPaymentsList: pendingPaymentsData || [],
+        pendingPaymentsList,
+        monthlyExpensesList: monthlyExpenses || [],
         leads: detailedLeads || []
     };
 }
