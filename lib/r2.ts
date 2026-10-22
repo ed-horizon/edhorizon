@@ -57,6 +57,21 @@ export async function getSignedUploadUrl(key: string, mimeType: string) {
   return getSignedUrl(client, command, { expiresIn: 300 });
 }
 
+/**
+ * Uploads a buffer directly to R2 from server environment
+ */
+export async function uploadFileBufferToR2(key: string, buffer: Buffer, mimeType: string) {
+  const { bucketName, client } = getR2Client();
+  const command = new PutObjectCommand({
+    Bucket: bucketName,
+    Key: key,
+    Body: buffer,
+    ContentType: mimeType,
+  });
+  await client.send(command);
+  return key;
+}
+
 export async function getSignedDownloadUrl(key: string, downloadName?: string) {
   const { bucketName, client } = getR2Client();
   const command = new GetObjectCommand({

@@ -913,18 +913,26 @@ export function TeacherDashboardClient({
                 {/* Column 2: Assigned Batches and Students List (Lg: 7/12 cols) */}
                 <div className="lg:col-span-7 space-y-6">
                     {/* MY BATCH CLASSES */}
-                    {assignedBatches.length > 0 && (
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between px-2">
-                                <div className="flex items-center gap-3">
-                                    <div className="h-2 w-2 rounded-full bg-violet-600" />
-                                    <h2 className="text-xl font-serif font-bold italic tracking-tight text-indigo-950 dark:text-indigo-50">My Batch Classes</h2>
-                                </div>
-                                <Badge variant="secondary" className="bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400 border-none font-black uppercase tracking-widest text-[9px] px-3 py-1">
-                                    {assignedBatches.length} Cohorts
-                                </Badge>
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between px-2">
+                            <div className="flex items-center gap-3">
+                                <div className="h-2 w-2 rounded-full bg-violet-600" />
+                                <h2 className="text-xl font-serif font-bold italic tracking-tight text-indigo-950 dark:text-indigo-50">My Batch Classes</h2>
                             </div>
+                            <Badge variant="secondary" className="bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400 border-none font-black uppercase tracking-widest text-[9px] px-3 py-1">
+                                {assignedBatches.length} {assignedBatches.length === 1 ? 'Cohort' : 'Cohorts'}
+                            </Badge>
+                        </div>
 
+                        {assignedBatches.length === 0 ? (
+                            <Card className="rounded-[1.75rem] border border-dashed border-violet-500/30 bg-violet-50/20 dark:bg-violet-950/10 p-6 text-center space-y-2">
+                                <Layers className="h-8 w-8 mx-auto text-violet-400/60" />
+                                <h4 className="text-sm font-bold text-foreground">No Batch Classes Assigned Yet</h4>
+                                <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                                    When an admin assigns you as the lead tutor for a batch cohort, your class schedules, student rosters, and batch study materials will appear here.
+                                </p>
+                            </Card>
+                        ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {assignedBatches.map((batch) => (
                                     <Link key={batch.id} href={`/batches/${batch.id}`} className="block group">
@@ -981,8 +989,8 @@ export function TeacherDashboardClient({
                                     </Link>
                                 ))}
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
 
                     <div className="flex items-center justify-between px-2">
                         <div className="flex items-center gap-3">

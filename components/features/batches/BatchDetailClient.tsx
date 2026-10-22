@@ -27,8 +27,15 @@ import {
     CreditCard, 
     FileText, 
     HelpCircle,
-    Info
+    Info,
+    Download,
+    Upload,
+    FileUp,
+    Sparkles
 } from "lucide-react";
+import { toast } from "sonner";
+import { McqBuilder } from "@/components/features/content/McqBuilder";
+import { FlashcardBuilder } from "@/components/features/content/FlashcardBuilder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -51,9 +58,12 @@ import {
     deleteBatchSession,
     createBatchContent,
     deleteBatchContent,
-    copyBatchContent
+    copyBatchContent,
+    createBatchCapsule,
+    uploadBatchFile
 } from "@/app/(dashboard)/batches/actions";
-import { cn } from "@/lib/utils";
+import { calculateBatchSchedule } from "@/lib/batch-schedule";
+import { cn, ensureAbsoluteUrl } from "@/lib/utils";
 
 interface BatchDetailClientProps {
     batch: any;
@@ -138,6 +148,23 @@ export default function BatchDetailClient({
 
     // Fresh Content Modals state
     const [isAddContentOpen, setIsAddContentOpen] = useState(false);
+    const [contentCreationMode, setContentCreationMode] = useState<'capsule' | 'upload' | 'url'>('capsule');
+
+    // Capsule creation state
+    const [capsuleFormat, setCapsuleFormat] = useState<'quiz' | 'flashcards' | 'video'>('quiz');
+    const [capsuleTitle, setCapsuleTitle] = useState('');
+    const [capsuleDesc, setCapsuleDesc] = useState('');
+    const [quizContent, setQuizContent] = useState<{ questions: any[] }>({ questions: [] });
+    const [flashcardContent, setFlashcardContent] = useState<{ cards: any[] }>({ cards: [] });
+    const [capsuleVideoUrl, setCapsuleVideoUrl] = useState('');
+
+    // File upload state
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [uploadTitle, setUploadTitle] = useState('');
+    const [uploadDesc, setUploadDesc] = useState('');
+    const [isUploadingFile, setIsUploadingFile] = useState(false);
+
+    // URL material state
     const [newContentTitle, setNewContentTitle] = useState("");
     const [newContentType, setNewContentType] = useState("document");
     const [newContentUrl, setNewContentUrl] = useState("");
@@ -395,6 +422,92 @@ export default function BatchDetailClient({
             }
         } finally {
             setActionLoading(false);
+        }
+    };
+
+    const handleCreateCapsule = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!capsuleTitle.trim()) {
+            toast.error("Please enter a title for the capsule.");
+            return;
+        }
+        setActionLoading(true);
+        try {
+            const payload = capsuleFormat === 'quiz'
+                ? quizContent
+                : capsuleFormat === 'flashcards'
+                    ? flashcardContent
+                    : { videoUrl: capsuleVideoUrl, description: capsuleDesc };
+
+            const res = await createBatchCapsule(batch.id, {
+                title: capsuleTitle.trim(),
+                type: capsuleFormat,
+                content: payload,
+                description: capsuleDesc.trim() || undefined
+            });
+
+            if (res.success) {
+                toast.success("Interactive capsule created and added to batch!");
+                setLocalContent(prev => [{
+                    id: res.contentId,
+                    batch_id: batch.id,
+                    capsule_id: res.capsuleId,
+                    title: capsuleTitle.trim(),
+                    type: capsuleFormat,
+                    description: capsuleDesc.trim() || null,
+                    created_at: new Date().toISOString()
+                }, ...prev]);
+                setIsAddContentOpen(false);
+                setCapsuleTitle('');
+                setCapsuleDesc('');
+                setQuizContent({ questions: [] });
+                setFlashcardContent({ cards: [] });
+                setCapsuleVideoUrl('');
+                router.refresh();
+            } else {
+                toast.error(res.error || "Failed to create capsule");
+            }
+        } catch (err: any) {
+            toast.error(err.message || "An unexpected error occurred");
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleUploadDirectFile = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedFile) {
+            toast.error("Please select a file from your device.");
+            return;
+        }
+        if (!uploadTitle.trim()) {
+            toast.error("Please enter a title for the material.");
+            return;
+        }
+        setIsUploadingFile(true);
+        try {
+            const fd = new FormData();
+            fd.append('batchId', batch.id);
+            fd.append('title', uploadTitle.trim());
+            if (uploadDesc.trim()) fd.append('description', uploadDesc.trim());
+            fd.append('file', selectedFile);
+
+            const res = await uploadBatchFile(fd);
+            if (res.success) {
+                toast.success("File uploaded and saved to batch materials!");
+                setLocalContent(prev => [res.data, ...prev]);
+                setIsAddContentOpen(false);
+                setSelectedFile(null);
+                setUploadTitle('');
+                setUploadDesc('');
+                router.refresh();
+            } else {
+                toast.error(res.error || "Failed to upload file");
+            }
+        } catch (err: any) {
+            toast.error(err.message || "Failed to upload file");
+        } finally {
+            setIsUploadingFile(false);
         }
     };
 
@@ -1066,7 +1179,7 @@ export default function BatchDetailClient({
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-wider bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20">
-                                                    {item.type || 'document'}
+                                                    {item.capsule_id ? `✨ ${item.type || 'capsule'}` : (item.type || 'document')}
                                                 </Badge>
                                                 {item.source_batch_id && (
                                                     <Badge variant="outline" className="text-[9px] bg-muted/60 text-muted-foreground border-border/50">
@@ -1100,19 +1213,44 @@ export default function BatchDetailClient({
                                                 {item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Active'}
                                             </span>
 
-                                            {item.content_url ? (
+                                            {item.capsule_id ? (
                                                 <a 
-                                                    href={item.content_url.startsWith('http') ? item.content_url : `https://${item.content_url}`} 
+                                                    href={`/student/learn/${item.capsule_id}`} 
                                                     target="_blank" 
                                                     rel="noopener noreferrer"
                                                 >
-                                                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-indigo-200 dark:border-indigo-900 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50">
-                                                        <span>Open Resource</span>
-                                                        <ExternalLink className="h-3 w-3" />
+                                                    <Button size="sm" className="h-7 text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm font-semibold">
+                                                        <Sparkles className="h-3 w-3" />
+                                                        <span>Play Capsule</span>
+                                                        <ExternalLink className="h-3 w-3 opacity-70" />
                                                     </Button>
                                                 </a>
+                                            ) : item.content_url ? (
+                                                item.content_url.startsWith('http://') || item.content_url.startsWith('https://') ? (
+                                                    <a 
+                                                        href={ensureAbsoluteUrl(item.content_url)} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer"
+                                                    >
+                                                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-indigo-200 dark:border-indigo-900 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50">
+                                                            <ExternalLink className="h-3 w-3" />
+                                                            <span>Open Link</span>
+                                                        </Button>
+                                                    </a>
+                                                ) : (
+                                                    <a 
+                                                        href={`/api/batch-materials/${item.id}/download`} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer"
+                                                    >
+                                                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-indigo-200 dark:border-indigo-900 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50">
+                                                            <Download className="h-3 w-3" />
+                                                            <span>Download File</span>
+                                                        </Button>
+                                                    </a>
+                                                )
                                             ) : (
-                                                <span className="text-[10px] italic text-muted-foreground/60">No URL link attached</span>
+                                                <span className="text-[10px] italic text-muted-foreground/60">No attached file or link</span>
                                             )}
                                         </div>
                                     </CardContent>
@@ -1232,19 +1370,41 @@ export default function BatchDetailClient({
                                         id="edit-start-date"
                                         type="date"
                                         value={editData.start_date}
-                                        onChange={(e) => setEditData({ ...editData, start_date: e.target.value })}
+                                        onChange={(e) => {
+                                            const newStart = e.target.value;
+                                            const days = editData.course_duration_days || 10;
+                                            const calc = calculateBatchSchedule(newStart, batch.recurring_days || [], days);
+                                            setEditData({
+                                                ...editData,
+                                                start_date: newStart,
+                                                end_date: calc.endDateStr
+                                            });
+                                        }}
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="edit-duration-days">Course Duration (Days)</Label>
+                                    <Label htmlFor="edit-duration-days">Total Number of Classes / Sessions</Label>
                                     <Input
                                         id="edit-duration-days"
                                         type="number"
                                         min="1"
                                         max="365"
                                         value={editData.course_duration_days || ""}
-                                        onChange={(e) => setEditData({ ...editData, course_duration_days: parseInt(e.target.value) || 0 })}
+                                        onChange={(e) => {
+                                            const days = parseInt(e.target.value, 10) || 0;
+                                            const calc = calculateBatchSchedule(editData.start_date, batch.recurring_days || [], days);
+                                            setEditData({
+                                                ...editData,
+                                                course_duration_days: days,
+                                                end_date: calc.endDateStr
+                                            });
+                                        }}
                                     />
+                                    {editData.end_date && (
+                                        <p className="text-[10px] text-muted-foreground font-medium">
+                                            Calculated End Date: <span className="text-indigo-600 font-semibold">{editData.end_date}</span>
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
@@ -1759,18 +1919,240 @@ export default function BatchDetailClient({
                 </Dialog>
             )}
 
-            {/* ================= MODAL: ADD BATCH MATERIAL ================= */}
+            {/* ================= MODAL: ADD BATCH MATERIAL & CAPSULES ================= */}
             <Dialog open={isAddContentOpen} onOpenChange={setIsAddContentOpen}>
-                <DialogContent className="max-w-md">
-                    <form onSubmit={handleCreateContent}>
-                        <DialogHeader>
-                            <DialogTitle className="text-xl font-bold">Add Batch Material</DialogTitle>
-                            <DialogDescription>
-                                Add a study resource, lecture notes, video recording, or assignment specifically for this batch.
-                            </DialogDescription>
-                        </DialogHeader>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                            <span>Add Batch Content & Materials</span>
+                        </DialogTitle>
+                        <DialogDescription>
+                            Create interactive learning capsules (quizzes, flashcards), upload study documents/PDFs directly from your computer, or attach resource links.
+                        </DialogDescription>
+                    </DialogHeader>
 
-                        <div className="grid gap-4 py-4">
+                    {/* Mode Selector Tabs */}
+                    <div className="grid grid-cols-3 gap-2 p-1.5 bg-muted/40 rounded-xl border border-border/40 my-2">
+                        <button
+                            type="button"
+                            onClick={() => setContentCreationMode('capsule')}
+                            className={cn(
+                                "flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold rounded-lg transition-all",
+                                contentCreationMode === 'capsule'
+                                    ? "bg-indigo-600 text-white shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground"
+                            )}
+                        >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            <span>Capsule Maker</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setContentCreationMode('upload')}
+                            className={cn(
+                                "flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold rounded-lg transition-all",
+                                contentCreationMode === 'upload'
+                                    ? "bg-indigo-600 text-white shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground"
+                            )}
+                        >
+                            <Upload className="h-3.5 w-3.5" />
+                            <span>Direct File Upload</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setContentCreationMode('url')}
+                            className={cn(
+                                "flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold rounded-lg transition-all",
+                                contentCreationMode === 'url'
+                                    ? "bg-indigo-600 text-white shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground"
+                            )}
+                        >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            <span>Resource Link</span>
+                        </button>
+                    </div>
+
+                    {/* TAB 1: INTERACTIVE CAPSULE MAKER */}
+                    {contentCreationMode === 'capsule' && (
+                        <form onSubmit={handleCreateCapsule} className="space-y-4 pt-2">
+                            {/* Format selector */}
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                    Lesson Format
+                                </Label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { key: 'quiz', label: 'Quiz / MCQ' },
+                                        { key: 'flashcards', label: 'Flashcard Deck' },
+                                        { key: 'video', label: 'Video Lesson' }
+                                    ].map(f => (
+                                        <button
+                                            key={f.key}
+                                            type="button"
+                                            onClick={() => setCapsuleFormat(f.key as any)}
+                                            className={cn(
+                                                "py-2 px-3 text-xs font-bold rounded-lg border text-center transition-all",
+                                                capsuleFormat === f.key
+                                                    ? "bg-indigo-500/15 border-indigo-600 text-indigo-700 dark:text-indigo-300 font-extrabold"
+                                                    : "bg-background border-border/70 text-muted-foreground hover:text-foreground"
+                                            )}
+                                        >
+                                            {f.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="capsule-title">Capsule Title *</Label>
+                                <Input
+                                    id="capsule-title"
+                                    placeholder="e.g. Session 1: Sound Practice Quiz"
+                                    value={capsuleTitle}
+                                    onChange={(e) => setCapsuleTitle(e.target.value)}
+                                    required
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="capsule-desc">Instructions / Learning Goals (Optional)</Label>
+                                <Textarea
+                                    id="capsule-desc"
+                                    placeholder="Instructions for students before starting this capsule..."
+                                    value={capsuleDesc}
+                                    onChange={(e) => setCapsuleDesc(e.target.value)}
+                                    rows={2}
+                                />
+                            </div>
+
+                            {/* Format Specific Builders */}
+                            {capsuleFormat === 'quiz' && (
+                                <div className="p-4 rounded-xl bg-muted/20 border border-border/50 space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <Sparkles className="h-4 w-4 text-indigo-500" />
+                                        <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                                            Interactive Questions Builder
+                                        </span>
+                                    </div>
+                                    <McqBuilder onChange={setQuizContent} />
+                                </div>
+                            )}
+
+                            {capsuleFormat === 'flashcards' && (
+                                <div className="p-4 rounded-xl bg-muted/20 border border-border/50 space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <BookOpen className="h-4 w-4 text-indigo-500" />
+                                        <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                                            Interactive Flashcards Deck Builder
+                                        </span>
+                                    </div>
+                                    <FlashcardBuilder onChange={setFlashcardContent} />
+                                </div>
+                            )}
+
+                            {capsuleFormat === 'video' && (
+                                <div className="p-4 rounded-xl bg-muted/20 border border-border/50 space-y-3">
+                                    <Label htmlFor="capsule-video-url">Video Presentation URL (YouTube, Vimeo, or MP4) *</Label>
+                                    <Input
+                                        id="capsule-video-url"
+                                        placeholder="https://www.youtube.com/watch?v=..."
+                                        value={capsuleVideoUrl}
+                                        onChange={(e) => setCapsuleVideoUrl(e.target.value)}
+                                        required
+                                    />
+                                </div>
+                            )}
+
+                            <DialogFooter className="pt-2">
+                                <Button type="button" variant="outline" onClick={() => setIsAddContentOpen(false)}>
+                                    Cancel
+                                </Button>
+                                <Button 
+                                    type="submit" 
+                                    disabled={actionLoading || !capsuleTitle.trim()} 
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
+                                >
+                                    <Sparkles className="h-4 w-4" />
+                                    <span>{actionLoading ? "Creating Capsule..." : "Create & Add Capsule"}</span>
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    )}
+
+                    {/* TAB 2: DIRECT FILE UPLOAD */}
+                    {contentCreationMode === 'upload' && (
+                        <form onSubmit={handleUploadDirectFile} className="space-y-4 pt-2">
+                            <div className="space-y-2">
+                                <Label htmlFor="direct-file-input">Select File from Device (PDF, Document, Worksheet) *</Label>
+                                <div className="p-6 border-2 border-dashed border-border/70 hover:border-indigo-500/60 rounded-2xl bg-muted/10 text-center transition-all">
+                                    <FileUp className="h-8 w-8 mx-auto text-indigo-500 mb-2" />
+                                    <p className="text-xs font-medium text-foreground mb-1">
+                                        {selectedFile ? selectedFile.name : "Choose a PDF, Word doc, or file from your computer"}
+                                    </p>
+                                    <p className="text-[11px] text-muted-foreground mb-3">
+                                        Supports PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, TXT, PNG, JPG (up to 50MB)
+                                    </p>
+                                    <input
+                                        id="direct-file-input"
+                                        type="file"
+                                        accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.png,.jpg,.jpeg"
+                                        onChange={(e) => {
+                                            const f = e.target.files?.[0];
+                                            if (f) {
+                                                setSelectedFile(f);
+                                                if (!uploadTitle.trim()) {
+                                                    setUploadTitle(f.name.replace(/\.[^/.]+$/, ""));
+                                                }
+                                            }
+                                        }}
+                                        className="text-xs cursor-pointer file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="upload-title">Material Title *</Label>
+                                <Input
+                                    id="upload-title"
+                                    placeholder="e.g. Session 1 Practice Worksheet"
+                                    value={uploadTitle}
+                                    onChange={(e) => setUploadTitle(e.target.value)}
+                                    required
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="upload-desc">Description / Instructions (Optional)</Label>
+                                <Textarea
+                                    id="upload-desc"
+                                    placeholder="Instructions for students on how to use this document..."
+                                    value={uploadDesc}
+                                    onChange={(e) => setUploadDesc(e.target.value)}
+                                    rows={2}
+                                />
+                            </div>
+
+                            <DialogFooter className="pt-2">
+                                <Button type="button" variant="outline" onClick={() => setIsAddContentOpen(false)}>
+                                    Cancel
+                                </Button>
+                                <Button 
+                                    type="submit" 
+                                    disabled={isUploadingFile || !selectedFile || !uploadTitle.trim()} 
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
+                                >
+                                    <Upload className="h-4 w-4" />
+                                    <span>{isUploadingFile ? "Uploading to Cloud..." : "Upload & Save to Batch"}</span>
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    )}
+
+                    {/* TAB 3: RESOURCE URL */}
+                    {contentCreationMode === 'url' && (
+                        <form onSubmit={handleCreateContent} className="space-y-4 pt-2">
                             <div className="space-y-1.5">
                                 <Label htmlFor="material-title">Material Title *</Label>
                                 <Input
@@ -1789,22 +2171,23 @@ export default function BatchDetailClient({
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="document">Document / PDF</SelectItem>
+                                        <SelectItem value="document">Document / Notes</SelectItem>
                                         <SelectItem value="video">Video Recording</SelectItem>
                                         <SelectItem value="link">Web Link / Article</SelectItem>
                                         <SelectItem value="assignment">Assignment / Project</SelectItem>
-                                        <SelectItem value="quiz">Quiz / Assessment</SelectItem>
+                                        <SelectItem value="quiz">External Assessment</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
 
                             <div className="space-y-1.5">
-                                <Label htmlFor="material-url">Resource URL / Link</Label>
+                                <Label htmlFor="material-url">Resource URL / Link *</Label>
                                 <Input
                                     id="material-url"
                                     placeholder="https://drive.google.com/... or https://..."
                                     value={newContentUrl}
                                     onChange={(e) => setNewContentUrl(e.target.value)}
+                                    required
                                 />
                             </div>
 
@@ -1815,20 +2198,20 @@ export default function BatchDetailClient({
                                     placeholder="Brief instructions or summary of what students should read/watch..."
                                     value={newContentDesc}
                                     onChange={(e) => setNewContentDesc(e.target.value)}
-                                    rows={3}
+                                    rows={2}
                                 />
                             </div>
-                        </div>
 
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsAddContentOpen(false)}>
-                                Cancel
-                            </Button>
-                            <Button type="submit" disabled={actionLoading || !newContentTitle.trim()} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-                                {actionLoading ? "Saving..." : "Add to Batch"}
-                            </Button>
-                        </DialogFooter>
-                    </form>
+                            <DialogFooter className="pt-2">
+                                <Button type="button" variant="outline" onClick={() => setIsAddContentOpen(false)}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" disabled={actionLoading || !newContentTitle.trim()} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                                    {actionLoading ? "Saving..." : "Add to Batch"}
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    )}
                 </DialogContent>
             </Dialog>
 

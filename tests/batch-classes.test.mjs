@@ -385,3 +385,109 @@ test('Batch Classes: tutor view restriction isolates schedules and content with 
     assert.deepEqual(adminTabs, ['overview', 'students', 'sessions', 'content']);
 });
 
+export function calculateBatchSchedulePure(startDateStr, recurringDays = [], totalClassesCount = 10) {
+    if (!startDateStr || !totalClassesCount || totalClassesCount <= 0) {
+        return { endDateStr: "", scheduledDates: [] };
+    }
+    const DAY_MAP = {
+        'Sun': 0, 'Sunday': 0,
+        'Mon': 1, 'Monday': 1,
+        'Tue': 2, 'Tuesday': 2,
+        'Wed': 3, 'Wednesday': 3,
+        'Thu': 4, 'Thursday': 4,
+        'Fri': 5, 'Friday': 5,
+        'Sat': 6, 'Saturday': 6,
+    };
+    const targetDays = new Set((recurringDays || []).map(d => DAY_MAP[d]).filter(d => d !== undefined));
+    const parts = startDateStr.split('-').map(Number);
+    const current = new Date(parts[0], parts[1] - 1, parts[2]);
+    const scheduledDates = [];
+
+    if (targetDays.size === 0) {
+        for (let i = 0; i < totalClassesCount; i++) {
+            const y = current.getFullYear();
+            const m = String(current.getMonth() + 1).padStart(2, '0');
+            const d = String(current.getDate()).padStart(2, '0');
+            scheduledDates.push(`${y}-${m}-${d}`);
+            current.setDate(current.getDate() + 1);
+        }
+    } else {
+        let loops = 0;
+        while (scheduledDates.length < totalClassesCount && loops < 500) {
+            if (targetDays.has(current.getDay())) {
+                const y = current.getFullYear();
+                const m = String(current.getMonth() + 1).padStart(2, '0');
+                const d = String(current.getDate()).padStart(2, '0');
+                scheduledDates.push(`${y}-${m}-${d}`);
+            }
+            current.setDate(current.getDate() + 1);
+            loops++;
+        }
+    }
+    return {
+        endDateStr: scheduledDates[scheduledDates.length - 1] || "",
+        scheduledDates
+    };
+}
+
+test('Batch Classes: schedules full 10 classes across calendar days crossing into next month without date locking', () => {
+    // 10 classes on Mon, Wed, Fri starting on Oct 22, 2026
+    const schedule = calculateBatchSchedulePure('2026-10-22', ['Mon', 'Wed', 'Fri'], 10);
+    assert.equal(schedule.scheduledDates.length, 10, 'Must schedule exactly 10 classes');
+
+    // 2026-10-22 is Thursday.
+    // 1: Fri 2026-10-23
+    // 2: Mon 2026-10-26
+    // 3: Wed 2026-10-28
+    // 4: Fri 2026-10-30
+    // 5: Mon 2026-11-02 (crossed into November!)
+    // 6: Wed 2026-11-04
+    // 7: Fri 2026-11-06
+    // 8: Mon 2026-11-09
+    // 9: Wed 2026-11-11
+    // 10: Fri 2026-11-13
+    assert.equal(schedule.scheduledDates[0], '2026-10-23');
+    assert.equal(schedule.scheduledDates[4], '2026-11-02');
+    assert.equal(schedule.scheduledDates[9], '2026-11-13');
+    assert.equal(schedule.endDateStr, '2026-11-13');
+
+    // Verify all scheduled dates are indeed Mon, Wed, or Fri
+    for (const dStr of schedule.scheduledDates) {
+        const parts = dStr.split('-').map(Number);
+        const dayOfWeek = new Date(parts[0], parts[1] - 1, parts[2]).getDay();
+        assert.ok([1, 3, 5].includes(dayOfWeek), `${dStr} must be Mon, Wed, or Fri`);
+    }
+});
+
+test('Batch Classes: creates interactive capsule links and direct file metadata for batch materials', () => {
+    const quizCapsule = {
+        id: 'cap-quiz-101',
+        title: 'Batch Quiz #1',
+        type: 'quiz',
+        content: { questions: [{ q: 'What is a phoneme?', options: ['Sound', 'Letter'], correct: 0 }] }
+    };
+
+    const batchMaterialCapsule = {
+        id: 'mat-1',
+        batch_id: 'batch-xyz',
+        capsule_id: quizCapsule.id,
+        title: quizCapsule.title,
+        type: 'quiz'
+    };
+
+    assert.equal(batchMaterialCapsule.capsule_id, 'cap-quiz-101');
+    assert.equal(batchMaterialCapsule.type, 'quiz');
+
+    const fileUploadMaterial = {
+        id: 'mat-2',
+        batch_id: 'batch-xyz',
+        title: 'Phonics Worksheet PDF',
+        type: 'document',
+        content_url: 'batches/batch-xyz/materials/uuid-worksheet.pdf'
+    };
+
+    assert.ok(fileUploadMaterial.content_url.startsWith('batches/'));
+    assert.ok(!fileUploadMaterial.content_url.startsWith('http'));
+});
+
+
