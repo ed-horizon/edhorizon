@@ -2,13 +2,18 @@ import { getStudentDashboardData, getCurrentProfile } from "@/app/(dashboard)/at
 import { StudentDashboardClient } from "@/components/features/student/StudentDashboardClient";
 import { getStudentPayments } from "@/app/(dashboard)/payments/actions";
 import { getStudentAssignedCapsules } from "@/app/(dashboard)/student/learn/actions";
+import { getStudentEnrolledBatches } from "@/app/(dashboard)/batches/actions";
 
 export default async function StudentDashboard() {
-    const profile = await getCurrentProfile();
-    const data = await getStudentDashboardData();
+    const [profile, data, payments, assignedCapsules, enrolledBatches] = await Promise.all([
+        getCurrentProfile(),
+        getStudentDashboardData(),
+        getStudentPayments(),
+        getStudentAssignedCapsules(),
+        getStudentEnrolledBatches()
+    ]);
+
     const studentName = profile?.full_name || "Student";
-    const payments = await getStudentPayments();
-    const assignedCapsules = await getStudentAssignedCapsules();
 
     return (
         <div className="p-8 md:p-12 max-w-[1600px] mx-auto">
@@ -29,6 +34,7 @@ export default async function StudentDashboard() {
                 activeSchedule={data.activeSchedule}
                 activeSchedules={data.activeSchedules || []}
                 assignedCapsules={assignedCapsules || []}
+                enrolledBatches={enrolledBatches || []}
             />
         </div>
     );
