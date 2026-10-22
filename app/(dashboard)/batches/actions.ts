@@ -24,7 +24,10 @@ export interface BatchSummary {
     capacity: number;
     start_date: string;
     end_date: string | null;
-    schedule_description: string;
+    schedule_description: string | null;
+    recurring_days?: string[] | null;
+    session_time?: string | null;
+    session_duration_minutes?: number | null;
     meeting_link: string | null;
     status: BatchStatus;
     agreed_tutor_payout: number;
@@ -124,7 +127,10 @@ export async function getBatches(filters?: { status?: string; teacherId?: string
             capacity: b.capacity,
             start_date: b.start_date,
             end_date: b.end_date,
-            schedule_description: b.schedule_description,
+            schedule_description: b.schedule_description || null,
+            recurring_days: b.recurring_days || null,
+            session_time: b.session_time || null,
+            session_duration_minutes: b.session_duration_minutes || 60,
             meeting_link: b.meeting_link,
             status: b.status,
             agreed_tutor_payout: Number(b.agreed_tutor_payout || 0),
@@ -185,8 +191,7 @@ export async function getBatchById(batchId: string) {
                 id,
                 full_name,
                 email,
-                avatar_url,
-                student_details!student_details_id_fkey(phone, enrollment_status, custom_student_id)
+                student_details!student_details_id_fkey(status, grade_level, parent_email, custom_student_id)
             )
         `)
         .eq('batch_id', batchId)
@@ -260,9 +265,9 @@ export async function getBatchById(batchId: string) {
                 id: e.student?.id,
                 full_name: e.student?.full_name || 'Student',
                 email: e.student?.email || '',
-                avatar_url: e.student?.avatar_url || null,
-                phone: sd?.phone || '',
-                enrollment_status: sd?.enrollment_status || 'active',
+                parent_email: sd?.parent_email || '',
+                status: sd?.status || 'active',
+                grade_level: sd?.grade_level || '',
                 custom_student_id: sd?.custom_student_id || null,
             }
         };
@@ -324,6 +329,81 @@ export async function getBatchById(batchId: string) {
 }
 
 /**
+ * Helper to auto-generate session slots on selected calendar days
+ */
+async function autoGenerateBatchSessions(
+    batchId: string,
+    config: {
+        startDate: string;
+        endDate: string | null;
+        recurringDays: string[];
+        sessionTime: string;
+        durationMinutes: number;
+        meetingLink: string | null;
+        userId: string;
+    }
+) {
+    const admin = getAdmin() || await createClient();
+    const DAY_MAP: Record<string, number> = {
+        'Sun': 0, 'Sunday': 0,
+        'Mon': 1, 'Monday': 1,
+        'Tue': 2, 'Tuesday': 2,
+        'Wed': 3, 'Wednesday': 3,
+        'Thu': 4, 'Thursday': 4,
+        'Fri': 5, 'Friday': 5,
+        'Sat': 6, 'Saturday': 6,
+    };
+
+    const targetDays = new Set(config.recurringDays.map(d => DAY_MAP[d]).filter(d => d !== undefined));
+    if (targetDays.size === 0) return;
+
+    const start = new Date(config.startDate + 'T00:00:00');
+    // If no end date provided, generate 4 weeks of sessions (28 days)
+    const end = config.endDate 
+        ? new Date(config.endDate + 'T23:59:59')
+        : new Date(start.getTime() + 28 * 24 * 60 * 60 * 1000);
+
+    const timeParts = config.sessionTime.split(':');
+    const hours = parseInt(timeParts[0] || '18', 10);
+    const minutes = parseInt(timeParts[1] || '0', 10);
+
+    const sessionPayloads = [];
+    const current = new Date(start);
+    let sessionNumber = 1;
+    const MAX_SESSIONS = 60; // safe upper bound
+
+    while (current <= end && sessionPayloads.length < MAX_SESSIONS) {
+        if (targetDays.has(current.getDay())) {
+            const scheduledAt = new Date(current);
+            scheduledAt.setHours(hours, minutes, 0, 0);
+
+            sessionPayloads.push({
+                batch_id: batchId,
+                session_number: sessionNumber,
+                title: `Session #${sessionNumber}`,
+                scheduled_at: scheduledAt.toISOString(),
+                duration_minutes: config.durationMinutes,
+                meeting_link: config.meetingLink,
+                status: 'scheduled',
+                conducted_by: config.userId,
+            });
+            sessionNumber++;
+        }
+        current.setDate(current.getDate() + 1);
+    }
+
+    if (sessionPayloads.length > 0) {
+        const { error } = await admin
+            .from('batch_sessions')
+            .insert(sessionPayloads);
+
+        if (error) {
+            console.error("Failed to bulk insert generated sessions:", error);
+        }
+    }
+}
+
+/**
  * Create a new Batch
  */
 export async function createBatch(data: {
@@ -334,7 +414,11 @@ export async function createBatch(data: {
     capacity?: number;
     start_date: string;
     end_date?: string | null;
-    schedule_description: string;
+    schedule_description?: string | null;
+    recurring_days?: string[];
+    session_time?: string;
+    session_duration_minutes?: number;
+    auto_generate_sessions?: boolean;
     meeting_link?: string | null;
     default_course_fee?: number;
     agreed_tutor_payout?: number;
@@ -348,7 +432,13 @@ export async function createBatch(data: {
     if (!data.name?.trim()) return { success: false, error: "Batch name is required." };
     if (!data.course_name?.trim()) return { success: false, error: "Course name is required." };
     if (!data.start_date) return { success: false, error: "Start date is required." };
-    if (!data.schedule_description?.trim()) return { success: false, error: "Schedule description is required." };
+
+    let scheduleDesc = data.schedule_description?.trim() || "";
+    if (!scheduleDesc && data.recurring_days && data.recurring_days.length > 0) {
+        const timeStr = data.session_time ? ` at ${data.session_time}` : "";
+        const durStr = data.session_duration_minutes ? ` (${data.session_duration_minutes} mins)` : "";
+        scheduleDesc = `${data.recurring_days.join(', ')}${timeStr}${durStr}`;
+    }
 
     const admin = getAdmin() || await createClient();
 
@@ -360,7 +450,10 @@ export async function createBatch(data: {
         capacity: Number(data.capacity || 20),
         start_date: data.start_date,
         end_date: data.end_date || null,
-        schedule_description: data.schedule_description.trim(),
+        schedule_description: scheduleDesc || null,
+        recurring_days: data.recurring_days && data.recurring_days.length > 0 ? data.recurring_days : null,
+        session_time: data.session_time || null,
+        session_duration_minutes: Number(data.session_duration_minutes || 60),
         meeting_link: data.meeting_link?.trim() || null,
         default_course_fee: Number(data.default_course_fee || 0),
         agreed_tutor_payout: Number(data.agreed_tutor_payout || 0),
@@ -380,6 +473,23 @@ export async function createBatch(data: {
         return { success: false, error: error.message };
     }
 
+    // Auto-generate session records if requested and recurring days are selected
+    if (data.auto_generate_sessions && data.recurring_days && data.recurring_days.length > 0) {
+        try {
+            await autoGenerateBatchSessions(created.id, {
+                startDate: data.start_date,
+                endDate: data.end_date || null,
+                recurringDays: data.recurring_days,
+                sessionTime: data.session_time || "18:00",
+                durationMinutes: Number(data.session_duration_minutes || 60),
+                meetingLink: data.meeting_link?.trim() || null,
+                userId: user.id
+            });
+        } catch (genErr) {
+            console.error("autoGenerateBatchSessions non-fatal error:", genErr);
+        }
+    }
+
     revalidatePath('/batches');
     return { success: true, batchId: created.id };
 }
@@ -395,7 +505,10 @@ export async function updateBatch(batchId: string, data: Partial<{
     capacity: number;
     start_date: string;
     end_date: string | null;
-    schedule_description: string;
+    schedule_description: string | null;
+    recurring_days: string[] | null;
+    session_time: string | null;
+    session_duration_minutes: number | null;
     meeting_link: string | null;
     status: BatchStatus;
     default_course_fee: number;
@@ -595,7 +708,7 @@ export async function updateBatchEnrollmentFee(
  * Create a batch session
  */
 export async function createBatchSession(batchId: string, data: {
-    title: string;
+    title?: string;
     scheduled_at: string;
     duration_minutes?: number;
     meeting_link?: string | null;
@@ -627,13 +740,14 @@ export async function createBatchSession(batchId: string, data: {
         .eq('batch_id', batchId);
 
     const nextNumber = (count || 0) + 1;
+    const finalTitle = data.title?.trim() || `Session #${nextNumber}`;
 
     const { error } = await admin
         .from('batch_sessions')
         .insert({
             batch_id: batchId,
             session_number: nextNumber,
-            title: data.title.trim(),
+            title: finalTitle,
             scheduled_at: data.scheduled_at,
             duration_minutes: Number(data.duration_minutes || 60),
             meeting_link: data.meeting_link?.trim() || null,
@@ -836,8 +950,9 @@ export async function getAvailableStudentsForBatch(batchId: string) {
             full_name,
             email,
             student_details!student_details_id_fkey(
-                phone,
-                enrollment_status,
+                status,
+                grade_level,
+                parent_email,
                 custom_student_id
             )
         `)
@@ -855,8 +970,9 @@ export async function getAvailableStudentsForBatch(batchId: string) {
             id: s.id,
             full_name: s.full_name || 'Student',
             email: s.email || '',
-            phone: sd?.phone || '',
-            enrollment_status: sd?.enrollment_status || 'active',
+            parent_email: sd?.parent_email || '',
+            status: sd?.status || 'active',
+            grade_level: sd?.grade_level || '',
             custom_student_id: sd?.custom_student_id || null,
             is_already_enrolled: enrolledIds.has(s.id)
         };
