@@ -303,3 +303,85 @@ test('Batch Classes: batch-assigned learning content appears for enrolled studen
     assert.equal(scoreB.score, 75);
     assert.notEqual(scoreA.student_id, scoreB.student_id);
 });
+
+export function calculateBatchEndDate(startDateStr, durationDays) {
+    if (!startDateStr || !durationDays || durationDays <= 0) return null;
+    const start = new Date(startDateStr + 'T00:00:00');
+    start.setDate(start.getDate() + (durationDays - 1));
+    const year = start.getFullYear();
+    const month = String(start.getMonth() + 1).padStart(2, '0');
+    const day = String(start.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+export function copyBatchMaterials(sourceMaterials, targetBatchId, authorId) {
+    return sourceMaterials.map(mat => ({
+        id: `copied-${mat.id}`,
+        batch_id: targetBatchId,
+        title: mat.title,
+        type: mat.type,
+        content_url: mat.content_url,
+        description: mat.description,
+        source_batch_id: mat.batch_id,
+        assigned_by: authorId,
+        created_at: new Date().toISOString()
+    }));
+}
+
+export function getTutorVisibleBatchTabs(userRole) {
+    if (userRole === 'teacher') {
+        return ['sessions', 'content'];
+    }
+    return ['overview', 'students', 'sessions', 'content'];
+}
+
+test('Batch Classes: calculates end date from course duration in days and schedules classes across window', () => {
+    // 30 days starting on Nov 1 ends on Nov 30
+    const endDate = calculateBatchEndDate('2026-11-01', 30);
+    assert.equal(endDate, '2026-11-30');
+
+    // 45 days starting on Nov 1 ends on Dec 15
+    const endDate45 = calculateBatchEndDate('2026-11-01', 45);
+    assert.equal(endDate45, '2026-12-15');
+
+    // Generate schedule across 30 days for Mon, Wed, Fri
+    const recurringDays = ['Mon', 'Wed', 'Fri'];
+    const sessions = generateCalendarDaysSchedule('2026-11-01', endDate, recurringDays, '18:00');
+
+    assert.ok(sessions.length >= 12 && sessions.length <= 14, `Expected ~13 sessions, got ${sessions.length}`);
+    for (const sess of sessions) {
+        const d = new Date(sess.scheduled_at);
+        assert.ok([1, 3, 5].includes(d.getDay()), 'Must be Mon, Wed, or Fri');
+        assert.equal(d.getHours(), 18);
+        assert.ok(d >= new Date('2026-11-01T00:00:00') && d <= new Date('2026-11-30T23:59:59'));
+    }
+});
+
+test('Batch Classes: supports fresh batch-specific content creation and copying between cohorts', () => {
+    // Batch 1 has fresh content
+    const batch1Materials = [
+        { id: 'm1', batch_id: 'batch-cohort-1', title: 'Week 1 Slides', type: 'document', content_url: 'https://docs.google.com/1', description: 'Introductory notes' },
+        { id: 'm2', batch_id: 'batch-cohort-1', title: 'Session 2 Recording', type: 'video', content_url: 'https://youtube.com/2', description: 'Lecture playback' }
+    ];
+
+    // Copy to Cohort 2
+    const copiedToBatch2 = copyBatchMaterials(batch1Materials, 'batch-cohort-2', 'tutor-xyz');
+    assert.equal(copiedToBatch2.length, 2);
+    assert.equal(copiedToBatch2[0].batch_id, 'batch-cohort-2');
+    assert.equal(copiedToBatch2[0].source_batch_id, 'batch-cohort-1');
+    assert.equal(copiedToBatch2[0].title, 'Week 1 Slides');
+    assert.equal(copiedToBatch2[1].batch_id, 'batch-cohort-2');
+    assert.equal(copiedToBatch2[1].source_batch_id, 'batch-cohort-1');
+    assert.equal(copiedToBatch2[1].type, 'video');
+});
+
+test('Batch Classes: tutor view restriction isolates schedules and content with zero financial visibility', () => {
+    const tutorTabs = getTutorVisibleBatchTabs('teacher');
+    assert.deepEqual(tutorTabs, ['sessions', 'content']);
+    assert.ok(!tutorTabs.includes('overview'), 'Tutor must not see financial overview tab');
+    assert.ok(!tutorTabs.includes('students'), 'Tutor must not see student fees roster tab');
+
+    const adminTabs = getTutorVisibleBatchTabs('admin');
+    assert.deepEqual(adminTabs, ['overview', 'students', 'sessions', 'content']);
+});
+

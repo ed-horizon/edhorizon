@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getBatchById, getAvailableStudentsForBatch, getAvailableCapsulesForBatch, getTutorsList } from "../actions";
+import { getBatchById, getAvailableStudentsForBatch, getBatchesWithContent, getTutorsList } from "../actions";
 import BatchDetailClient from "@/components/features/batches/BatchDetailClient";
 
 export const metadata = {
@@ -14,10 +14,10 @@ interface BatchDetailPageProps {
 export default async function BatchDetailPage({ params }: BatchDetailPageProps) {
     const { id } = await params;
 
-    const [batch, availableStudents, availableCapsules, tutors] = await Promise.all([
+    const [batch, availableStudents, batchesWithContent, tutors] = await Promise.all([
         getBatchById(id),
         getAvailableStudentsForBatch(id),
-        getAvailableCapsulesForBatch(id),
+        getBatchesWithContent(id),
         getTutorsList()
     ]);
 
@@ -30,7 +30,7 @@ export default async function BatchDetailPage({ params }: BatchDetailPageProps) 
             <BatchDetailClient 
                 batch={batch}
                 availableStudents={availableStudents}
-                availableCapsules={availableCapsules}
+                batchesWithContent={batchesWithContent}
                 tutors={tutors}
             />
         </div>

@@ -18,12 +18,6 @@ export default async function TeacherClassesPage() {
                         Manage and launch all scheduled sessions for your students.
                     </p>
                 </div>
-                <Link href="/batches">
-                    <Button variant="outline" className="gap-2 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40">
-                        <Layers size={16} />
-                        View Cohort Batch Classes →
-                    </Button>
-                </Link>
             </div>
             <TeacherLiveClasses classes={liveClasses} />
         </div>
