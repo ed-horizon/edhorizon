@@ -26,15 +26,19 @@ interface QuizInterfaceProps {
     content: {
         questions: Question[];
     };
+    attemptNumber?: number;
+    bestScoreSoFar?: number | null;
 }
 
-export function QuizInterface({ capsuleId, title, content }: QuizInterfaceProps) {
+export function QuizInterface({ capsuleId, title, content, attemptNumber = 1, bestScoreSoFar = null }: QuizInterfaceProps) {
     const [currentStep, setCurrentStep] = useState(0)
     const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null)
     const [isAnswered, setIsAnswered] = useState(false)
     const [score, setScore] = useState(0)
     const [isFinished, setIsFinished] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
+    const [currentAttempt, setCurrentAttempt] = useState(attemptNumber)
+    const [finalBestScore, setFinalBestScore] = useState<number | null>(bestScoreSoFar)
 
     const questions = content.questions || [];
     const totalSteps = questions.length;
@@ -59,7 +63,13 @@ export function QuizInterface({ capsuleId, title, content }: QuizInterfaceProps)
         } else {
             setIsSaving(true);
             try {
-                await saveQuizResult(capsuleId, score, totalSteps);
+                const res = await saveQuizResult(capsuleId, score, totalSteps);
+                if (res && res.bestScore !== undefined) {
+                    setFinalBestScore(res.bestScore);
+                } else {
+                    const currentPct = totalSteps > 0 ? Math.round((score / totalSteps) * 100) : 100;
+                    setFinalBestScore(prev => Math.max(prev || 0, currentPct));
+                }
                 setIsFinished(true);
             } catch (error) {
                 console.error("Failed to save result", error);
@@ -69,6 +79,15 @@ export function QuizInterface({ capsuleId, title, content }: QuizInterfaceProps)
             }
         }
     }
+
+    const handleRetakeSecondAttempt = () => {
+        setCurrentAttempt(2);
+        setCurrentStep(0);
+        setSelectedOptionId(null);
+        setIsAnswered(false);
+        setScore(0);
+        setIsFinished(false);
+    };
 
     if (totalSteps === 0) {
         return (
@@ -83,42 +102,64 @@ export function QuizInterface({ capsuleId, title, content }: QuizInterfaceProps)
 
     if (isFinished) {
         const percentage = Math.round((score / totalSteps) * 100);
+        const recordedBest = finalBestScore !== null ? finalBestScore : Math.max(bestScoreSoFar || 0, percentage);
+        const isFinalAttempt = currentAttempt >= 2;
+
         return (
-            <div className="max-w-2xl mx-auto text-center space-y-12 animate-in fade-in zoom-in duration-500">
+            <div className="max-w-2xl mx-auto text-center space-y-8 animate-in fade-in zoom-in duration-500">
                 <div className="space-y-4">
                     <div className="inline-block p-6 bg-indigo-600 rounded-[2.5rem] text-white shadow-2xl">
                         <Trophy size={64} />
                     </div>
-                    <h2 className="text-4xl font-serif font-bold">Quiz Complete!</h2>
-                    <p className="text-muted-foreground italic">Amazing work on mastering {title}.</p>
+                    <div className="flex items-center justify-center gap-2">
+                        <span className="text-[11px] font-mono font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                            Attempt {currentAttempt} of 2 {isFinalAttempt ? "(Final Attempt Completed)" : ""}
+                        </span>
+                    </div>
+                    <h2 className="text-4xl font-serif font-bold">
+                        {isFinalAttempt ? "Quiz Completed!" : "Attempt 1 Complete!"}
+                    </h2>
+                    <p className="text-muted-foreground italic max-w-md mx-auto">
+                        {isFinalAttempt 
+                            ? `You have completed all 2 attempts for ${title}. Your best score of ${recordedBest}% has been saved.`
+                            : `Great job on your first attempt for ${title}! You have 1 final attempt remaining to improve your score.`
+                        }
+                    </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
-                    <div className="bg-card border border-border/40 rounded-[2rem] p-8 shadow-sm">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Final Score</p>
-                        <p className="text-4xl font-bold">{score} / {totalSteps}</p>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-card border border-border/40 rounded-[2rem] p-6 shadow-sm">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">
+                            Attempt {currentAttempt} Score
+                        </p>
+                        <p className="text-3xl font-bold">{score} / {totalSteps} ({percentage}%)</p>
                     </div>
-                    <div className="bg-indigo-50 border border-indigo-100 rounded-[2rem] p-8 shadow-sm">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mb-1">Mastery</p>
-                        <p className="text-4xl font-bold text-indigo-700">{percentage}%</p>
+                    <div className="bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 rounded-[2rem] p-6 shadow-sm">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-1">
+                            Recorded Best Score
+                        </p>
+                        <p className="text-3xl font-bold text-indigo-700 dark:text-indigo-300">{recordedBest}%</p>
                     </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
                     <Link href="/student/learn" className="w-full sm:w-auto">
-                        <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-14 px-10 font-black uppercase tracking-widest text-xs gap-3">
+                        <Button className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-14 px-8 font-black uppercase tracking-widest text-xs gap-3">
                             Back to Journey
                             <ArrowRight size={18} />
                         </Button>
                     </Link>
-                    <Button
-                        variant="outline"
-                        onClick={() => window.location.reload()}
-                        className="w-full sm:w-auto border-indigo-600 text-indigo-600 rounded-2xl h-14 px-10 font-black uppercase tracking-widest text-xs gap-3"
-                    >
-                        <RefreshCcw size={18} />
-                        Try Again
-                    </Button>
+
+                    {!isFinalAttempt && (
+                        <Button
+                            variant="outline"
+                            onClick={handleRetakeSecondAttempt}
+                            className="w-full sm:w-auto border-indigo-600 text-indigo-600 dark:text-indigo-400 rounded-2xl h-14 px-8 font-black uppercase tracking-widest text-xs gap-3"
+                        >
+                            <RefreshCcw size={18} />
+                            Retake (Attempt 2 of 2)
+                        </Button>
+                    )}
                 </div>
             </div>
         )

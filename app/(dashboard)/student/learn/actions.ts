@@ -47,7 +47,7 @@ export async function getStudentCourses() {
                 *,
                 capsules (
                     *,
-                    quiz_completions (score, student_id)
+                    quiz_completions (score, best_score, attempts_count, student_id)
                 )
             )
         `)
@@ -79,7 +79,9 @@ export async function getStudentCourses() {
             const totalCapsules = studentCapsules.length;
             const completedCapsules = studentCapsules.filter((c: any) => {
                 const userCompletions = (c.quiz_completions || []).filter((qc: any) => String(qc.student_id).trim() === String(user.id).trim());
-                return userCompletions.length > 0 || c.type === 'video';
+                const comp = userCompletions[0];
+                const attemptsCount = comp ? Number(comp.attempts_count || 1) : 0;
+                return c.type === 'video' ? Boolean(comp) : attemptsCount >= 2;
             }).length;
 
             return {
@@ -148,6 +150,8 @@ export async function getStudentAssignedCapsules(studentId?: string) {
             quiz_completions (
                 id,
                 score,
+                best_score,
+                attempts_count,
                 completed_at,
                 student_id
             )
@@ -171,8 +175,11 @@ export async function getStudentAssignedCapsules(studentId?: string) {
 
     return assigned.map(c => {
         const userCompletions = (c.quiz_completions || []).filter((qc: any) => String(qc.student_id).trim() === String(targetUserId).trim());
-        const isCompleted = userCompletions.length > 0 || c.type === 'video';
-        const bestScore = userCompletions.reduce((max: number, qc: any) => Math.max(max, Number(qc.score || 0)), 0);
+        const completion = userCompletions[0];
+        const attemptsCount = completion ? Number(completion.attempts_count || 1) : 0;
+        const bestScore = completion ? Number(completion.best_score ?? completion.score ?? 0) : null;
+        const isCompleted = c.type === 'video' ? Boolean(completion) : (attemptsCount >= 2);
+        const canAttempt = c.type === 'video' ? true : (attemptsCount < 2);
 
         return {
             id: c.id,
@@ -184,7 +191,10 @@ export async function getStudentAssignedCapsules(studentId?: string) {
             topic_title: c.topic?.title || "General Study",
             course_title: c.topic?.course?.title || "General Course",
             is_completed: isCompleted,
-            score: userCompletions.length > 0 ? bestScore : null,
+            attempts_count: attemptsCount,
+            can_attempt: canAttempt,
+            best_score: bestScore,
+            score: bestScore,
             content: c.content
         };
     });
@@ -256,28 +266,119 @@ export async function saveQuizResult(capsuleId: string, score: number, totalQues
 
     const adminSupabase = createAdminClient();
 
+    // 1. Fetch existing completion record
+    const { data: existing } = await adminSupabase
+        .from('quiz_completions')
+        .select('id, attempts_count, best_score, score, attempt_history')
+        .eq('student_id', user.id)
+        .eq('capsule_id', capsuleId)
+        .maybeSingle();
+
+    const currentAttempts = existing ? Number(existing.attempts_count || 1) : 0;
+
+    // Strict limit: 2 attempts only
+    if (currentAttempts >= 2) {
+        return {
+            success: false,
+            error: "Maximum attempts (2) reached for this capsule.",
+            isMaxAttempts: true,
+            attemptsCount: currentAttempts,
+            bestScore: Number(existing?.best_score ?? existing?.score ?? 0)
+        };
+    }
+
     // Calculate percentage score (0-100%) if raw correct count was passed
     const percentageScore = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 100;
+    const newAttemptNumber = currentAttempts + 1;
+    const currentBest = existing ? Number(existing.best_score ?? existing.score ?? 0) : 0;
+    const newBestScore = existing ? Math.max(currentBest, percentageScore) : percentageScore;
 
-    const { error } = await adminSupabase
-        .from('quiz_completions')
-        .upsert({
-            student_id: user.id,
-            capsule_id: capsuleId,
-            score: percentageScore,
-            total_questions: totalQuestions,
-            completed_at: new Date().toISOString()
-        }, {
-            onConflict: 'student_id,capsule_id'
-        });
+    const newAttemptItem = {
+        attempt_number: newAttemptNumber,
+        score: percentageScore,
+        raw_score: score,
+        total_questions: totalQuestions,
+        completed_at: new Date().toISOString()
+    };
 
-    if (error) throw error;
+    const existingHistory = (existing && Array.isArray(existing.attempt_history)) ? existing.attempt_history : [];
+    const updatedHistory = [...existingHistory, newAttemptItem];
+
+    if (existing) {
+        const { error } = await adminSupabase
+            .from('quiz_completions')
+            .update({
+                score: newBestScore,
+                best_score: newBestScore,
+                attempts_count: newAttemptNumber,
+                attempt_history: updatedHistory,
+                total_questions: totalQuestions,
+                completed_at: new Date().toISOString()
+            })
+            .eq('id', existing.id);
+
+        if (error) throw error;
+    } else {
+        const { error } = await adminSupabase
+            .from('quiz_completions')
+            .insert({
+                student_id: user.id,
+                capsule_id: capsuleId,
+                score: percentageScore,
+                best_score: percentageScore,
+                attempts_count: 1,
+                attempt_history: [newAttemptItem],
+                total_questions: totalQuestions,
+                completed_at: new Date().toISOString()
+            });
+
+        if (error) throw error;
+    }
 
     // Award XP based on correct count or percentage
     const xpAwarded = (score * 10) + 5;
     await awardXPAndStreak(user.id, xpAwarded);
 
-    return { success: true, xpAwarded, score: percentageScore };
+    return { 
+        success: true, 
+        xpAwarded, 
+        score: percentageScore, 
+        bestScore: newBestScore, 
+        attemptsCount: newAttemptNumber,
+        isCompleted: newAttemptNumber >= 2 
+    };
+}
+
+export async function getCapsuleAttemptStatus(capsuleId: string, studentId?: string) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const targetUserId = studentId || user?.id;
+    if (!targetUserId) return null;
+
+    const adminSupabase = createAdminClient();
+    const { data } = await adminSupabase
+        .from('quiz_completions')
+        .select('id, score, best_score, attempts_count, attempt_history, completed_at')
+        .eq('student_id', targetUserId)
+        .eq('capsule_id', capsuleId)
+        .maybeSingle();
+
+    const attemptsCount = data ? Number(data.attempts_count || 1) : 0;
+    const bestScore = data ? Number(data.best_score ?? data.score ?? 0) : null;
+    const canAttempt = attemptsCount < 2;
+    const isCompleted = attemptsCount >= 2;
+
+    return {
+        hasAttempted: Boolean(data),
+        attemptsCount,
+        maxAttempts: 2,
+        canAttempt,
+        isCompleted,
+        bestScore,
+        lastScore: data?.score ?? null,
+        attemptHistory: Array.isArray(data?.attempt_history) ? data.attempt_history : [],
+        completedAt: data?.completed_at || null
+    };
 }
 
 export async function trackVideoCompletion(capsuleId: string) {
@@ -293,6 +394,8 @@ export async function trackVideoCompletion(capsuleId: string) {
             student_id: user.id,
             capsule_id: capsuleId,
             score: 100,
+            best_score: 100,
+            attempts_count: 1,
             total_questions: 1,
             completed_at: new Date().toISOString()
         }, {

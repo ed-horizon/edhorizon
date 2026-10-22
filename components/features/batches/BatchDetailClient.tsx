@@ -219,6 +219,9 @@ export default function BatchDetailClient({
     const [selectedSourceBatchId, setSelectedSourceBatchId] = useState("");
     const [selectedMaterialIdsToCopy, setSelectedMaterialIdsToCopy] = useState<string[]>([]);
 
+    // View Capsule Progress modal state
+    const [viewingCapsuleProgress, setViewingCapsuleProgress] = useState<any>(null);
+
     // General loading & error
     const [actionLoading, setActionLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -772,7 +775,20 @@ export default function BatchDetailClient({
 
             {/* Main Tabs Navigation */}
             <div className="flex border-b border-border/60 gap-2 pb-px overflow-x-auto [scrollbar-width:none]">
-                {!isTeacher && (
+                {isTeacher ? (
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab("students")}
+                        className={cn(
+                            "flex items-center gap-2 px-4 py-2.5 font-medium text-sm rounded-t-xl transition-all border-b-2 whitespace-nowrap",
+                            activeTab === "students"
+                                ? "border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/20"
+                                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                        )}
+                    >
+                        <Users className="h-4 w-4" /> Enrolled Students ({enrolledCount})
+                    </button>
+                ) : (
                     <>
                         <button
                             type="button"
@@ -941,12 +957,18 @@ export default function BatchDetailClient({
             )}
 
             {/* ================= TAB 2: ENROLLED STUDENTS & COURSE FEES ================= */}
-            {!isTeacher && activeTab === "students" && (
+            {activeTab === "students" && (
                 <div className="space-y-6 pt-2">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
-                            <h2 className="text-lg font-bold">Enrolled Students Roster</h2>
-                            <p className="text-xs text-muted-foreground">Active students enrolled in this batch and their one-time course fee status.</p>
+                            <h2 className="text-lg font-bold">
+                                {isTeacher ? "Enrolled Students" : "Enrolled Students Roster"}
+                            </h2>
+                            <p className="text-xs text-muted-foreground">
+                                {isTeacher 
+                                    ? "Students enrolled in this cohort batch."
+                                    : "Active students enrolled in this batch and their one-time course fee status."}
+                            </p>
                         </div>
 
                         {canManage && (
@@ -961,95 +983,132 @@ export default function BatchDetailClient({
                         )}
                     </div>
 
-                    {/* Students Table */}
-                    <div className="rounded-xl border border-border/60 bg-card/80 overflow-hidden shadow-sm">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground border-b border-border/40 font-semibold">
-                                    <tr>
-                                        <th className="py-3 px-4">Student</th>
-                                        <th className="py-3 px-4">Contact</th>
-                                        <th className="py-3 px-4">Course Fee</th>
-                                        <th className="py-3 px-4">Paid</th>
-                                        <th className="py-3 px-4">Fee Status</th>
-                                        <th className="py-3 px-4">Enrolled At</th>
-                                        {canManage && <th className="py-3 px-4 text-right">Actions</th>}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border/40">
-                                    {localEnrollments.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={canManage ? 7 : 6} className="py-8 text-center text-muted-foreground">
-                                                No students enrolled in this batch yet.
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        localEnrollments.map((enr: any) => (
-                                            <tr key={enr.id} className="hover:bg-muted/20 transition-colors">
-                                                <td className="py-3 px-4">
-                                                    <div className="font-medium text-foreground">{enr.student.full_name}</div>
-                                                    <div className="text-xs text-muted-foreground">{enr.student.email}</div>
-                                                </td>
-                                                <td className="py-3 px-4 text-xs text-muted-foreground">
-                                                    {enr.student.parent_email ? `Parent: ${enr.student.parent_email}` : (enr.student.grade_level || "—")}
-                                                </td>
-                                                <td className="py-3 px-4 font-mono font-medium">
-                                                    ₹{enr.course_fee.toLocaleString()}
-                                                </td>
-                                                <td className="py-3 px-4 font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                                                    ₹{enr.paid_amount.toLocaleString()}
-                                                </td>
-                                                <td className="py-3 px-4">
-                                                    {getFeeStatusBadge(enr.fee_status)}
-                                                </td>
-                                                <td className="py-3 px-4 text-xs text-muted-foreground">
-                                                    {new Date(enr.enrolled_at).toLocaleDateString()}
-                                                </td>
-                                                {canManage && (
-                                                    <td className="py-3 px-4 text-right">
-                                                        <div className="flex items-center justify-end gap-2">
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="sm" 
-                                                                onClick={() => setEditingEnrollment({ ...enr })}
-                                                                className="h-8 gap-1 text-xs"
-                                                            >
-                                                                <CreditCard className="h-3.5 w-3.5" />
-                                                                Fee
-                                                            </Button>
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="icon" 
-                                                                onClick={() => handleRemoveStudent(enr.student_id, enr.student.full_name)}
-                                                                className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                                                                title="Remove from batch"
-                                                            >
-                                                                <Trash2 className="h-3.5 w-3.5" />
-                                                            </Button>
-                                                        </div>
-                                                    </td>
-                                                )}
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
+                    {isTeacher ? (
+                        /* Tutor View: STRICT PRIVACY - ONLY student name and avatar initial (no email, contact, course fee, paid amount, fee status, or actions) */
+                        <div className="rounded-2xl border border-border/60 bg-card/80 overflow-hidden shadow-sm">
+                            <div className="p-4 border-b border-border/40 bg-muted/20 flex items-center justify-between">
+                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                    Enrolled Students ({localEnrollments.length})
+                                </span>
+                                <Badge variant="outline" className="text-xs font-mono">
+                                    {localEnrollments.length} / {batch.capacity} Students
+                                </Badge>
+                            </div>
+                            <div className="divide-y divide-border/40">
+                                {localEnrollments.length === 0 ? (
+                                    <div className="py-12 text-center text-muted-foreground text-sm">
+                                        No students enrolled in this batch yet.
+                                    </div>
+                                ) : (
+                                    localEnrollments.map((enr: any, idx: number) => (
+                                        <div key={enr.id || idx} className="py-4 px-6 flex items-center gap-4 hover:bg-muted/20 transition-colors">
+                                            <span className="text-xs font-mono font-bold text-muted-foreground w-6">
+                                                {idx + 1}.
+                                            </span>
+                                            <div className="h-10 w-10 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center text-sm shrink-0 border border-indigo-500/20">
+                                                {enr.student?.full_name ? enr.student.full_name.charAt(0).toUpperCase() : 'S'}
+                                            </div>
+                                            <div className="font-semibold text-foreground text-sm">
+                                                {enr.student?.full_name || "Unnamed Student"}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        /* Admin/Staff Students Table */
+                        <div className="rounded-xl border border-border/60 bg-card/80 overflow-hidden shadow-sm">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground border-b border-border/40 font-semibold">
+                                        <tr>
+                                            <th className="py-3 px-4">Student</th>
+                                            <th className="py-3 px-4">Contact</th>
+                                            <th className="py-3 px-4">Course Fee</th>
+                                            <th className="py-3 px-4">Paid</th>
+                                            <th className="py-3 px-4">Fee Status</th>
+                                            <th className="py-3 px-4">Enrolled At</th>
+                                            {canManage && <th className="py-3 px-4 text-right">Actions</th>}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/40">
+                                        {localEnrollments.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={canManage ? 7 : 6} className="py-8 text-center text-muted-foreground">
+                                                    No students enrolled in this batch yet.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            localEnrollments.map((enr: any) => (
+                                                <tr key={enr.id} className="hover:bg-muted/20 transition-colors">
+                                                    <td className="py-3 px-4">
+                                                        <div className="font-medium text-foreground">{enr.student.full_name}</div>
+                                                        <div className="text-xs text-muted-foreground">{enr.student.email}</div>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-xs text-muted-foreground">
+                                                        {enr.student.parent_email ? `Parent: ${enr.student.parent_email}` : (enr.student.grade_level || "—")}
+                                                    </td>
+                                                    <td className="py-3 px-4 font-mono font-medium">
+                                                        ₹{enr.course_fee.toLocaleString()}
+                                                    </td>
+                                                    <td className="py-3 px-4 font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                                                        ₹{enr.paid_amount.toLocaleString()}
+                                                    </td>
+                                                    <td className="py-3 px-4">
+                                                        {getFeeStatusBadge(enr.fee_status)}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-xs text-muted-foreground">
+                                                        {new Date(enr.enrolled_at).toLocaleDateString()}
+                                                    </td>
+                                                    {canManage && (
+                                                        <td className="py-3 px-4 text-right">
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                <Button 
+                                                                    variant="ghost" 
+                                                                    size="sm" 
+                                                                    onClick={() => setEditingEnrollment({ ...enr })}
+                                                                    className="h-8 gap-1 text-xs"
+                                                                >
+                                                                    <CreditCard className="h-3.5 w-3.5" />
+                                                                    Fee
+                                                                </Button>
+                                                                <Button 
+                                                                    variant="ghost" 
+                                                                    size="icon" 
+                                                                    onClick={() => handleRemoveStudent(enr.student_id, enr.student.full_name)}
+                                                                    className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                                                                    title="Remove from batch"
+                                                                >
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            </div>
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
             {/* ================= TAB 3: SESSIONS SCHEDULE & TRACKING ================= */}
             {activeTab === "sessions" && (
                 <div className="space-y-6 pt-2">
-                    {/* Notice Banner */}
-                    <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-900 dark:text-indigo-200 text-xs flex items-start gap-3">
-                        <Info className="h-4 w-4 shrink-0 mt-0.5 text-indigo-600 dark:text-indigo-400" />
-                        <div>
-                            <strong className="font-semibold block mb-0.5">Session Completion Tracking:</strong>
-                            Batch session status is for syllabus and class conduction tracking only. It does not mark individual student attendance, calculate attendance percentages, or affect tutor payroll. Batch tutor payments are fixed and managed manually via HR Payroll.
+                    {/* Notice Banner - Hidden on Tutor Dashboard */}
+                    {!isTeacher && (
+                        <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-900 dark:text-indigo-200 text-xs flex items-start gap-3">
+                            <Info className="h-4 w-4 shrink-0 mt-0.5 text-indigo-600 dark:text-indigo-400" />
+                            <div>
+                                <strong className="font-semibold block mb-0.5">Session Completion Tracking:</strong>
+                                Batch session status is for syllabus and class conduction tracking only. It does not mark individual student attendance, calculate attendance percentages, or affect tutor payroll. Batch tutor payments are fixed and managed manually via HR Payroll.
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
@@ -1283,23 +1342,85 @@ export default function BatchDetailClient({
                                             </p>
                                         )}
 
+                                        {/* Task Progress Summary for Capsule (Quizzes & Flashcards) */}
+                                        {item.capsule_id && item.progress_summary && (
+                                            <div className="p-3 rounded-xl bg-muted/40 border border-border/40 space-y-2">
+                                                <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <span className="font-semibold text-foreground text-[11px]">Task Progress:</span>
+                                                        <Badge variant="outline" className={cn(
+                                                            "text-[10px] font-bold px-2 py-0.5",
+                                                            item.progress_summary.completed_count === item.progress_summary.total_enrolled && item.progress_summary.total_enrolled > 0
+                                                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                                                : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30"
+                                                        )}>
+                                                            {item.progress_summary.completed_count} / {item.progress_summary.total_enrolled} Completed
+                                                        </Badge>
+                                                        {item.progress_summary.average_best_score !== null && (
+                                                            <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 text-[10px] font-bold px-2 py-0.5">
+                                                                Avg Best: {item.progress_summary.average_best_score}%
+                                                            </Badge>
+                                                        )}
+                                                        {item.progress_summary.pending_count > 0 && (
+                                                            <span className="text-muted-foreground text-[10px]">
+                                                                ({item.progress_summary.pending_count} pending)
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => setViewingCapsuleProgress(item)}
+                                                        className="h-7 text-xs gap-1 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 font-semibold px-2"
+                                                    >
+                                                        <Users className="h-3.5 w-3.5" />
+                                                        <span>View Results</span>
+                                                    </Button>
+                                                </div>
+
+                                                {/* Mini progress bar */}
+                                                <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                                                    <div 
+                                                        className="h-full bg-emerald-500 transition-all duration-300 rounded-full"
+                                                        style={{ 
+                                                            width: item.progress_summary.total_enrolled > 0 
+                                                                ? `${Math.round((item.progress_summary.completed_count / item.progress_summary.total_enrolled) * 100)}%` 
+                                                                : '0%' 
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+
                                         <div className="flex items-center justify-between pt-2 border-t border-border/40 text-[11px] text-muted-foreground">
                                             <span>
                                                 {item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Active'}
                                             </span>
 
                                             {item.capsule_id ? (
-                                                <a 
-                                                    href={`/student/learn/${item.capsule_id}`} 
-                                                    target="_blank" 
-                                                    rel="noopener noreferrer"
-                                                >
-                                                    <Button size="sm" className="h-7 text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm font-semibold">
-                                                        <Sparkles className="h-3 w-3" />
-                                                        <span>Play Capsule</span>
-                                                        <ExternalLink className="h-3 w-3 opacity-70" />
+                                                <div className="flex items-center gap-2">
+                                                    <Button 
+                                                        size="sm" 
+                                                        variant="outline"
+                                                        onClick={() => setViewingCapsuleProgress(item)}
+                                                        className="h-7 text-xs gap-1.5 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 font-semibold"
+                                                    >
+                                                        <Users className="h-3 w-3" />
+                                                        <span>Roster</span>
                                                     </Button>
-                                                </a>
+                                                    <a 
+                                                        href={`/student/learn/${item.capsule_id}`} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer"
+                                                    >
+                                                        <Button size="sm" className="h-7 text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm font-semibold">
+                                                            <Sparkles className="h-3 w-3" />
+                                                            <span>Preview Capsule</span>
+                                                            <ExternalLink className="h-3 w-3 opacity-70" />
+                                                        </Button>
+                                                    </a>
+                                                </div>
                                             ) : item.content_url ? (
                                                 item.content_url.startsWith('http://') || item.content_url.startsWith('https://') ? (
                                                     <a 
@@ -2477,6 +2598,132 @@ export default function BatchDetailClient({
                             className="bg-indigo-600 hover:bg-indigo-700 text-white"
                         >
                             {actionLoading ? "Copying..." : `Copy Selected (${selectedMaterialIdsToCopy.length}) Materials`}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ================= MODAL: VIEW CAPSULE STUDENT PROGRESS & RESULTS ================= */}
+            <Dialog open={Boolean(viewingCapsuleProgress)} onOpenChange={(open) => { if (!open) setViewingCapsuleProgress(null); }}>
+                <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-6 rounded-2xl">
+                    <DialogHeader>
+                        <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="outline" className="text-[10px] font-mono uppercase bg-indigo-500/10 text-indigo-600 border-indigo-500/20">
+                                {viewingCapsuleProgress?.type || 'Capsule'}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">Max 2 Attempts Limit • Best Score Recorded</span>
+                        </div>
+                        <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                            <Sparkles className="h-5 w-5 text-indigo-600" />
+                            <span>{viewingCapsuleProgress?.title}</span>
+                        </DialogTitle>
+                        <DialogDescription className="text-xs">
+                            Live completion roster for enrolled students in this batch. Only highest score across 2 attempts is recorded.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {viewingCapsuleProgress?.progress_summary && (
+                        <div className="space-y-4 my-2 flex-1 overflow-y-auto pr-1">
+                            {/* Summary Metric Cards */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                                <div className="p-3 rounded-xl bg-muted/40 border border-border/40">
+                                    <div className="text-[10px] uppercase font-bold text-muted-foreground">Enrolled</div>
+                                    <div className="text-2xl font-bold text-foreground mt-0.5">
+                                        {viewingCapsuleProgress.progress_summary.total_enrolled}
+                                    </div>
+                                </div>
+                                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                                    <div className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">Completed</div>
+                                    <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">
+                                        {viewingCapsuleProgress.progress_summary.completed_count}
+                                    </div>
+                                </div>
+                                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                                    <div className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400">In Progress</div>
+                                    <div className="text-2xl font-bold text-amber-700 dark:text-amber-300 mt-0.5">
+                                        {viewingCapsuleProgress.progress_summary.in_progress_count}
+                                    </div>
+                                </div>
+                                <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+                                    <div className="text-[10px] uppercase font-bold text-indigo-600 dark:text-indigo-400">Avg Best Score</div>
+                                    <div className="text-2xl font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">
+                                        {viewingCapsuleProgress.progress_summary.average_best_score !== null ? `${viewingCapsuleProgress.progress_summary.average_best_score}%` : '—'}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Enrolled Students Roster (Strictly Names Only for Tutors) */}
+                            <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
+                                <div className="p-3 bg-muted/40 border-b border-border/40 flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                    <span>Enrolled Student</span>
+                                    <span>Status & Best Result</span>
+                                </div>
+
+                                <div className="divide-y divide-border/40 max-h-72 overflow-y-auto">
+                                    {(viewingCapsuleProgress.progress_summary.roster || []).length === 0 ? (
+                                        <div className="p-6 text-center text-xs text-muted-foreground">
+                                            No enrolled students in this batch.
+                                        </div>
+                                    ) : (
+                                        viewingCapsuleProgress.progress_summary.roster.map((st: any, idx: number) => (
+                                            <div key={st.student_id || idx} className="p-3.5 flex items-center justify-between gap-3 text-xs hover:bg-muted/20 transition-colors">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="font-mono text-muted-foreground w-5 text-right font-bold text-[11px]">
+                                                        {idx + 1}.
+                                                    </span>
+                                                    <div className="h-8 w-8 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center text-xs shrink-0">
+                                                        {st.student_name ? st.student_name.charAt(0).toUpperCase() : 'S'}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-semibold text-foreground text-sm">
+                                                            {st.student_name}
+                                                        </div>
+                                                        {st.completed_at && (
+                                                            <div className="text-[10px] text-muted-foreground">
+                                                                Last active: {new Date(st.completed_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="text-right">
+                                                    {st.status === 'completed' ? (
+                                                        <div className="space-y-0.5">
+                                                            <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
+                                                                ✓ Completed • Best: {st.best_score}%
+                                                            </Badge>
+                                                            {st.attempt_history && st.attempt_history.length > 0 && (
+                                                                <div className="text-[10px] text-muted-foreground font-mono">
+                                                                    {st.attempt_history.map((a: any, i: number) => `A${a.attempt_number || i + 1}: ${a.score}%`).join(' | ')}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ) : st.status === 'in_progress' ? (
+                                                        <div className="space-y-0.5">
+                                                            <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[10px] font-bold">
+                                                                Attempt 1 Done ({st.best_score}%)
+                                                            </Badge>
+                                                            <div className="text-[10px] text-muted-foreground">
+                                                                1 attempt remaining
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <Badge variant="outline" className="bg-muted text-muted-foreground text-[10px]">
+                                                            Pending Task (0/2)
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter className="pt-2 border-t border-border/40">
+                        <Button type="button" variant="outline" onClick={() => setViewingCapsuleProgress(null)}>
+                            Close
                         </Button>
                     </DialogFooter>
                 </DialogContent>

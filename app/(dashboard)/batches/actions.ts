@@ -272,18 +272,97 @@ export async function getBatchById(batchId: string) {
         conducted_by_name: s.conducted_by_profile?.full_name || null,
     }));
 
-    const cleanContent = (assignedContent || []).map((item: any) => ({
-        id: item.id,
-        batch_id: item.batch_id,
-        capsule_id: item.capsule_id || null,
-        title: item.title || 'Batch Material',
-        type: item.type || 'document',
-        content_url: item.content_url || null,
-        description: item.description || null,
-        source_batch_id: item.source_batch_id || null,
-        created_at: item.created_at || item.assigned_at,
-        assigned_by: item.assigned_by || null,
-    }));
+    // Fetch completions for batch capsules and enrolled students
+    const batchStudentIds = cleanEnrollments.map((e: any) => e.student_id);
+    const batchCapsuleIds = (assignedContent || []).map((c: any) => c.capsule_id).filter(Boolean);
+
+    let batchCompletionsMap = new Map<string, any[]>();
+    if (batchCapsuleIds.length > 0 && batchStudentIds.length > 0) {
+        const { data: completions } = await admin
+            .from('quiz_completions')
+            .select('capsule_id, student_id, score, best_score, attempts_count, attempt_history, completed_at')
+            .in('capsule_id', batchCapsuleIds)
+            .in('student_id', batchStudentIds);
+
+        (completions || []).forEach((comp: any) => {
+            const list = batchCompletionsMap.get(comp.capsule_id) || [];
+            list.push(comp);
+            batchCompletionsMap.set(comp.capsule_id, list);
+        });
+    }
+
+    const cleanContent = (assignedContent || []).map((item: any) => {
+        let progress_summary = null;
+
+        if (item.capsule_id) {
+            const completionsForCapsule = batchCompletionsMap.get(item.capsule_id) || [];
+            const completionByStudent = new Map<string, any>();
+            completionsForCapsule.forEach((c: any) => {
+                completionByStudent.set(c.student_id, c);
+            });
+
+            let completedCount = 0;
+            let inProgressCount = 0;
+            let pendingCount = 0;
+            let totalBestScoreSum = 0;
+            let scoredCount = 0;
+
+            const roster = cleanEnrollments.map((enr: any) => {
+                const comp = completionByStudent.get(enr.student_id);
+                const attemptsCount = comp ? Number(comp.attempts_count || 1) : 0;
+                const bestScore = comp ? Number(comp.best_score ?? comp.score ?? 0) : null;
+                const isCompleted = item.type === 'video' ? Boolean(comp) : (attemptsCount >= 2);
+                const isInProgress = !isCompleted && attemptsCount === 1;
+
+                if (isCompleted) {
+                    completedCount++;
+                    if (bestScore !== null) {
+                        totalBestScoreSum += bestScore;
+                        scoredCount++;
+                    }
+                } else if (isInProgress) {
+                    inProgressCount++;
+                } else {
+                    pendingCount++;
+                }
+
+                return {
+                    student_id: enr.student_id,
+                    student_name: enr.student.full_name, // STRICT PRIVACY: only student name!
+                    status: isCompleted ? 'completed' : isInProgress ? 'in_progress' : 'pending',
+                    attempts_count: attemptsCount,
+                    best_score: bestScore,
+                    attempt_history: Array.isArray(comp?.attempt_history) ? comp.attempt_history : [],
+                    completed_at: comp?.completed_at || null
+                };
+            });
+
+            const avgScore = scoredCount > 0 ? Math.round(totalBestScoreSum / scoredCount) : null;
+
+            progress_summary = {
+                total_enrolled: cleanEnrollments.length,
+                completed_count: completedCount,
+                in_progress_count: inProgressCount,
+                pending_count: pendingCount,
+                average_best_score: avgScore,
+                roster
+            };
+        }
+
+        return {
+            id: item.id,
+            batch_id: item.batch_id,
+            capsule_id: item.capsule_id || null,
+            title: item.title || 'Batch Material',
+            type: item.type || 'document',
+            content_url: item.content_url || null,
+            description: item.description || null,
+            source_batch_id: item.source_batch_id || null,
+            created_at: item.created_at || item.assigned_at,
+            assigned_by: item.assigned_by || null,
+            progress_summary
+        };
+    });
 
     const totalExpected = cleanEnrollments.reduce((sum, e) => sum + e.course_fee, 0);
     const totalCollected = cleanEnrollments.reduce((sum, e) => sum + e.paid_amount, 0);
@@ -1539,11 +1618,52 @@ export async function getStudentEnrolledBatches(studentId?: string) {
         return [];
     }
 
+    // Collect all capsule_ids in learning content
+    const capsuleIds: string[] = [];
+    enrollments.forEach((e: any) => {
+        (e.batch?.batch_learning_content || []).forEach((c: any) => {
+            if (c.capsule_id) capsuleIds.push(c.capsule_id);
+        });
+    });
+
+    let completionsMap = new Map<string, any>();
+    if (capsuleIds.length > 0) {
+        const { data: completions } = await admin
+            .from('quiz_completions')
+            .select('capsule_id, score, best_score, attempts_count, attempt_history, completed_at')
+            .eq('student_id', targetUserId)
+            .in('capsule_id', capsuleIds);
+
+        (completions || []).forEach((c: any) => {
+            completionsMap.set(c.capsule_id, c);
+        });
+    }
+
     return enrollments.map((e: any) => {
         const b = e.batch || {};
         const sessions = (b.batch_sessions || []).sort(
             (s1: any, s2: any) => new Date(s1.scheduled_at).getTime() - new Date(s2.scheduled_at).getTime()
         );
+
+        const learningContent = (b.batch_learning_content || []).map((m: any) => {
+            if (!m.capsule_id) return m;
+            const comp = completionsMap.get(m.capsule_id);
+            const attemptsCount = comp ? Number(comp.attempts_count || 1) : 0;
+            const bestScore = comp ? Number(comp.best_score ?? comp.score ?? 0) : null;
+            const isCompleted = m.type === 'video' ? Boolean(comp) : (attemptsCount >= 2);
+            const canAttempt = m.type === 'video' ? true : (attemptsCount < 2);
+
+            return {
+                ...m,
+                attempts_count: attemptsCount,
+                best_score: bestScore,
+                score: bestScore,
+                is_completed: isCompleted,
+                can_attempt: canAttempt,
+                attempt_history: comp?.attempt_history || []
+            };
+        });
+
         return {
             batch_id: e.batch_id,
             course_fee: Number(e.course_fee || 0),
@@ -1557,7 +1677,7 @@ export async function getStudentEnrolledBatches(studentId?: string) {
             status: b.status,
             teacher: b.teacher,
             sessions,
-            learning_content: b.batch_learning_content || []
+            learning_content: learningContent
         };
     });
 }
@@ -1751,4 +1871,132 @@ export async function getTeacherAssignedBatches(teacherId?: string) {
             content_count: (b.batch_learning_content || []).length
         };
     });
+}
+
+/**
+ * Fetch detailed completion progress and scores for a specific capsule within a batch
+ * Enforces privacy: returns only student full_name (no email or fees)
+ */
+export async function getBatchCapsuleStudentProgress(batchId: string, capsuleId: string) {
+    noStore();
+    const { user, role } = await getAuthenticatedUserRole();
+    if (!user) {
+        return { success: false, error: "Unauthorized" };
+    }
+
+    const admin = getAdmin() || await createClient();
+
+    // 1. Fetch batch
+    const { data: batch } = await admin
+        .from('batches')
+        .select('id, name, teacher_id')
+        .eq('id', batchId)
+        .single();
+
+    if (!batch) {
+        return { success: false, error: "Batch not found" };
+    }
+
+    const isTeacher = user.id === batch.teacher_id;
+    const isStaffOrAdmin = role === 'admin' || role === 'super_admin' || role === 'operations' || role === 'academic_counselor';
+
+    if (!isTeacher && !isStaffOrAdmin) {
+        return { success: false, error: "Forbidden: You do not have access to this batch" };
+    }
+
+    // 2. Fetch capsule
+    const { data: capsule } = await admin
+        .from('capsules')
+        .select('id, title, type')
+        .eq('id', capsuleId)
+        .single();
+
+    if (!capsule) {
+        return { success: false, error: "Capsule not found" };
+    }
+
+    // 3. Fetch enrolled students
+    const { data: enrollments } = await admin
+        .from('batch_enrollments')
+        .select(`
+            student_id,
+            student:profiles!batch_enrollments_student_id_fkey(id, full_name)
+        `)
+        .eq('batch_id', batchId)
+        .order('enrolled_at', { ascending: true });
+
+    const studentList = (enrollments || []).map((e: any) => ({
+        id: e.student_id,
+        full_name: e.student?.full_name || "Student"
+    }));
+
+    const studentIds = studentList.map(s => s.id);
+
+    // 4. Fetch completions for these students
+    let completionsMap = new Map<string, any>();
+    if (studentIds.length > 0) {
+        const { data: completions } = await admin
+            .from('quiz_completions')
+            .select('student_id, score, best_score, attempts_count, attempt_history, completed_at')
+            .eq('capsule_id', capsuleId)
+            .in('student_id', studentIds);
+
+        (completions || []).forEach((c: any) => {
+            completionsMap.set(c.student_id, c);
+        });
+    }
+
+    let completedCount = 0;
+    let inProgressCount = 0;
+    let pendingCount = 0;
+    let totalScoreSum = 0;
+    let scoredCount = 0;
+
+    const roster = studentList.map(s => {
+        const comp = completionsMap.get(s.id);
+        const attemptsCount = comp ? Number(comp.attempts_count || 1) : 0;
+        const bestScore = comp ? Number(comp.best_score ?? comp.score ?? 0) : null;
+        const isCompleted = capsule.type === 'video' ? Boolean(comp) : (attemptsCount >= 2);
+        const isInProgress = !isCompleted && attemptsCount === 1;
+
+        if (isCompleted) {
+            completedCount++;
+            if (bestScore !== null) {
+                totalScoreSum += bestScore;
+                scoredCount++;
+            }
+        } else if (isInProgress) {
+            inProgressCount++;
+        } else {
+            pendingCount++;
+        }
+
+        return {
+            student_id: s.id,
+            student_name: s.full_name, // STRICT PRIVACY: only student name!
+            attempts_count: attemptsCount,
+            best_score: bestScore,
+            status: isCompleted ? 'completed' : isInProgress ? 'in_progress' : 'pending',
+            completed_at: comp?.completed_at || null,
+            attempt_history: Array.isArray(comp?.attempt_history) ? comp.attempt_history : []
+        };
+    });
+
+    const averageBestScore = scoredCount > 0 ? Math.round(totalScoreSum / scoredCount) : null;
+
+    return {
+        success: true,
+        capsule: {
+            id: capsule.id,
+            title: capsule.title,
+            type: capsule.type
+        },
+        batchName: batch.name,
+        totalEnrolled: studentList.length,
+        completedCount,
+        inProgressCount,
+        pendingCount,
+        averageBestScore,
+        roster
+    };
 }

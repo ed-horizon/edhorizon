@@ -157,6 +157,9 @@ export interface AssignedCapsule {
     course_title: string;
     is_completed: boolean;
     score: number | null;
+    best_score?: number | null;
+    attempts_count?: number;
+    can_attempt?: boolean;
     content?: any;
 }
 
@@ -1032,11 +1035,15 @@ export function StudentDashboardClient({
                                                         </Badge>
                                                         {cap.is_completed ? (
                                                             <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-none text-[9px] font-bold">
-                                                                ✓ Completed {cap.score !== null ? `(${cap.score}%)` : ''}
+                                                                ✓ Completed • Best: {cap.best_score ?? cap.score ?? 100}% ({cap.attempts_count || 2}/2)
+                                                            </Badge>
+                                                        ) : cap.attempts_count === 1 ? (
+                                                            <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-none text-[9px] font-bold">
+                                                                Attempt 1 Done ({cap.best_score ?? cap.score}%) • 1 Left
                                                             </Badge>
                                                         ) : (
                                                             <Badge className="bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-none text-[9px] font-bold">
-                                                                Pending Task
+                                                                Pending Task (0/2)
                                                             </Badge>
                                                         )}
                                                     </div>
@@ -1046,8 +1053,29 @@ export function StudentDashboardClient({
                                                 </div>
 
                                                 <Link href={`/student/learn/${cap.id}`} className="shrink-0 w-full sm:w-auto">
-                                                    <Button size="sm" className="w-full sm:w-auto h-10 px-5 bg-purple-600 hover:bg-purple-700 text-white font-bold uppercase tracking-wider text-[10px] rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-purple-600/20">
-                                                        <span>{cap.is_completed ? 'Review Task' : isQuiz ? 'Start Quiz' : isFlashcard ? 'Study Cards' : 'Watch Video'}</span>
+                                                    <Button 
+                                                        size="sm" 
+                                                        variant={cap.is_completed ? "outline" : "default"}
+                                                        className={cn(
+                                                            "w-full sm:w-auto h-10 px-5 font-bold uppercase tracking-wider text-[10px] rounded-xl flex items-center justify-center gap-1.5",
+                                                            cap.is_completed 
+                                                                ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                                                : cap.attempts_count === 1
+                                                                ? "bg-amber-600 hover:bg-amber-700 text-white shadow-md shadow-amber-600/20"
+                                                                : "bg-purple-600 hover:bg-purple-700 text-white shadow-md shadow-purple-600/20"
+                                                        )}
+                                                    >
+                                                        <span>
+                                                            {cap.is_completed 
+                                                                ? 'View Results' 
+                                                                : cap.attempts_count === 1 
+                                                                ? 'Take Final Attempt (2/2)' 
+                                                                : isQuiz 
+                                                                ? 'Start Quiz' 
+                                                                : isFlashcard 
+                                                                ? 'Study Cards' 
+                                                                : 'Watch Video'}
+                                                        </span>
                                                         <ChevronRight size={14} />
                                                     </Button>
                                                 </Link>
