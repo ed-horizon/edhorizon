@@ -2,7 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_noStore as noStore } from "next/cache";
+import { getIstDayUtcBounds } from "@/lib/holidays";
+import { calculateBatchSchedule } from "@/lib/batch-schedule";
 
 function getAdmin() {
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -220,7 +222,7 @@ export async function getBatchById(batchId: string) {
     // 4. Fetch Assigned Learning Content (Fresh batch materials)
     const { data: assignedContent, error: contentError } = await admin
         .from('batch_learning_content')
-        .select('id, batch_id, title, type, content_url, description, source_batch_id, created_at, assigned_at, assigned_by')
+        .select('id, batch_id, capsule_id, title, type, content_url, description, source_batch_id, created_at, assigned_at, assigned_by')
         .eq('batch_id', batchId)
         .order('created_at', { ascending: false });
 
@@ -273,6 +275,7 @@ export async function getBatchById(batchId: string) {
     const cleanContent = (assignedContent || []).map((item: any) => ({
         id: item.id,
         batch_id: item.batch_id,
+        capsule_id: item.capsule_id || null,
         title: item.title || 'Batch Material',
         type: item.type || 'document',
         content_url: item.content_url || null,
@@ -309,18 +312,6 @@ export async function getBatchById(batchId: string) {
     };
 }
 
-/**
- * Helper to calculate batch end date from start date and duration days without timezone drift
- */
-function calculateBatchEndDate(startDateStr: string, durationDays: number): string {
-    const parts = startDateStr.split('-').map(Number);
-    const d = new Date(parts[0], parts[1] - 1, parts[2]);
-    d.setDate(d.getDate() + (durationDays - 1));
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
 
 /**
  * Helper to auto-generate session slots on selected calendar days
@@ -339,65 +330,29 @@ async function autoGenerateBatchSessions(
     }
 ) {
     const admin = getAdmin() || await createClient();
-    const DAY_MAP: Record<string, number> = {
-        'Sun': 0, 'Sunday': 0,
-        'Mon': 1, 'Monday': 1,
-        'Tue': 2, 'Tuesday': 2,
-        'Wed': 3, 'Wednesday': 3,
-        'Thu': 4, 'Thursday': 4,
-        'Fri': 5, 'Friday': 5,
-        'Sat': 6, 'Saturday': 6,
-    };
+    const targetCount = config.durationDays && config.durationDays > 0 ? config.durationDays : 10;
+    const { endDateStr, scheduledDates } = calculateBatchSchedule(config.startDate, config.recurringDays, targetCount);
 
-    const targetDays = new Set(config.recurringDays.map(d => DAY_MAP[d]).filter(d => d !== undefined));
-    if (targetDays.size === 0) return;
-
-    const startParts = config.startDate.split('-').map(Number);
-    const start = new Date(startParts[0], startParts[1] - 1, startParts[2]);
-
-    // If durationDays provided, calculate end date from duration
-    let end: Date;
-    if (config.durationDays && config.durationDays > 0) {
-        end = new Date(startParts[0], startParts[1] - 1, startParts[2]);
-        end.setDate(end.getDate() + (config.durationDays - 1));
-        end.setHours(23, 59, 59, 999);
-    } else if (config.endDate) {
-        const endParts = config.endDate.split('-').map(Number);
-        end = new Date(endParts[0], endParts[1] - 1, endParts[2], 23, 59, 59, 999);
-    } else {
-        end = new Date(startParts[0], startParts[1] - 1, startParts[2]);
-        end.setDate(end.getDate() + 28);
-        end.setHours(23, 59, 59, 999);
-    }
+    if (scheduledDates.length === 0) return;
 
     const timeParts = config.sessionTime.split(':');
     const hours = parseInt(timeParts[0] || '18', 10);
     const minutes = parseInt(timeParts[1] || '0', 10);
 
-    const sessionPayloads = [];
-    const current = new Date(start);
-    let sessionNumber = 1;
-    const MAX_SESSIONS = 100; // safe upper bound
-
-    while (current <= end && sessionPayloads.length < MAX_SESSIONS) {
-        if (targetDays.has(current.getDay())) {
-            const scheduledAt = new Date(current);
-            scheduledAt.setHours(hours, minutes, 0, 0);
-
-            sessionPayloads.push({
-                batch_id: batchId,
-                session_number: sessionNumber,
-                title: `Session #${sessionNumber}`,
-                scheduled_at: scheduledAt.toISOString(),
-                duration_minutes: config.durationMinutes,
-                meeting_link: config.meetingLink,
-                status: 'scheduled',
-                conducted_by: config.userId,
-            });
-            sessionNumber++;
-        }
-        current.setDate(current.getDate() + 1);
-    }
+    const sessionPayloads = scheduledDates.map((dateStr, idx) => {
+        const parts = dateStr.split('-').map(Number);
+        const scheduledAt = new Date(parts[0], parts[1] - 1, parts[2], hours, minutes, 0, 0);
+        return {
+            batch_id: batchId,
+            session_number: idx + 1,
+            title: `Session #${idx + 1}`,
+            scheduled_at: scheduledAt.toISOString(),
+            duration_minutes: config.durationMinutes,
+            meeting_link: config.meetingLink,
+            status: 'scheduled' as BatchSessionStatus,
+            conducted_by: config.userId,
+        };
+    });
 
     if (sessionPayloads.length > 0) {
         const { error } = await admin
@@ -406,6 +361,12 @@ async function autoGenerateBatchSessions(
 
         if (error) {
             console.error("Failed to bulk insert generated sessions:", error);
+        } else if (endDateStr) {
+            // Update batch end_date to match the actual calculated final session date
+            await admin
+                .from('batches')
+                .update({ end_date: endDateStr })
+                .eq('id', batchId);
         }
     }
 }
@@ -448,10 +409,10 @@ export async function createBatch(data: {
         scheduleDesc = `${data.recurring_days.join(', ')}${timeStr}${durStr}`;
     }
 
-    const durationDays = data.course_duration_days ? Number(data.course_duration_days) : null;
+    const totalClasses = data.course_duration_days ? Number(data.course_duration_days) : 10;
     let calculatedEndDate = data.end_date || null;
-    if (durationDays && durationDays > 0 && data.start_date) {
-        calculatedEndDate = calculateBatchEndDate(data.start_date, durationDays);
+    if (totalClasses > 0 && data.start_date) {
+        calculatedEndDate = calculateBatchSchedule(data.start_date, data.recurring_days || [], totalClasses).endDateStr;
     }
 
     const admin = getAdmin() || await createClient();
@@ -464,7 +425,7 @@ export async function createBatch(data: {
         capacity: Number(data.capacity || 20),
         start_date: data.start_date,
         end_date: calculatedEndDate,
-        course_duration_days: durationDays,
+        course_duration_days: totalClasses,
         schedule_description: scheduleDesc || null,
         recurring_days: data.recurring_days && data.recurring_days.length > 0 ? data.recurring_days : null,
         session_time: data.session_time || null,
@@ -494,7 +455,7 @@ export async function createBatch(data: {
             await autoGenerateBatchSessions(created.id, {
                 startDate: data.start_date,
                 endDate: calculatedEndDate,
-                durationDays: durationDays,
+                durationDays: totalClasses,
                 recurringDays: data.recurring_days,
                 sessionTime: data.session_time || "18:00",
                 durationMinutes: Number(data.session_duration_minutes || 60),
@@ -541,7 +502,7 @@ export async function updateBatch(batchId: string, data: Partial<{
 
     let calculatedEndDate = data.end_date !== undefined ? data.end_date : undefined;
     if (data.course_duration_days && data.course_duration_days > 0 && data.start_date) {
-        calculatedEndDate = calculateBatchEndDate(data.start_date, data.course_duration_days);
+        calculatedEndDate = calculateBatchSchedule(data.start_date, data.recurring_days || [], data.course_duration_days).endDateStr;
     }
 
     const updatePayload: any = {
@@ -1005,6 +966,230 @@ export async function createBatchContent(batchId: string, data: {
 }
 
 /**
+ * Create a native Capsule (Quiz, Flashcards, Video Presentation) specifically for a batch
+ */
+export async function createBatchCapsule(
+    batchId: string,
+    data: {
+        title: string;
+        type: 'quiz' | 'flashcards' | 'video';
+        content: any;
+        description?: string | null;
+    }
+) {
+    const { user, role } = await getAuthenticatedUserRole();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    if (!data.title?.trim()) return { success: false, error: "Capsule title is required." };
+    if (!data.type) return { success: false, error: "Capsule type is required." };
+
+    const admin = getAdmin() || await createClient();
+
+    const { data: batch, error: batchError } = await admin
+        .from('batches')
+        .select('id, name, course_name, teacher_id')
+        .eq('id', batchId)
+        .single();
+
+    if (batchError || !batch) return { success: false, error: "Batch not found." };
+
+    const isStaff = ['super_admin', 'admin', 'operations'].includes(role || '');
+    const isTeacher = batch.teacher_id === user.id;
+    if (!isStaff && !isTeacher) {
+        return { success: false, error: "Unauthorized to create content for this batch." };
+    }
+
+    try {
+        let topicId: string | null = null;
+        const topicTitle = `${batch.course_name} (Batch Material)`;
+
+        const { data: existingTopic } = await admin
+            .from('topics')
+            .select('id')
+            .eq('title', topicTitle)
+            .maybeSingle();
+
+        if (existingTopic?.id) {
+            topicId = existingTopic.id;
+        } else {
+            const { data: existingModule } = await admin
+                .from('modules')
+                .select('id')
+                .limit(1)
+                .maybeSingle();
+
+            let moduleId = existingModule?.id;
+            if (!moduleId) {
+                const { data: newMod } = await admin
+                    .from('modules')
+                    .insert({
+                        title: "Batch Courses Syllabus",
+                        description: "Module for cohort batch class capsules"
+                    })
+                    .select('id')
+                    .single();
+                moduleId = newMod?.id;
+            }
+
+            const { data: existingCourse } = await admin
+                .from('courses')
+                .select('id')
+                .eq('title', batch.course_name)
+                .maybeSingle();
+
+            let courseId = existingCourse?.id;
+            if (!courseId) {
+                const { data: newCourse } = await admin
+                    .from('courses')
+                    .insert({
+                        module_id: moduleId,
+                        title: batch.course_name
+                    })
+                    .select('id')
+                    .single();
+                courseId = newCourse?.id;
+            }
+
+            const { data: newTopic } = await admin
+                .from('topics')
+                .insert({
+                    course_id: courseId,
+                    title: topicTitle
+                })
+                .select('id')
+                .single();
+            topicId = newTopic?.id || null;
+        }
+
+        if (!topicId) {
+            const { data: fallbackTopic } = await admin.from('topics').select('id').limit(1).single();
+            topicId = fallbackTopic?.id;
+        }
+
+        const { data: capsule, error: capError } = await admin
+            .from('capsules')
+            .insert({
+                topic_id: topicId,
+                title: data.title.trim(),
+                type: data.type,
+                content: {
+                    ...(data.content || {}),
+                    batch_id: batchId
+                },
+                author_id: user.id,
+                status: 'published'
+            })
+            .select()
+            .single();
+
+        if (capError || !capsule) {
+            console.error("createBatchCapsule error inserting capsule:", capError);
+            return { success: false, error: capError?.message || "Failed to create capsule." };
+        }
+
+        const { data: contentItem, error: contentError } = await admin
+            .from('batch_learning_content')
+            .insert({
+                batch_id: batchId,
+                capsule_id: capsule.id,
+                title: data.title.trim(),
+                type: data.type,
+                description: data.description || null,
+                assigned_by: user.id
+            })
+            .select()
+            .single();
+
+        if (contentError) {
+            console.error("createBatchCapsule error linking content:", contentError);
+            return { success: false, error: contentError.message };
+        }
+
+        revalidatePath(`/batches/${batchId}`);
+        return { success: true, capsuleId: capsule.id, contentId: contentItem.id };
+    } catch (err: any) {
+        console.error("createBatchCapsule error:", err);
+        return { success: false, error: err.message || "An unexpected error occurred." };
+    }
+}
+
+/**
+ * Upload a PDF or file directly for a batch
+ */
+export async function uploadBatchFile(formData: FormData) {
+    const { user, role } = await getAuthenticatedUserRole();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const batchId = formData.get('batchId') as string;
+    const title = formData.get('title') as string;
+    const description = (formData.get('description') as string) || null;
+    const file = formData.get('file') as File;
+
+    if (!batchId || !title?.trim() || !file) {
+        return { success: false, error: "Batch ID, title, and file are required." };
+    }
+
+    const admin = getAdmin() || await createClient();
+
+    const { data: batch } = await admin
+        .from('batches')
+        .select('id, teacher_id')
+        .eq('id', batchId)
+        .single();
+
+    if (!batch) return { success: false, error: "Batch not found." };
+    const isStaff = ['super_admin', 'admin', 'operations'].includes(role || '');
+    const isTeacher = batch.teacher_id === user.id;
+    if (!isStaff && !isTeacher) {
+        return { success: false, error: "Unauthorized to upload materials for this batch." };
+    }
+
+    try {
+        const cleanFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const key = `batches/${batchId}/materials/${crypto.randomUUID()}-${cleanFileName}`;
+        const buffer = Buffer.from(await file.arrayBuffer());
+
+        const { uploadFileBufferToR2 } = await import('@/lib/r2');
+        await uploadFileBufferToR2(key, buffer, file.type || 'application/octet-stream');
+
+        await admin
+            .from('file_metadata')
+            .insert({
+                r2_key: key,
+                original_filename: file.name,
+                mime_type: file.type || 'application/octet-stream',
+                size_bytes: file.size,
+                uploaded_by: user.id,
+                purpose: 'teacher_material'
+            });
+
+        const { data: inserted, error: insertError } = await admin
+            .from('batch_learning_content')
+            .insert({
+                batch_id: batchId,
+                title: title.trim(),
+                type: 'document',
+                content_url: key,
+                description: description,
+                assigned_by: user.id
+            })
+            .select()
+            .single();
+
+        if (insertError) {
+            console.error("uploadBatchFile DB insert error:", insertError);
+            return { success: false, error: insertError.message };
+        }
+
+        revalidatePath(`/batches/${batchId}`);
+        return { success: true, data: inserted };
+    } catch (err: any) {
+        console.error("uploadBatchFile error:", err);
+        return { success: false, error: err.message || "Failed to upload file." };
+    }
+}
+
+/**
  * Delete a batch content item
  */
 export async function deleteBatchContent(contentId: string, batchId: string) {
@@ -1277,6 +1462,7 @@ export async function getTutorsList() {
  * Fetch batches in which a student is enrolled
  */
 export async function getStudentEnrolledBatches(studentId?: string) {
+    noStore();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     const targetUserId = studentId || user?.id;
@@ -1299,7 +1485,8 @@ export async function getStudentEnrolledBatches(studentId?: string) {
                 meeting_link,
                 status,
                 teacher:profiles!batches_teacher_id_fkey(full_name),
-                batch_sessions(id, session_number, title, scheduled_at, duration_minutes, meeting_link, status)
+                batch_sessions(id, session_number, title, scheduled_at, duration_minutes, meeting_link, status),
+                batch_learning_content:batch_learning_content!batch_learning_content_batch_id_fkey(id, title, type, content_url, description, capsule_id)
             )
         `)
         .eq('student_id', targetUserId);
@@ -1326,7 +1513,8 @@ export async function getStudentEnrolledBatches(studentId?: string) {
             meeting_link: b.meeting_link,
             status: b.status,
             teacher: b.teacher,
-            sessions
+            sessions,
+            learning_content: b.batch_learning_content || []
         };
     });
 }
@@ -1387,6 +1575,7 @@ export async function getTeacherBatches(teacherId?: string) {
  * Fetch tutor's today's batch sessions
  */
 export async function getTeacherTodayBatchSessions(teacherId?: string) {
+    noStore();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     const targetId = teacherId || user?.id;
@@ -1405,15 +1594,15 @@ export async function getTeacherTodayBatchSessions(teacherId?: string) {
     const batchIds = batches.map(b => b.id);
 
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString();
-    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
+    const istDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
+    const { startUtcIso, endUtcIso } = getIstDayUtcBounds(istDateStr);
 
     const { data: sessions, error } = await admin
         .from('batch_sessions')
         .select('*')
         .in('batch_id', batchIds)
-        .gte('scheduled_at', todayStart)
-        .lte('scheduled_at', todayEnd)
+        .gte('scheduled_at', startUtcIso)
+        .lte('scheduled_at', endUtcIso)
         .order('scheduled_at', { ascending: true });
 
     if (error || !sessions) return [];
@@ -1441,6 +1630,7 @@ export async function getTeacherTodayBatchSessions(teacherId?: string) {
  * Fetch tutor's assigned batches
  */
 export async function getTeacherAssignedBatches(teacherId?: string) {
+    noStore();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     const targetId = teacherId || user?.id;
@@ -1462,12 +1652,15 @@ export async function getTeacherAssignedBatches(teacherId?: string) {
             meeting_link,
             status,
             batch_sessions(id, status, scheduled_at),
-            batch_learning_content(id)
+            batch_learning_content:batch_learning_content!batch_learning_content_batch_id_fkey(id)
         `)
         .eq('teacher_id', targetId)
         .order('created_at', { ascending: false });
 
-    if (error || !batches) return [];
+    if (error || !batches) {
+        if (error) console.error("getTeacherAssignedBatches error:", error);
+        return [];
+    }
 
     return batches.map((b: any) => {
         const sessions = b.batch_sessions || [];

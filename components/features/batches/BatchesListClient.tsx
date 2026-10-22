@@ -28,23 +28,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { BatchSummary, createBatch } from "@/app/(dashboard)/batches/actions";
+import { calculateBatchSchedule } from "@/lib/batch-schedule";
 import { cn } from "@/lib/utils";
 
 interface BatchesListClientProps {
     initialBatches: BatchSummary[];
     tutors: Array<{ id: string; full_name: string; email: string }>;
     userRole: string;
-}
-
-function calculateBatchEndDate(startDateStr: string, durationDays: number): string {
-    if (!startDateStr || !durationDays || durationDays <= 0) return "";
-    const parts = startDateStr.split('-').map(Number);
-    const d = new Date(parts[0], parts[1] - 1, parts[2]);
-    d.setDate(d.getDate() + (durationDays - 1));
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
 }
 
 export default function BatchesListClient({ initialBatches, tutors, userRole }: BatchesListClientProps) {
@@ -73,7 +63,7 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
         capacity: 20,
         start_date: todayIso,
         end_date: defaultEnd,
-        course_duration_days: 30,
+        course_duration_days: 10,
         schedule_description: "",
         recurring_days: [] as string[],
         session_time: "18:00",
@@ -84,6 +74,27 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
         agreed_tutor_payout: 0,
         notes: ""
     });
+
+    const updateSchedule = (newStart: string, newClassesCount: number, newDays: string[], newTime: string, newDurationMins: number) => {
+        let newEnd = "";
+        if (newStart && newClassesCount > 0) {
+            const { endDateStr } = calculateBatchSchedule(newStart, newDays, newClassesCount);
+            newEnd = endDateStr;
+        }
+        const desc = newDays.length > 0 
+            ? `${newDays.join(', ')} at ${newTime || '18:00'} (${newDurationMins || 60}m)`
+            : formData.schedule_description;
+        setFormData(prev => ({
+            ...prev,
+            start_date: newStart,
+            course_duration_days: newClassesCount,
+            recurring_days: newDays,
+            session_time: newTime,
+            session_duration_minutes: newDurationMins,
+            end_date: newEnd,
+            schedule_description: desc
+        }));
+    };
 
     const filteredBatches = batches.filter(batch => {
         const matchesStatus = statusFilter === "all" || batch.status === statusFilter;
@@ -281,39 +292,29 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                                                 value={formData.start_date}
                                                 onChange={(e) => {
                                                     const newStart = e.target.value;
-                                                    const calculatedEnd = calculateBatchEndDate(newStart, formData.course_duration_days);
-                                                    setFormData({
-                                                        ...formData,
-                                                        start_date: newStart,
-                                                        end_date: calculatedEnd
-                                                    });
+                                                    updateSchedule(newStart, formData.course_duration_days, formData.recurring_days, formData.session_time, formData.session_duration_minutes);
                                                 }}
                                                 required
                                             />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <Label htmlFor="course-duration-days">Course Duration (Number of Days) *</Label>
+                                            <Label htmlFor="course-duration-days">Total Number of Classes / Sessions *</Label>
                                             <Input
                                                 id="course-duration-days"
                                                 type="number"
                                                 min="1"
                                                 max="365"
-                                                placeholder="e.g. 30, 45, 60"
-                                                value={formData.course_duration_days}
+                                                placeholder="e.g. 10, 20, 30 classes"
+                                                value={formData.course_duration_days || ""}
                                                 onChange={(e) => {
-                                                    const days = parseInt(e.target.value) || 0;
-                                                    const calculatedEnd = calculateBatchEndDate(formData.start_date, days);
-                                                    setFormData({
-                                                        ...formData,
-                                                        course_duration_days: days,
-                                                        end_date: calculatedEnd
-                                                    });
+                                                    const count = parseInt(e.target.value, 10) || 0;
+                                                    updateSchedule(formData.start_date, count, formData.recurring_days, formData.session_time, formData.session_duration_minutes);
                                                 }}
                                                 required
                                             />
                                             {formData.end_date && (
                                                 <p className="text-[11px] text-muted-foreground font-medium">
-                                                    Scheduled Window: <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{formData.start_date}</span> to <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{formData.end_date}</span> ({formData.course_duration_days} days)
+                                                    Calculated Schedule: <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{formData.course_duration_days} classes</span> from <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{formData.start_date}</span> to <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{formData.end_date}</span>
                                                 </p>
                                             )}
                                         </div>
@@ -343,14 +344,7 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                                                                 const newDays = isSelected
                                                                     ? formData.recurring_days.filter(d => d !== day)
                                                                     : [...formData.recurring_days, day];
-                                                                const desc = newDays.length > 0 
-                                                                    ? `${newDays.join(', ')} at ${formData.session_time || '18:00'} (${formData.session_duration_minutes || 60}m)`
-                                                                    : "";
-                                                                setFormData({
-                                                                    ...formData,
-                                                                    recurring_days: newDays,
-                                                                    schedule_description: desc
-                                                                });
+                                                                updateSchedule(formData.start_date, formData.course_duration_days, newDays, formData.session_time, formData.session_duration_minutes);
                                                             }}
                                                             className={cn(
                                                                 "px-3 py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer",
@@ -379,14 +373,7 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                                                     value={formData.session_time}
                                                     onChange={(e) => {
                                                         const newTime = e.target.value;
-                                                        const desc = formData.recurring_days.length > 0
-                                                            ? `${formData.recurring_days.join(', ')} at ${newTime} (${formData.session_duration_minutes || 60}m)`
-                                                            : formData.schedule_description;
-                                                        setFormData({
-                                                            ...formData,
-                                                            session_time: newTime,
-                                                            schedule_description: desc
-                                                        });
+                                                        updateSchedule(formData.start_date, formData.course_duration_days, formData.recurring_days, newTime, formData.session_duration_minutes);
                                                     }}
                                                 />
                                             </div>
@@ -396,14 +383,7 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                                                     value={String(formData.session_duration_minutes)} 
                                                     onValueChange={(val) => {
                                                         const mins = parseInt(val, 10) || 60;
-                                                        const desc = formData.recurring_days.length > 0
-                                                            ? `${formData.recurring_days.join(', ')} at ${formData.session_time || '18:00'} (${mins}m)`
-                                                            : formData.schedule_description;
-                                                        setFormData({
-                                                            ...formData,
-                                                            session_duration_minutes: mins,
-                                                            schedule_description: desc
-                                                        });
+                                                        updateSchedule(formData.start_date, formData.course_duration_days, formData.recurring_days, formData.session_time, mins);
                                                     }}
                                                 >
                                                     <SelectTrigger id="session-duration">
