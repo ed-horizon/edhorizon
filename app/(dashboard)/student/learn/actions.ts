@@ -22,6 +22,22 @@ export async function getStudentCourses() {
         .filter(mod => parseDescription(mod.description).studentId === user.id)
         .map(mod => mod.id);
 
+    // Fetch batch enrollments for this student
+    const { data: myBatchEnrollments } = await adminSupabase
+        .from('batch_enrollments')
+        .select('batch_id')
+        .eq('student_id', user.id);
+
+    const batchIds = (myBatchEnrollments || []).map(b => b.batch_id);
+    let batchCapsuleIds: string[] = [];
+    if (batchIds.length > 0) {
+        const { data: batchContent } = await adminSupabase
+            .from('batch_learning_content')
+            .select('capsule_id')
+            .in('batch_id', batchIds);
+        batchCapsuleIds = (batchContent || []).map(bc => bc.capsule_id);
+    }
+
     // 2. Fetch courses along with topics and capsules
     let query = adminSupabase
         .from('courses')
@@ -37,7 +53,7 @@ export async function getStudentCourses() {
         `)
         .order('order', { ascending: true });
 
-    if (studentModuleIds.length > 0) {
+    if (studentModuleIds.length > 0 && batchCapsuleIds.length === 0) {
         query = query.in('module_id', studentModuleIds);
     }
 
@@ -56,7 +72,8 @@ export async function getStudentCourses() {
                 const userIdStr = String(user.id).trim();
                 const isDirectAssignment = Boolean(studentIdInContent && studentIdInContent === userIdStr);
                 const isModuleAssignment = studentModuleIds.includes(course.module_id);
-                return isDirectAssignment || isModuleAssignment;
+                const isBatchAssignment = batchCapsuleIds.includes(c.id);
+                return isDirectAssignment || isModuleAssignment || isBatchAssignment;
             });
 
             const totalCapsules = studentCapsules.length;
@@ -98,6 +115,22 @@ export async function getStudentAssignedCapsules(studentId?: string) {
         })
         .map(mod => mod.id);
 
+    // Fetch batch enrollments for this student
+    const { data: myBatchEnrollments } = await adminSupabase
+        .from('batch_enrollments')
+        .select('batch_id')
+        .eq('student_id', targetUserId);
+
+    const batchIds = (myBatchEnrollments || []).map(b => b.batch_id);
+    let batchCapsuleIds: string[] = [];
+    if (batchIds.length > 0) {
+        const { data: batchContent } = await adminSupabase
+            .from('batch_learning_content')
+            .select('capsule_id')
+            .in('batch_id', batchIds);
+        batchCapsuleIds = (batchContent || []).map(bc => bc.capsule_id);
+    }
+
     // 2. Query capsules assigned to targetUserId or student's modules
     const { data: capsulesData, error } = await adminSupabase
         .from('capsules')
@@ -132,7 +165,8 @@ export async function getStudentAssignedCapsules(studentId?: string) {
         const targetIdStr = String(targetUserId).trim();
         const directMatch = Boolean(studentIdInContent && studentIdInContent === targetIdStr);
         const moduleMatch = Boolean(c.topic?.course?.module_id && studentModuleIds.includes(c.topic.course.module_id));
-        return directMatch || moduleMatch;
+        const batchMatch = batchCapsuleIds.includes(c.id);
+        return directMatch || moduleMatch || batchMatch;
     });
 
     return assigned.map(c => {

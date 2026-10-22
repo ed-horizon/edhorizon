@@ -23,6 +23,7 @@ import { deleteUploadedR2File, uploadFileDirectToR2 } from "@/lib/r2-upload-clie
 import { toast } from "sonner"
 import { ClassLogsCalendarClient } from "@/components/features/class-logs/ClassLogsCalendarClient"
 import { getLocalDateKey } from "@/lib/date-keys"
+import StudentBatchClassesCard from "@/components/features/student/StudentBatchClassesCard"
 
 interface LiveClass {
     id: string;
@@ -202,6 +203,7 @@ interface StudentDashboardClientProps {
     activeSchedule?: ScheduleSummary;
     activeSchedules?: ScheduleSummary[];
     assignedCapsules?: AssignedCapsule[];
+    enrolledBatches?: any[];
 }
 
 export function StudentDashboardClient({
@@ -220,7 +222,8 @@ export function StudentDashboardClient({
     initialPayments,
     activeSchedule,
     activeSchedules = [],
-    assignedCapsules = []
+    assignedCapsules = [],
+    enrolledBatches = []
 }: StudentDashboardClientProps) {
     // Build active subjects list
     const activeSubjects: { name: string; fee: number; classesPerMonth: number; tutor: string }[] = [];
@@ -979,6 +982,9 @@ export function StudentDashboardClient({
                             )}
                         </CardContent>
                     </Card>
+
+                    {/* BATCH CLASSES SECTION */}
+                    <StudentBatchClassesCard enrolledBatches={enrolledBatches} />
 
                     {/* ASSIGNED LEARNING CAPSULES & TASKS (Quizzes, Flashcards, Video) */}
                     <Card className="rounded-[2rem] border-border/40 shadow-xl overflow-hidden bg-card border-2 border-indigo-600/10">
