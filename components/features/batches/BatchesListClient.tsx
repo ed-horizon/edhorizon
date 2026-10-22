@@ -414,7 +414,7 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                                                 <label htmlFor="auto-generate-sessions" className="text-xs text-foreground cursor-pointer select-none">
                                                     <span className="font-semibold block">Auto-schedule sessions on these calendar days</span>
                                                     <span className="text-[11px] text-muted-foreground block">
-                                                        Generates scheduled session slots between Start Date and End Date (or next 4 weeks).
+                                                        Generates all {formData.course_duration_days || 10} session slots across your selected calendar days without any date locking.
                                                     </span>
                                                 </label>
                                             </div>
