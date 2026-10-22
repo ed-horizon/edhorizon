@@ -25,13 +25,16 @@ interface FlashcardPlayerProps {
     content: {
         cards: Flashcard[];
     };
+    attemptNumber?: number;
+    bestScoreSoFar?: number | null;
 }
 
-export function FlashcardPlayer({ capsuleId, title, content }: FlashcardPlayerProps) {
+export function FlashcardPlayer({ capsuleId, title, content, attemptNumber = 1, bestScoreSoFar = null }: FlashcardPlayerProps) {
     const [currentIdx, setCurrentIdx] = useState(0)
     const [isFlipped, setIsFlipped] = useState(false)
     const [isFinished, setIsFinished] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
+    const [currentAttempt, setCurrentAttempt] = useState(attemptNumber)
 
     const cards = content.cards || [];
     const totalCards = cards.length;
@@ -59,6 +62,13 @@ export function FlashcardPlayer({ capsuleId, title, content }: FlashcardPlayerPr
         }
     }
 
+    const handleRetake = () => {
+        setCurrentAttempt(2);
+        setCurrentIdx(0);
+        setIsFlipped(false);
+        setIsFinished(false);
+    };
+
     const handlePrev = () => {
         if (currentIdx > 0) {
             setCurrentIdx(prev => prev - 1);
@@ -78,22 +88,46 @@ export function FlashcardPlayer({ capsuleId, title, content }: FlashcardPlayerPr
     }
 
     if (isFinished) {
+        const isFinal = currentAttempt >= 2;
         return (
-            <div className="max-w-2xl mx-auto text-center space-y-12 animate-in fade-in zoom-in duration-500">
+            <div className="max-w-2xl mx-auto text-center space-y-8 animate-in fade-in zoom-in duration-500">
                 <div className="space-y-4">
                     <div className="inline-block p-6 bg-amber-500 rounded-[2.5rem] text-white shadow-2xl">
                         <Trophy size={64} />
                     </div>
-                    <h2 className="text-4xl font-serif font-bold">Deck Mastered!</h2>
-                    <p className="text-muted-foreground italic">You've successfully reviewed all {totalCards} cards in {title}.</p>
+                    <div className="flex items-center justify-center gap-2">
+                        <span className="text-[11px] font-mono font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                            Attempt {currentAttempt} of 2 {isFinal ? "(Completed)" : ""}
+                        </span>
+                    </div>
+                    <h2 className="text-4xl font-serif font-bold">
+                        {isFinal ? "Deck Mastered!" : "Attempt 1 Complete!"}
+                    </h2>
+                    <p className="text-muted-foreground italic max-w-md mx-auto">
+                        {isFinal 
+                            ? `You have completed all 2 review rounds for ${title}. Your completion is recorded.`
+                            : `You reviewed all ${totalCards} cards! You have 1 final review attempt remaining.`}
+                    </p>
                 </div>
 
-                <Link href="/student/learn">
-                    <Button className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-14 px-12 font-black uppercase tracking-widest text-xs gap-3 shadow-xl shadow-indigo-200">
-                        Back to Journey
-                        <ArrowRight size={18} />
-                    </Button>
-                </Link>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+                    <Link href="/student/learn" className="w-full sm:w-auto">
+                        <Button className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-14 px-8 font-black uppercase tracking-widest text-xs gap-3 shadow-xl shadow-indigo-200">
+                            Back to Journey
+                            <ArrowRight size={18} />
+                        </Button>
+                    </Link>
+
+                    {!isFinal && (
+                        <Button
+                            variant="outline"
+                            onClick={handleRetake}
+                            className="w-full sm:w-auto border-amber-500 text-amber-600 dark:text-amber-400 rounded-2xl h-14 px-8 font-black uppercase tracking-widest text-xs gap-3"
+                        >
+                            Review Again (Attempt 2 of 2)
+                        </Button>
+                    )}
+                </div>
             </div>
         )
     }

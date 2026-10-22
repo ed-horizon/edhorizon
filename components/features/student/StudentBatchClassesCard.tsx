@@ -268,43 +268,76 @@ export default function StudentBatchClassesCard({ enrolledBatches }: StudentBatc
                                                     No learning materials or capsules attached yet for this batch.
                                                 </div>
                                             ) : (
-                                                materials.map((m: any) => (
-                                                    <div 
-                                                        key={m.id} 
-                                                        className="p-3 rounded-xl bg-background/80 border border-border/50 flex items-center justify-between gap-3 text-xs"
-                                                    >
-                                                        <div className="flex items-center gap-2.5">
-                                                            <div className="h-7 w-7 rounded-lg bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
-                                                                {m.capsule_id ? <Sparkles size={14} /> : <FileText size={14} />}
-                                                            </div>
-                                                            <div>
-                                                                <div className="font-semibold text-foreground flex items-center gap-1.5">
-                                                                    <span>{m.title}</span>
-                                                                    <Badge variant="outline" className="text-[9px] uppercase px-1.5 py-0">
-                                                                        {m.capsule_id ? 'Capsule' : (m.type || 'Material')}
-                                                                    </Badge>
-                                                                </div>
-                                                                {m.description && (
-                                                                    <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
-                                                                        {m.description}
-                                                                    </p>
-                                                                )}
-                                                            </div>
-                                                        </div>
+                                                materials.map((m: any) => {
+                                                    const isCapsule = Boolean(m.capsule_id);
+                                                    const isCompleted = isCapsule && Boolean(m.is_completed || (m.attempts_count && m.attempts_count >= 2));
+                                                    const attempts = isCapsule ? Number(m.attempts_count || 0) : 0;
+                                                    const bestScore = isCapsule ? (m.best_score ?? m.score ?? null) : null;
 
-                                                        <div>
-                                                            {m.capsule_id ? (
-                                                                <a 
-                                                                    href={`/student/learn/${m.capsule_id}`} 
-                                                                    target="_blank" 
-                                                                    rel="noopener noreferrer"
-                                                                >
-                                                                    <Button size="sm" className="h-7 text-xs gap-1 bg-indigo-600 hover:bg-indigo-700 text-white">
-                                                                        <Sparkles size={12} />
-                                                                        <span>Play</span>
-                                                                    </Button>
-                                                                </a>
-                                                            ) : m.content_url ? (
+                                                    return (
+                                                        <div 
+                                                            key={m.id} 
+                                                            className="p-3 rounded-xl bg-background/80 border border-border/50 flex items-center justify-between gap-3 text-xs"
+                                                        >
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="h-7 w-7 rounded-lg bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
+                                                                    {isCapsule ? <Sparkles size={14} /> : <FileText size={14} />}
+                                                                </div>
+                                                                <div>
+                                                                    <div className="font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
+                                                                        <span>{m.title}</span>
+                                                                        <Badge variant="outline" className="text-[9px] uppercase px-1.5 py-0">
+                                                                            {isCapsule ? 'Capsule' : (m.type || 'Material')}
+                                                                        </Badge>
+                                                                        {isCapsule && (
+                                                                            isCompleted ? (
+                                                                                <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[9px] px-1.5 py-0 font-bold">
+                                                                                    ✓ Completed (2/2) • Best: {bestScore !== null ? `${bestScore}%` : '100%'}
+                                                                                </Badge>
+                                                                            ) : attempts === 1 ? (
+                                                                                <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[9px] px-1.5 py-0 font-bold">
+                                                                                    1 of 2 Done ({bestScore}%)
+                                                                                </Badge>
+                                                                            ) : (
+                                                                                <Badge className="bg-muted text-muted-foreground border border-border text-[9px] px-1.5 py-0 font-bold">
+                                                                                    Pending (0/2)
+                                                                                </Badge>
+                                                                            )
+                                                                        )}
+                                                                    </div>
+                                                                    {m.description && (
+                                                                        <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
+                                                                            {m.description}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            <div>
+                                                                {isCapsule ? (
+                                                                    <a 
+                                                                        href={`/student/learn/${m.capsule_id}`} 
+                                                                        target="_blank" 
+                                                                        rel="noopener noreferrer"
+                                                                    >
+                                                                        {isCompleted ? (
+                                                                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 font-semibold">
+                                                                                <CheckCircle2 size={12} className="text-emerald-500" />
+                                                                                <span>Results ({bestScore !== null ? `${bestScore}%` : '100%'})</span>
+                                                                            </Button>
+                                                                        ) : attempts === 1 ? (
+                                                                            <Button size="sm" className="h-7 text-xs gap-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-sm">
+                                                                                <Sparkles size={12} />
+                                                                                <span>Final Attempt (2/2)</span>
+                                                                            </Button>
+                                                                        ) : (
+                                                                            <Button size="sm" className="h-7 text-xs gap-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm">
+                                                                                <Sparkles size={12} />
+                                                                                <span>Play</span>
+                                                                            </Button>
+                                                                        )}
+                                                                    </a>
+                                                                ) : m.content_url ? (
                                                                 m.content_url.startsWith('http://') || m.content_url.startsWith('https://') ? (
                                                                     <a 
                                                                         href={ensureAbsoluteUrl(m.content_url)} 
@@ -331,10 +364,11 @@ export default function StudentBatchClassesCard({ enrolledBatches }: StudentBatc
                                                             ) : null}
                                                         </div>
                                                     </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    )}
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                )}
                                 </div>
                             )}
                         </div>

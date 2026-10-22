@@ -180,9 +180,9 @@ export function EditCapsuleModal({ capsule, isOpen, onClose, onSuccess }: EditCa
                                                     ({qc.student?.email || ''})
                                                 </span>
                                             </div>
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2">
                                                 <span className="font-black text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 rounded-md text-[10px]">
-                                                    Score: {qc.score !== undefined ? `${qc.score}%` : 'Completed'}
+                                                    Best: {qc.best_score ?? qc.score ?? 100}% ({qc.attempts_count || 1}/2)
                                                 </span>
                                                 <span className="text-[10px] text-muted-foreground italic">
                                                     {qc.completed_at ? new Date(qc.completed_at).toLocaleDateString() : 'Just now'}

@@ -330,7 +330,7 @@ export function copyBatchMaterials(sourceMaterials, targetBatchId, authorId) {
 
 export function getTutorVisibleBatchTabs(userRole) {
     if (userRole === 'teacher') {
-        return ['sessions', 'content'];
+        return ['sessions', 'content', 'students'];
     }
     return ['overview', 'students', 'sessions', 'content'];
 }
@@ -377,9 +377,8 @@ test('Batch Classes: supports fresh batch-specific content creation and copying 
 
 test('Batch Classes: tutor view restriction isolates schedules and content with zero financial visibility', () => {
     const tutorTabs = getTutorVisibleBatchTabs('teacher');
-    assert.deepEqual(tutorTabs, ['sessions', 'content']);
+    assert.deepEqual(tutorTabs, ['sessions', 'content', 'students']);
     assert.ok(!tutorTabs.includes('overview'), 'Tutor must not see financial overview tab');
-    assert.ok(!tutorTabs.includes('students'), 'Tutor must not see student fees roster tab');
 
     const adminTabs = getTutorVisibleBatchTabs('admin');
     assert.deepEqual(adminTabs, ['overview', 'students', 'sessions', 'content']);
@@ -488,6 +487,235 @@ test('Batch Classes: creates interactive capsule links and direct file metadata 
 
     assert.ok(fileUploadMaterial.content_url.startsWith('batches/'));
     assert.ok(!fileUploadMaterial.content_url.startsWith('http'));
+});
+
+export function recordCapsuleAttempt(existingRecord, newScore, maxAttempts = 2) {
+    const currentAttempts = existingRecord ? Number(existingRecord.attempts_count || 1) : 0;
+    if (currentAttempts >= maxAttempts) {
+        return {
+            allowed: false,
+            error: `Maximum attempt limit (${maxAttempts}) reached for this capsule.`
+        };
+    }
+
+    const nextAttemptsCount = currentAttempts + 1;
+    const previousBest = existingRecord ? Number(existingRecord.best_score ?? existingRecord.score ?? 0) : 0;
+    const bestScore = Math.max(previousBest, newScore);
+
+    const history = Array.isArray(existingRecord?.attempt_history)
+        ? [...existingRecord.attempt_history]
+        : (existingRecord ? [{ attempt: 1, score: Number(existingRecord.score || 0), completed_at: existingRecord.completed_at || new Date().toISOString() }] : []);
+
+    history.push({
+        attempt: nextAttemptsCount,
+        score: newScore,
+        completed_at: new Date().toISOString()
+    });
+
+    const isCompleted = nextAttemptsCount >= maxAttempts;
+    const canAttempt = nextAttemptsCount < maxAttempts;
+
+    return {
+        allowed: true,
+        record: {
+            score: newScore,
+            best_score: bestScore,
+            attempts_count: nextAttemptsCount,
+            attempt_history: history,
+            is_completed: isCompleted,
+            can_attempt: canAttempt
+        }
+    };
+}
+
+export function filterTutorRosterFields(enrollment) {
+    return {
+        id: enrollment.id,
+        student_id: enrollment.student_id,
+        student_name: enrollment.student?.full_name || 'Student'
+    };
+}
+
+export function shouldShowSessionCompletionDisclaimer(role) {
+    return role !== 'teacher';
+}
+
+export function computeBatchCapsuleProgress(capsuleId, enrollments, completions) {
+    const completionMap = new Map();
+    for (const comp of completions) {
+        if (comp.capsule_id === capsuleId) {
+            completionMap.set(comp.student_id, comp);
+        }
+    }
+
+    let completedCount = 0;
+    let inProgressCount = 0;
+    let pendingCount = 0;
+    let totalScoreSum = 0;
+    let scoredCount = 0;
+
+    const roster = enrollments.map(enr => {
+        const comp = completionMap.get(enr.student_id);
+        const attempts = comp ? Number(comp.attempts_count || 1) : 0;
+        const bestScore = comp ? Number(comp.best_score ?? comp.score ?? 0) : null;
+
+        let status = 'pending';
+        if (attempts >= 2) {
+            status = 'completed';
+            completedCount++;
+        } else if (attempts === 1) {
+            status = 'in_progress';
+            inProgressCount++;
+        } else {
+            pendingCount++;
+        }
+
+        if (bestScore !== null) {
+            totalScoreSum += bestScore;
+            scoredCount++;
+        }
+
+        return {
+            student_id: enr.student_id,
+            student_name: enr.student?.full_name || 'Student',
+            status,
+            attempts_count: attempts,
+            best_score: bestScore,
+            history: comp?.attempt_history || []
+        };
+    });
+
+    return {
+        total_enrolled: enrollments.length,
+        completed_count: completedCount,
+        in_progress_count: inProgressCount,
+        pending_count: pendingCount,
+        average_best_score: scoredCount > 0 ? Math.round(totalScoreSum / scoredCount) : 0,
+        roster
+    };
+}
+
+test('Batch Classes: capsule attempts are limited to max 2, calculating best score and rejecting 3rd attempt', () => {
+    // Attempt 1: First attempt with score 60%
+    const attempt1 = recordCapsuleAttempt(null, 60, 2);
+    assert.equal(attempt1.allowed, true);
+    assert.equal(attempt1.record.attempts_count, 1);
+    assert.equal(attempt1.record.best_score, 60);
+    assert.equal(attempt1.record.is_completed, false);
+    assert.equal(attempt1.record.can_attempt, true);
+    assert.equal(attempt1.record.attempt_history.length, 1);
+    assert.equal(attempt1.record.attempt_history[0].score, 60);
+
+    // Attempt 2: Second attempt with higher score 90% (best score should be 90%)
+    const attempt2 = recordCapsuleAttempt(attempt1.record, 90, 2);
+    assert.equal(attempt2.allowed, true);
+    assert.equal(attempt2.record.attempts_count, 2);
+    assert.equal(attempt2.record.best_score, 90);
+    assert.equal(attempt2.record.is_completed, true);
+    assert.equal(attempt2.record.can_attempt, false);
+    assert.equal(attempt2.record.attempt_history.length, 2);
+
+    // Attempt 2 variation: Second attempt with lower score 50% (best score should still be 60%)
+    const attempt2Lower = recordCapsuleAttempt(attempt1.record, 50, 2);
+    assert.equal(attempt2Lower.allowed, true);
+    assert.equal(attempt2Lower.record.attempts_count, 2);
+    assert.equal(attempt2Lower.record.best_score, 60);
+    assert.equal(attempt2Lower.record.is_completed, true);
+
+    // Attempt 3: Third attempt must be strictly BLOCKED
+    const attempt3 = recordCapsuleAttempt(attempt2.record, 100, 2);
+    assert.equal(attempt3.allowed, false);
+    assert.match(attempt3.error, /Maximum attempt limit \(2\) reached/);
+});
+
+test('Batch Classes: tutor roster view strictly exposes student name and hides emails, phone numbers, and financial details', () => {
+    const fullEnrollment = {
+        id: 'enr-1',
+        student_id: 'std-100',
+        course_fee: 12000,
+        paid_amount: 6000,
+        fee_status: 'partially_paid',
+        payment_method: 'bank_transfer',
+        remarks: 'Scholarship applied',
+        student: {
+            id: 'std-100',
+            full_name: 'Aarav Sharma',
+            email: 'aarav.sharma@example.com',
+            phone: '+919876543210',
+            parent_name: 'Sunil Sharma',
+            parent_email: 'sunil.sharma@example.com',
+            parent_phone: '+919876543211'
+        }
+    };
+
+    const tutorVisibleData = filterTutorRosterFields(fullEnrollment);
+
+    // Strictly visible:
+    assert.equal(tutorVisibleData.student_name, 'Aarav Sharma');
+    assert.equal(tutorVisibleData.student_id, 'std-100');
+
+    // Strictly hidden (never present):
+    assert.equal(tutorVisibleData.course_fee, undefined);
+    assert.equal(tutorVisibleData.paid_amount, undefined);
+    assert.equal(tutorVisibleData.fee_status, undefined);
+    assert.equal(tutorVisibleData.email, undefined);
+    assert.equal(tutorVisibleData.phone, undefined);
+    assert.equal(tutorVisibleData.parent_email, undefined);
+    assert.equal(tutorVisibleData.parent_phone, undefined);
+    assert.ok(!Object.keys(tutorVisibleData).includes('student.email'));
+});
+
+test('Batch Classes: session completion tracking disclaimer is hidden from tutor dashboard and visible to admin', () => {
+    // Tutors MUST NOT see the payroll/attendance disclaimer
+    assert.equal(shouldShowSessionCompletionDisclaimer('teacher'), false);
+
+    // Admin and staff CAN see the system explanation
+    assert.equal(shouldShowSessionCompletionDisclaimer('admin'), true);
+    assert.equal(shouldShowSessionCompletionDisclaimer('staff'), true);
+});
+
+test('Batch Classes: computes aggregate capsule progress and roster breakdown for tutors and admins', () => {
+    const enrollments = [
+        { student_id: 's1', student: { full_name: 'Student One' } },
+        { student_id: 's2', student: { full_name: 'Student Two' } },
+        { student_id: 's3', student: { full_name: 'Student Three' } },
+        { student_id: 's4', student: { full_name: 'Student Four' } }
+    ];
+
+    const completions = [
+        // s1: completed 2 attempts (best 80%)
+        { capsule_id: 'cap-1', student_id: 's1', attempts_count: 2, best_score: 80, attempt_history: [{ attempt: 1, score: 70 }, { attempt: 2, score: 80 }] },
+        // s2: completed 1 attempt (best 60%)
+        { capsule_id: 'cap-1', student_id: 's2', attempts_count: 1, best_score: 60, attempt_history: [{ attempt: 1, score: 60 }] },
+        // s3: completed 2 attempts (best 100%)
+        { capsule_id: 'cap-1', student_id: 's3', attempts_count: 2, best_score: 100, attempt_history: [{ attempt: 1, score: 90 }, { attempt: 2, score: 100 }] }
+        // s4: has not attempted (pending)
+    ];
+
+    const progress = computeBatchCapsuleProgress('cap-1', enrollments, completions);
+
+    assert.equal(progress.total_enrolled, 4);
+    assert.equal(progress.completed_count, 2); // s1, s3
+    assert.equal(progress.in_progress_count, 1); // s2
+    assert.equal(progress.pending_count, 1); // s4
+    // Average best score of tested students: (80 + 60 + 100) / 3 = 80%
+    assert.equal(progress.average_best_score, 80);
+
+    // Check roster status
+    const s1Entry = progress.roster.find(r => r.student_id === 's1');
+    assert.equal(s1Entry.status, 'completed');
+    assert.equal(s1Entry.best_score, 80);
+    assert.equal(s1Entry.attempts_count, 2);
+
+    const s2Entry = progress.roster.find(r => r.student_id === 's2');
+    assert.equal(s2Entry.status, 'in_progress');
+    assert.equal(s2Entry.best_score, 60);
+    assert.equal(s2Entry.attempts_count, 1);
+
+    const s4Entry = progress.roster.find(r => r.student_id === 's4');
+    assert.equal(s4Entry.status, 'pending');
+    assert.equal(s4Entry.best_score, null);
+    assert.equal(s4Entry.attempts_count, 0);
 });
 
 
