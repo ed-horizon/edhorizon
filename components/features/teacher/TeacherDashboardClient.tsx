@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,7 +14,8 @@ import { format } from "date-fns"
 import { 
     Video, Calendar, Clock, ExternalLink, CheckCircle2, AlertCircle,
     Users, ChevronDown, ChevronUp, BookOpen, Upload, Download,
-    FileText, Award, Star, Loader2, Sparkles, LogOut, Check, X, Plus, Palmtree
+    FileText, Award, Star, Loader2, Sparkles, LogOut, Check, X, Plus, Palmtree,
+    Layers
 } from "lucide-react"
 import { ManageHolidaysDialog } from "@/components/features/holidays/ManageHolidaysDialog"
 import { formatTime12Hour, ensureAbsoluteUrl, formatClassTitle, getEpochMs } from "@/lib/utils"
@@ -62,6 +64,35 @@ interface TeacherDashboardClientProps {
     missingAttendance: any[]
     rescheduleRequests: any[]
     leaveRequests: any[]
+    todayBatchSessions?: Array<{
+        id: string;
+        batch_id: string;
+        batch_name: string;
+        course_name: string;
+        session_number: number;
+        title: string;
+        scheduled_at: string;
+        duration_minutes: number;
+        meeting_link: string | null;
+        status: string;
+        notes?: string | null;
+        completed_at?: string | null;
+    }>;
+    assignedBatches?: Array<{
+        id: string;
+        name: string;
+        course_name: string;
+        capacity: number;
+        start_date: string;
+        end_date: string | null;
+        course_duration_days?: number | null;
+        schedule_description: string | null;
+        meeting_link: string | null;
+        status: string;
+        total_sessions: number;
+        completed_sessions: number;
+        content_count: number;
+    }>;
 }
 
 export function TeacherDashboardClient({ 
@@ -71,7 +102,9 @@ export function TeacherDashboardClient({
     assignedStudents, 
     missingAttendance,
     rescheduleRequests,
-    leaveRequests
+    leaveRequests,
+    todayBatchSessions = [],
+    assignedBatches = []
 }: TeacherDashboardClientProps) {
     const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null)
     const [loadingHistory, setLoadingHistory] = useState<Record<string, boolean>>({})
@@ -453,6 +486,91 @@ export function TeacherDashboardClient({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                 {/* Column 1: Today's Schedule (Lg: 5/12 cols) */}
                 <div className="lg:col-span-5 space-y-6">
+                    {/* TODAY'S BATCH SESSIONS */}
+                    {todayBatchSessions.length > 0 && (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between px-2">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-2 w-2 rounded-full bg-violet-500 animate-pulse" />
+                                    <h3 className="text-sm font-black uppercase tracking-wider text-violet-700 dark:text-violet-400">
+                                        Today's Batch Classes
+                                    </h3>
+                                </div>
+                                <Badge className="bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border-none font-bold text-[9px] px-2.5 py-0.5 rounded-full">
+                                    {todayBatchSessions.length} Batch {todayBatchSessions.length === 1 ? 'Session' : 'Sessions'}
+                                </Badge>
+                            </div>
+
+                            <div className="space-y-3">
+                                {todayBatchSessions.map((bs) => (
+                                    <Card key={bs.id} className="rounded-3xl border-2 border-violet-500/25 bg-gradient-to-br from-violet-50/40 via-card to-card dark:from-violet-950/15 shadow-md hover:shadow-xl transition-all overflow-hidden">
+                                        <div className="p-5 space-y-3.5">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-violet-600 dark:text-violet-400 bg-violet-100/70 dark:bg-violet-950/50 px-2 py-0.5 rounded">
+                                                            {bs.batch_name}
+                                                        </span>
+                                                        {bs.course_name && (
+                                                            <span className="text-[10px] text-muted-foreground font-semibold">
+                                                                • {bs.course_name}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <h4 className="font-serif font-bold text-base text-foreground mt-1 leading-snug">
+                                                        {bs.title}
+                                                    </h4>
+                                                </div>
+                                                <Badge className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full ${
+                                                    bs.status === 'completed'
+                                                        ? 'bg-emerald-500/15 text-emerald-600 border border-emerald-500/30'
+                                                        : 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border border-violet-500/30'
+                                                }`}>
+                                                    {bs.status}
+                                                </Badge>
+                                            </div>
+
+                                            <div className="flex items-center gap-3 text-xs font-bold text-muted-foreground bg-background/60 p-2.5 rounded-xl border border-border/30 w-fit">
+                                                <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
+                                                    <Clock size={13} />
+                                                    <span>{format(new Date(bs.scheduled_at), 'hh:mm a')}</span>
+                                                </div>
+                                                <span className="opacity-40">•</span>
+                                                <span>{bs.duration_minutes} mins</span>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 pt-1">
+                                                {bs.meeting_link ? (
+                                                    <a 
+                                                        href={ensureAbsoluteUrl(bs.meeting_link)} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer" 
+                                                        className="flex-1"
+                                                    >
+                                                        <Button className="w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-black uppercase tracking-widest text-[10px] h-9 gap-1.5 shadow-md shadow-violet-600/15">
+                                                            <Video size={13} />
+                                                            <span>Join Batch Class</span>
+                                                            <ExternalLink size={11} className="opacity-70" />
+                                                        </Button>
+                                                    </a>
+                                                ) : null}
+
+                                                <Link href={`/batches/${bs.batch_id}`} className={bs.meeting_link ? "" : "flex-1"}>
+                                                    <Button 
+                                                        variant="outline" 
+                                                        className="rounded-xl border-violet-500/30 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/30 font-bold uppercase tracking-wider text-[10px] h-9 px-3 w-full"
+                                                    >
+                                                        Open Batch Hub →
+                                                    </Button>
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    </Card>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="flex items-center justify-between px-2">
                         <div className="flex items-center gap-3">
                             <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -792,8 +910,88 @@ export function TeacherDashboardClient({
                     )}
                 </div>
 
-                {/* Column 2: Assigned Students List (Lg: 7/12 cols) */}
+                {/* Column 2: Assigned Batches and Students List (Lg: 7/12 cols) */}
                 <div className="lg:col-span-7 space-y-6">
+                    {/* MY BATCH CLASSES */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between px-2">
+                            <div className="flex items-center gap-3">
+                                <div className="h-2 w-2 rounded-full bg-violet-600" />
+                                <h2 className="text-xl font-serif font-bold italic tracking-tight text-indigo-950 dark:text-indigo-50">My Batch Classes</h2>
+                            </div>
+                            <Badge variant="secondary" className="bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400 border-none font-black uppercase tracking-widest text-[9px] px-3 py-1">
+                                {assignedBatches.length} {assignedBatches.length === 1 ? 'Cohort' : 'Cohorts'}
+                            </Badge>
+                        </div>
+
+                        {assignedBatches.length === 0 ? (
+                            <Card className="rounded-[1.75rem] border border-dashed border-violet-500/30 bg-violet-50/20 dark:bg-violet-950/10 p-6 text-center space-y-2">
+                                <Layers className="h-8 w-8 mx-auto text-violet-400/60" />
+                                <h4 className="text-sm font-bold text-foreground">No Batch Classes Assigned Yet</h4>
+                                <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                                    When an admin assigns you as the lead tutor for a batch cohort, your class schedules, student rosters, and batch study materials will appear here.
+                                </p>
+                            </Card>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {assignedBatches.map((batch) => (
+                                    <Link key={batch.id} href={`/batches/${batch.id}`} className="block group">
+                                        <Card className="h-full rounded-[1.75rem] border-2 border-violet-500/20 bg-card hover:border-violet-500/50 hover:shadow-xl transition-all p-5 flex flex-col justify-between space-y-4">
+                                            <div className="space-y-2.5">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <Badge variant="outline" className="text-[9px] font-mono uppercase bg-muted/40">
+                                                        {batch.course_name}
+                                                    </Badge>
+                                                    <Badge className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                                                        batch.status === 'ongoing' ? 'bg-emerald-500/15 text-emerald-600 border border-emerald-500/30' :
+                                                        batch.status === 'completed' ? 'bg-blue-500/15 text-blue-600 border border-blue-500/30' :
+                                                        'bg-amber-500/15 text-amber-600 border border-amber-500/30'
+                                                    }`}>
+                                                        {batch.status}
+                                                    </Badge>
+                                                </div>
+
+                                                <div>
+                                                    <h3 className="font-serif font-bold text-lg text-foreground group-hover:text-violet-600 transition-colors">
+                                                        {batch.name}
+                                                    </h3>
+                                                    {batch.schedule_description && (
+                                                        <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
+                                                            <Clock size={12} className="text-violet-500 shrink-0" />
+                                                            <span className="truncate">{batch.schedule_description}</span>
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-3 pt-2 border-t border-border/40">
+                                                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                                    <div className="p-2 rounded-xl bg-muted/30">
+                                                        <span className="text-[9px] uppercase tracking-wider text-muted-foreground block font-bold">Sessions</span>
+                                                        <span className="font-bold text-foreground">
+                                                            {batch.completed_sessions} / {batch.total_sessions} Done
+                                                        </span>
+                                                    </div>
+                                                    <div className="p-2 rounded-xl bg-muted/30">
+                                                        <span className="text-[9px] uppercase tracking-wider text-muted-foreground block font-bold">Materials</span>
+                                                        <span className="font-bold text-foreground">
+                                                            {batch.content_count} Resources
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center justify-between text-xs font-bold text-violet-600 dark:text-violet-400 group-hover:translate-x-0.5 transition-transform">
+                                                    <span>Open Class Hub</span>
+                                                    <span>→</span>
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    </Link>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     <div className="flex items-center justify-between px-2">
                         <div className="flex items-center gap-3">
                             <div className="h-2 w-2 rounded-full bg-indigo-500" />

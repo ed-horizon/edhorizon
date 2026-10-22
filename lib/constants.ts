@@ -10,7 +10,8 @@ import {
     GraduationCap,
     Briefcase,
     UsersRound,
-    CalendarDays
+    CalendarDays,
+    Layers
 } from "lucide-react";
 
 export const ROLE_REDIRECTS = {
@@ -26,6 +27,12 @@ export const ROLE_REDIRECTS = {
 };
 
 export const NAV_ITEMS = [
+    {
+        title: "Batch Classes",
+        href: "/batches",
+        icon: Layers,
+        roles: ["super_admin", "admin", "operations"],
+    },
     {
         title: "Operations",
         href: "/operations",

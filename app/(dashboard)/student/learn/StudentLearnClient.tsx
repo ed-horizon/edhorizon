@@ -126,7 +126,10 @@ export function StudentLearnClient({ courses }: { courses: Course[] }) {
                                             <div className="px-8 pb-10 space-y-3 animate-in slide-in-from-top-4 duration-300">
                                                 <div className="h-px bg-gradient-to-r from-transparent via-border/40 to-transparent mb-6" />
                                                 {topic.capsules.map((capsule, idx) => {
-                                                    const isCompleted = capsule.quiz_completions?.length > 0 || capsule.type === 'video';
+                                                    const comp = capsule.quiz_completions?.[0];
+                                                    const attemptsCount = comp ? Number(comp.attempts_count || 1) : 0;
+                                                    const bestScore = comp ? Number(comp.best_score ?? comp.score ?? 0) : null;
+                                                    const isCompleted = capsule.type === 'video' ? Boolean(comp) : attemptsCount >= 2;
                                                     return (
                                                         <Link key={capsule.id} href={`/student/learn/${capsule.id}`}>
                                                             <div className={cn(
@@ -151,11 +154,15 @@ export function StudentLearnClient({ courses }: { courses: Course[] }) {
                                                                         )}>{capsule.title}</h4>
                                                                         <div className="flex items-center gap-2 mt-1">
                                                                             <span className="text-[10px] font-black uppercase tracking-widest opacity-40 italic">{capsule.type} Unit</span>
-                                                                            {isCompleted && (
+                                                                            {isCompleted ? (
                                                                                 <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-indigo-600 italic">
-                                                                                    <CheckCircle2 size={10} /> Completed
+                                                                                    <CheckCircle2 size={10} /> Completed {bestScore !== null ? `(${bestScore}%)` : ''} • 2/2
                                                                                 </span>
-                                                                            )}
+                                                                            ) : attemptsCount === 1 ? (
+                                                                                <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-amber-600 italic">
+                                                                                    Attempt 1 Done ({bestScore}%) • 1 Left
+                                                                                </span>
+                                                                            ) : null}
                                                                         </div>
                                                                     </div>
                                                                 </div>
