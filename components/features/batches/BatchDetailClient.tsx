@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 
@@ -70,6 +70,18 @@ export default function BatchDetailClient({
     const router = useRouter();
     const [copied, setCopied] = useState(false);
     const [activeTab, setActiveTab] = useState("overview");
+
+    // Local state for enrollments and available students for instant reactivity
+    const [localEnrollments, setLocalEnrollments] = useState<any[]>(batch.enrollments || []);
+    const [localAvailableStudents, setLocalAvailableStudents] = useState<any[]>(availableStudents || []);
+
+    useEffect(() => {
+        setLocalEnrollments(batch.enrollments || []);
+    }, [batch.enrollments]);
+
+    useEffect(() => {
+        setLocalAvailableStudents(availableStudents || []);
+    }, [availableStudents]);
 
     // Edit Batch state
     const [isEditOpen, setIsEditOpen] = useState(false);
@@ -204,6 +216,35 @@ export default function BatchDetailClient({
                 setActionLoading(false);
                 return;
             }
+
+            // Immediately update local state
+            const targetStudent = localAvailableStudents.find(s => s.id === selectedStudentId);
+            if (targetStudent) {
+                const newEnrollment = {
+                    id: 'temp-' + Date.now(),
+                    student_id: selectedStudentId,
+                    course_fee: Number(enrollFee) || 0,
+                    fee_status: enrollFeeStatus,
+                    paid_amount: Number(enrollPaidAmount) || 0,
+                    payment_method: enrollPaymentMethod,
+                    transaction_id: enrollTxId,
+                    fee_notes: enrollNotes,
+                    status: 'active',
+                    enrolled_at: new Date().toISOString(),
+                    student: {
+                        id: targetStudent.id,
+                        full_name: targetStudent.full_name,
+                        email: targetStudent.email,
+                        parent_email: targetStudent.parent_email,
+                        status: targetStudent.status,
+                        grade_level: targetStudent.grade_level,
+                        custom_student_id: targetStudent.custom_student_id,
+                    }
+                };
+                setLocalEnrollments(prev => [...prev, newEnrollment]);
+                setLocalAvailableStudents(prev => prev.map(s => s.id === selectedStudentId ? { ...s, is_already_enrolled: true } : s));
+            }
+
             setIsEnrollOpen(false);
             setSelectedStudentId("");
             setEnrollPaidAmount(0);
@@ -225,6 +266,8 @@ export default function BatchDetailClient({
             if (!res.success) {
                 alert(res.error || "Failed to remove student");
             } else {
+                setLocalEnrollments(prev => prev.filter(e => e.student_id !== studentId));
+                setLocalAvailableStudents(prev => prev.map(s => s.id === studentId ? { ...s, is_already_enrolled: false } : s));
                 router.refresh();
             }
         } finally {
@@ -248,6 +291,7 @@ export default function BatchDetailClient({
             if (!res.success) {
                 alert(res.error || "Failed to update fee record");
             } else {
+                setLocalEnrollments(prev => prev.map(e => e.id === editingEnrollment.id ? { ...editingEnrollment } : e));
                 setEditingEnrollment(null);
                 router.refresh();
             }
@@ -258,15 +302,15 @@ export default function BatchDetailClient({
 
     const handleAddSession = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!sessionTitle || !sessionDate) {
-            setErrorMessage("Session title and scheduled datetime are required");
+        if (!sessionDate) {
+            setErrorMessage("Scheduled date and time is required");
             return;
         }
         setActionLoading(true);
         setErrorMessage(null);
         try {
             const res = await createBatchSession(batch.id, {
-                title: sessionTitle,
+                title: sessionTitle?.trim() || undefined,
                 scheduled_at: sessionDate,
                 duration_minutes: Number(sessionDuration) || 60,
                 meeting_link: sessionMeetingLink,
@@ -412,7 +456,8 @@ export default function BatchDetailClient({
         }
     };
 
-    const capacityPct = Math.min(100, Math.round((batch.stats.enrolled_count / batch.capacity) * 100));
+    const enrolledCount = localEnrollments.length;
+    const capacityPct = Math.min(100, Math.round((enrolledCount / batch.capacity) * 100));
 
     return (
         <div className="space-y-6">
@@ -489,7 +534,7 @@ export default function BatchDetailClient({
                 {/* Capacity Bar */}
                 <div className="pt-2">
                     <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-                        <span>Cohort Capacity: <strong className="text-foreground">{batch.stats.enrolled_count} / {batch.capacity} Students</strong></span>
+                        <span>Cohort Capacity: <strong className="text-foreground">{enrolledCount} / {batch.capacity} Students</strong></span>
                         <span>{capacityPct}% Full</span>
                     </div>
                     <div className="h-2 w-full rounded-full bg-muted/60 overflow-hidden">
@@ -528,7 +573,7 @@ export default function BatchDetailClient({
                             : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
                     )}
                 >
-                    <Users className="h-4 w-4" /> Students & Fees ({batch.stats.enrolled_count})
+                    <Users className="h-4 w-4" /> Students & Fees ({enrolledCount})
                 </button>
                 <button
                     type="button"
@@ -707,21 +752,21 @@ export default function BatchDetailClient({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/40">
-                                    {batch.enrollments.length === 0 ? (
+                                    {localEnrollments.length === 0 ? (
                                         <tr>
                                             <td colSpan={canManage ? 7 : 6} className="py-8 text-center text-muted-foreground">
                                                 No students enrolled in this batch yet.
                                             </td>
                                         </tr>
                                     ) : (
-                                        batch.enrollments.map((enr: any) => (
+                                        localEnrollments.map((enr: any) => (
                                             <tr key={enr.id} className="hover:bg-muted/20 transition-colors">
                                                 <td className="py-3 px-4">
                                                     <div className="font-medium text-foreground">{enr.student.full_name}</div>
                                                     <div className="text-xs text-muted-foreground">{enr.student.email}</div>
                                                 </td>
                                                 <td className="py-3 px-4 text-xs text-muted-foreground">
-                                                    {enr.student.phone || "—"}
+                                                    {enr.student.parent_email ? `Parent: ${enr.student.parent_email}` : (enr.student.grade_level || "—")}
                                                 </td>
                                                 <td className="py-3 px-4 font-mono font-medium">
                                                     ₹{enr.course_fee.toLocaleString()}
@@ -1075,6 +1120,7 @@ export default function BatchDetailClient({
                                         id="edit-payout"
                                         type="number"
                                         min="0"
+                                        step="any"
                                         value={editData.agreed_tutor_payout}
                                         onChange={(e) => setEditData({ ...editData, agreed_tutor_payout: parseFloat(e.target.value) || 0 })}
                                     />
@@ -1082,12 +1128,11 @@ export default function BatchDetailClient({
                             </div>
 
                             <div className="space-y-1.5">
-                                <Label htmlFor="edit-schedule">Schedule Description</Label>
+                                <Label htmlFor="edit-schedule">Schedule Description (Optional)</Label>
                                 <Input
                                     id="edit-schedule"
                                     value={editData.schedule_description}
                                     onChange={(e) => setEditData({ ...editData, schedule_description: e.target.value })}
-                                    required
                                 />
                             </div>
 
@@ -1142,46 +1187,99 @@ export default function BatchDetailClient({
                         )}
 
                         <div className="grid gap-4 py-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="search-student">Select Student *</Label>
-                                <Input
-                                    id="search-student"
-                                    placeholder="Filter by student name or email..."
-                                    value={studentSearch}
-                                    onChange={(e) => setStudentSearch(e.target.value)}
-                                    className="mb-2"
-                                />
+                            {/* Selected Student Card */}
+                            {selectedStudentId ? (
+                                (() => {
+                                    const selected = localAvailableStudents.find(s => s.id === selectedStudentId);
+                                    return (
+                                        <div className="p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                                                    {(selected?.full_name || 'S').charAt(0).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-semibold text-foreground">
+                                                        {selected?.full_name}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {selected?.email}
+                                                        {selected?.parent_email && ` • Parent: ${selected.parent_email}`}
+                                                        {selected?.grade_level && ` • ${selected.grade_level}`}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setSelectedStudentId("")}
+                                                className="h-8 text-xs border-indigo-300 dark:border-indigo-800"
+                                            >
+                                                Change
+                                            </Button>
+                                        </div>
+                                    );
+                                })()
+                            ) : (
+                                <div className="space-y-2">
+                                    <Label htmlFor="search-student">Select Academy Student *</Label>
+                                    <Input
+                                        id="search-student"
+                                        placeholder="Filter by student name or email..."
+                                        value={studentSearch}
+                                        onChange={(e) => setStudentSearch(e.target.value)}
+                                        className="mb-2"
+                                    />
 
-                                <div className="max-h-48 overflow-y-auto border border-border/40 rounded-lg divide-y divide-border/30 bg-background/50">
-                                    {availableStudents
-                                        .filter(s => 
+                                    <div className="max-h-52 overflow-y-auto border border-border/40 rounded-lg divide-y divide-border/30 bg-background/50">
+                                        {localAvailableStudents.length === 0 ? (
+                                            <div className="p-4 text-center text-xs text-muted-foreground">
+                                                No active academy students found in system.
+                                            </div>
+                                        ) : localAvailableStudents.filter(s => 
                                             !studentSearch ||
                                             s.full_name.toLowerCase().includes(studentSearch.toLowerCase()) ||
                                             s.email.toLowerCase().includes(studentSearch.toLowerCase())
-                                        )
-                                        .map(s => (
-                                            <div 
-                                                key={s.id}
-                                                onClick={() => !s.is_already_enrolled && setSelectedStudentId(s.id)}
-                                                className={cn(
-                                                    "p-2.5 text-xs flex items-center justify-between cursor-pointer transition-colors",
-                                                    s.is_already_enrolled ? "opacity-40 cursor-not-allowed bg-muted/20" :
-                                                    selectedStudentId === s.id ? "bg-indigo-500/15 border-l-4 border-indigo-600 font-semibold" : "hover:bg-muted/40"
-                                                )}
-                                            >
-                                                <div>
-                                                    <div className="text-foreground">{s.full_name}</div>
-                                                    <div className="text-muted-foreground text-[10px]">{s.email} {s.phone && `• ${s.phone}`}</div>
-                                                </div>
-                                                {s.is_already_enrolled ? (
-                                                    <Badge variant="outline" className="text-[10px]">Already Enrolled</Badge>
-                                                ) : selectedStudentId === s.id ? (
-                                                    <Check className="h-4 w-4 text-indigo-600" />
-                                                ) : null}
+                                        ).length === 0 ? (
+                                            <div className="p-4 text-center text-xs text-muted-foreground">
+                                                No students match &quot;{studentSearch}&quot;
                                             </div>
-                                        ))}
+                                        ) : (
+                                            localAvailableStudents
+                                                .filter(s => 
+                                                    !studentSearch ||
+                                                    s.full_name.toLowerCase().includes(studentSearch.toLowerCase()) ||
+                                                    s.email.toLowerCase().includes(studentSearch.toLowerCase())
+                                                )
+                                                .map(s => (
+                                                    <div 
+                                                        key={s.id}
+                                                        onClick={() => !s.is_already_enrolled && setSelectedStudentId(s.id)}
+                                                        className={cn(
+                                                            "p-2.5 text-xs flex items-center justify-between cursor-pointer transition-colors",
+                                                            s.is_already_enrolled ? "opacity-40 cursor-not-allowed bg-muted/20" :
+                                                            selectedStudentId === s.id ? "bg-indigo-500/15 border-l-4 border-indigo-600 font-semibold" : "hover:bg-muted/40"
+                                                        )}
+                                                    >
+                                                        <div>
+                                                            <div className="text-foreground font-medium">{s.full_name}</div>
+                                                            <div className="text-muted-foreground text-[10px]">
+                                                                {s.email}
+                                                                {s.parent_email && ` • Parent: ${s.parent_email}`}
+                                                                {s.grade_level && ` • ${s.grade_level}`}
+                                                            </div>
+                                                        </div>
+                                                        {s.is_already_enrolled ? (
+                                                            <Badge variant="outline" className="text-[10px]">Already Enrolled</Badge>
+                                                        ) : selectedStudentId === s.id ? (
+                                                            <Check className="h-4 w-4 text-indigo-600" />
+                                                        ) : null}
+                                                    </div>
+                                                ))
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
@@ -1190,6 +1288,8 @@ export default function BatchDetailClient({
                                         id="enroll-fee"
                                         type="number"
                                         min="0"
+                                        step="any"
+                                        placeholder="e.g. 999"
                                         value={enrollFee}
                                         onChange={(e) => setEnrollFee(parseFloat(e.target.value) || 0)}
                                         required
@@ -1225,6 +1325,7 @@ export default function BatchDetailClient({
                                             id="paid-amt"
                                             type="number"
                                             min="0"
+                                            step="any"
                                             value={enrollPaidAmount}
                                             onChange={(e) => setEnrollPaidAmount(parseFloat(e.target.value) || 0)}
                                         />
@@ -1303,6 +1404,7 @@ export default function BatchDetailClient({
                                         id="edit-course-fee"
                                         type="number"
                                         min="0"
+                                        step="any"
                                         value={editingEnrollment.course_fee}
                                         onChange={(e) => setEditingEnrollment({ ...editingEnrollment, course_fee: parseFloat(e.target.value) || 0 })}
                                         required
@@ -1339,6 +1441,7 @@ export default function BatchDetailClient({
                                         id="edit-paid-amt"
                                         type="number"
                                         min="0"
+                                        step="any"
                                         value={editingEnrollment.paid_amount}
                                         onChange={(e) => setEditingEnrollment({ ...editingEnrollment, paid_amount: parseFloat(e.target.value) || 0 })}
                                     />
@@ -1415,13 +1518,12 @@ export default function BatchDetailClient({
 
                         <div className="grid gap-4 py-4">
                             <div className="space-y-1.5">
-                                <Label htmlFor="session-title">Session Title *</Label>
+                                <Label htmlFor="session-title">Session Title (Optional)</Label>
                                 <Input
                                     id="session-title"
-                                    placeholder="e.g. Session 1: Orientation & Diagnostic"
+                                    placeholder={`e.g. Orientation (Leave blank for Session #${(batch.sessions?.length || 0) + 1})`}
                                     value={sessionTitle}
                                     onChange={(e) => setSessionTitle(e.target.value)}
-                                    required
                                 />
                             </div>
 

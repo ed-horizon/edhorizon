@@ -15,14 +15,49 @@ export function validateBatchInput(data) {
     if (!data.start_date) {
         return { valid: false, error: 'Start date is required' };
     }
-    if (!data.schedule_description || !data.schedule_description.trim()) {
-        return { valid: false, error: 'Schedule description is required' };
-    }
     const capacity = data.capacity !== undefined ? Number(data.capacity) : 20;
     if (isNaN(capacity) || capacity <= 0) {
         return { valid: false, error: 'Capacity must be greater than 0' };
     }
     return { valid: true };
+}
+
+export function resolveSessionTitle(providedTitle, sessionIndex) {
+    return providedTitle && providedTitle.trim() ? providedTitle.trim() : `Session #${sessionIndex}`;
+}
+
+export function generateCalendarDaysSchedule(startDateStr, endDateStr, recurringDays, sessionTime) {
+    const DAY_MAP = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
+    const targetDays = new Set((recurringDays || []).map(d => DAY_MAP[d]).filter(d => d !== undefined));
+    if (targetDays.size === 0) return [];
+
+    const start = new Date(startDateStr + 'T00:00:00');
+    const end = endDateStr 
+        ? new Date(endDateStr + 'T23:59:59')
+        : new Date(start.getTime() + 28 * 24 * 60 * 60 * 1000);
+
+    const timeParts = (sessionTime || '18:00').split(':');
+    const hours = parseInt(timeParts[0] || '18', 10);
+    const minutes = parseInt(timeParts[1] || '0', 10);
+
+    const sessions = [];
+    const current = new Date(start);
+    let sessionNumber = 1;
+
+    while (current <= end && sessions.length < 60) {
+        if (targetDays.has(current.getDay())) {
+            const scheduledAt = new Date(current);
+            scheduledAt.setHours(hours, minutes, 0, 0);
+            sessions.push({
+                session_number: sessionNumber,
+                title: `Session #${sessionNumber}`,
+                scheduled_at: scheduledAt.toISOString()
+            });
+            sessionNumber++;
+        }
+        current.setDate(current.getDate() + 1);
+    }
+    return sessions;
 }
 
 export function validateBatchEnrollment(batch, currentEnrollmentCount, studentId, existingStudentIds) {
@@ -102,31 +137,60 @@ export function filterBatchCapsulesForStudent(capsules, studentId, studentBatchI
 // TESTS
 // -----------------------------------------------------------------------------
 
-test('Batch Classes: validates batch creation fields and capacity', () => {
+test('Batch Classes: validates batch creation fields with optional schedule description and accepts any fee amount', () => {
     // Missing name
-    const res1 = validateBatchInput({ name: '', course_name: 'Math', start_date: '2026-11-01', schedule_description: 'Mon 6PM' });
+    const res1 = validateBatchInput({ name: '', course_name: 'Math', start_date: '2026-11-01' });
     assert.equal(res1.valid, false);
     assert.match(res1.error, /Batch name/);
 
     // Missing course name
-    const res2 = validateBatchInput({ name: 'Batch 1', course_name: '', start_date: '2026-11-01', schedule_description: 'Mon 6PM' });
+    const res2 = validateBatchInput({ name: 'Batch 1', course_name: '', start_date: '2026-11-01' });
     assert.equal(res2.valid, false);
     assert.match(res2.error, /Course name/);
 
     // Invalid capacity
-    const res3 = validateBatchInput({ name: 'Batch 1', course_name: 'Math', start_date: '2026-11-01', schedule_description: 'Mon 6PM', capacity: 0 });
+    const res3 = validateBatchInput({ name: 'Batch 1', course_name: 'Math', start_date: '2026-11-01', capacity: 0 });
     assert.equal(res3.valid, false);
     assert.match(res3.error, /Capacity/);
 
-    // Valid batch
+    // Valid batch WITH schedule description
     const res4 = validateBatchInput({
         name: 'Spoken English - Cohort 1',
         course_name: 'Spoken English',
         start_date: '2026-11-01',
         schedule_description: 'Mon, Wed, Fri 6:00 PM IST',
-        capacity: 15
+        capacity: 15,
+        default_course_fee: 999
     });
     assert.equal(res4.valid, true);
+
+    // Valid batch WITHOUT schedule description (optional) and arbitrary fee (999)
+    const res5 = validateBatchInput({
+        name: 'French A1 Fast Track',
+        course_name: 'French A1',
+        start_date: '2026-11-01',
+        default_course_fee: 999
+    });
+    assert.equal(res5.valid, true);
+});
+
+test('Batch Classes: auto-titles sessions when title is omitted or blank', () => {
+    assert.equal(resolveSessionTitle('', 1), 'Session #1');
+    assert.equal(resolveSessionTitle('   ', 5), 'Session #5');
+    assert.equal(resolveSessionTitle(null, 10), 'Session #10');
+    assert.equal(resolveSessionTitle(undefined, 2), 'Session #2');
+    assert.equal(resolveSessionTitle('Orientation & Diagnostics', 1), 'Orientation & Diagnostics');
+});
+
+test('Batch Classes: generates calendar days schedule slots accurately', () => {
+    const sessions = generateCalendarDaysSchedule('2026-11-02', '2026-11-15', ['Mon', 'Wed'], '18:30');
+    assert.ok(sessions.length > 0);
+    for (const sess of sessions) {
+        assert.ok(sess.title.startsWith('Session #'));
+        const date = new Date(sess.scheduled_at);
+        const dayOfWeek = date.getDay(); // 1 = Mon, 3 = Wed
+        assert.ok(dayOfWeek === 1 || dayOfWeek === 3, `Expected Mon or Wed, got day ${dayOfWeek}`);
+    }
 });
 
 test('Batch Classes: enforces capacity limit and prevents duplicate enrollments', () => {

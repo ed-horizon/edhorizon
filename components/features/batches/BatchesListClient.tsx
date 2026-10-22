@@ -56,6 +56,10 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
         start_date: new Date().toISOString().split('T')[0],
         end_date: "",
         schedule_description: "",
+        recurring_days: [] as string[],
+        session_time: "18:00",
+        session_duration_minutes: 60,
+        auto_generate_sessions: true,
         meeting_link: "",
         default_course_fee: 0,
         agreed_tutor_payout: 0,
@@ -91,7 +95,11 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                 capacity: Number(formData.capacity) || 20,
                 start_date: formData.start_date,
                 end_date: formData.end_date || null,
-                schedule_description: formData.schedule_description,
+                schedule_description: formData.schedule_description?.trim() || null,
+                recurring_days: formData.recurring_days,
+                session_time: formData.session_time,
+                session_duration_minutes: Number(formData.session_duration_minutes) || 60,
+                auto_generate_sessions: formData.auto_generate_sessions,
                 meeting_link: formData.meeting_link || null,
                 default_course_fee: Number(formData.default_course_fee) || 0,
                 agreed_tutor_payout: Number(formData.agreed_tutor_payout) || 0,
@@ -113,6 +121,10 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                 start_date: new Date().toISOString().split('T')[0],
                 end_date: "",
                 schedule_description: "",
+                recurring_days: [],
+                session_time: "18:00",
+                session_duration_minutes: 60,
+                auto_generate_sessions: true,
                 meeting_link: "",
                 default_course_fee: 0,
                 agreed_tutor_payout: 0,
@@ -261,14 +273,135 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                                         </div>
                                     </div>
 
+                                    {/* Structured Days & Time Picker */}
+                                    <div className="space-y-3 p-3.5 rounded-xl bg-muted/30 border border-border/50">
+                                        <div className="flex items-center justify-between">
+                                            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                                <Calendar className="h-3.5 w-3.5 text-indigo-500" />
+                                                Class Days & Time Schedule
+                                            </Label>
+                                            <span className="text-[11px] text-muted-foreground">Select session days & time</span>
+                                        </div>
+
+                                        {/* Day Pills */}
+                                        <div className="space-y-1.5">
+                                            <span className="text-xs font-medium text-foreground">Select Calendar Days:</span>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
+                                                    const isSelected = formData.recurring_days.includes(day);
+                                                    return (
+                                                        <button
+                                                            key={day}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const newDays = isSelected
+                                                                    ? formData.recurring_days.filter(d => d !== day)
+                                                                    : [...formData.recurring_days, day];
+                                                                const desc = newDays.length > 0 
+                                                                    ? `${newDays.join(', ')} at ${formData.session_time || '18:00'} (${formData.session_duration_minutes || 60}m)`
+                                                                    : "";
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    recurring_days: newDays,
+                                                                    schedule_description: desc
+                                                                });
+                                                            }}
+                                                            className={cn(
+                                                                "px-3 py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer",
+                                                                isSelected
+                                                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                                                                    : "bg-background text-muted-foreground border-border/70 hover:border-border hover:text-foreground"
+                                                            )}
+                                                        >
+                                                            {day}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Time and Duration */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                            <div className="space-y-1">
+                                                <Label htmlFor="session-time" className="text-xs flex items-center gap-1">
+                                                    <Clock className="h-3 w-3 text-indigo-500" />
+                                                    Session Time
+                                                </Label>
+                                                <Input
+                                                    id="session-time"
+                                                    type="time"
+                                                    value={formData.session_time}
+                                                    onChange={(e) => {
+                                                        const newTime = e.target.value;
+                                                        const desc = formData.recurring_days.length > 0
+                                                            ? `${formData.recurring_days.join(', ')} at ${newTime} (${formData.session_duration_minutes || 60}m)`
+                                                            : formData.schedule_description;
+                                                        setFormData({
+                                                            ...formData,
+                                                            session_time: newTime,
+                                                            schedule_description: desc
+                                                        });
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label htmlFor="session-duration" className="text-xs">Duration</Label>
+                                                <Select 
+                                                    value={String(formData.session_duration_minutes)} 
+                                                    onValueChange={(val) => {
+                                                        const mins = parseInt(val, 10) || 60;
+                                                        const desc = formData.recurring_days.length > 0
+                                                            ? `${formData.recurring_days.join(', ')} at ${formData.session_time || '18:00'} (${mins}m)`
+                                                            : formData.schedule_description;
+                                                        setFormData({
+                                                            ...formData,
+                                                            session_duration_minutes: mins,
+                                                            schedule_description: desc
+                                                        });
+                                                    }}
+                                                >
+                                                    <SelectTrigger id="session-duration">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="30">30 minutes</SelectItem>
+                                                        <SelectItem value="45">45 minutes</SelectItem>
+                                                        <SelectItem value="60">60 minutes (1 hour)</SelectItem>
+                                                        <SelectItem value="75">75 minutes</SelectItem>
+                                                        <SelectItem value="90">90 minutes (1.5 hours)</SelectItem>
+                                                        <SelectItem value="120">120 minutes (2 hours)</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+
+                                        {/* Auto-generate Sessions Checkbox */}
+                                        {formData.recurring_days.length > 0 && (
+                                            <div className="pt-2 border-t border-border/30 flex items-start gap-2.5">
+                                                <input
+                                                    id="auto-generate-sessions"
+                                                    type="checkbox"
+                                                    checked={formData.auto_generate_sessions}
+                                                    onChange={(e) => setFormData({ ...formData, auto_generate_sessions: e.target.checked })}
+                                                    className="mt-0.5 h-4 w-4 rounded border-border text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                />
+                                                <label htmlFor="auto-generate-sessions" className="text-xs text-foreground cursor-pointer select-none">
+                                                    <span className="font-semibold block">Auto-schedule sessions on these calendar days</span>
+                                                    <span className="text-[11px] text-muted-foreground block">
+                                                        Generates scheduled session slots between Start Date and End Date (or next 4 weeks).
+                                                    </span>
+                                                </label>
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <div className="space-y-1.5">
-                                        <Label htmlFor="schedule-description">Class Schedule Description *</Label>
+                                        <Label htmlFor="schedule-description">Class Schedule Description (Optional)</Label>
                                         <Input
                                             id="schedule-description"
-                                            placeholder="e.g. Mon, Wed, Fri at 6:00 PM - 7:00 PM IST"
+                                            placeholder="e.g. Mon, Wed, Fri at 6:00 PM (Auto-filled from days above)"
                                             value={formData.schedule_description}
                                             onChange={(e) => setFormData({ ...formData, schedule_description: e.target.value })}
-                                            required
                                         />
                                     </div>
 
@@ -289,9 +422,9 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                                                 id="default-fee"
                                                 type="number"
                                                 min="0"
-                                                step="500"
-                                                placeholder="e.g. 5000"
-                                                value={formData.default_course_fee || ""}
+                                                step="any"
+                                                placeholder="e.g. 999"
+                                                value={formData.default_course_fee === 0 ? "" : formData.default_course_fee}
                                                 onChange={(e) => setFormData({ ...formData, default_course_fee: parseFloat(e.target.value) || 0 })}
                                             />
                                         </div>
@@ -301,9 +434,9 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                                                 id="agreed-payout"
                                                 type="number"
                                                 min="0"
-                                                step="500"
+                                                step="any"
                                                 placeholder="e.g. 15000"
-                                                value={formData.agreed_tutor_payout || ""}
+                                                value={formData.agreed_tutor_payout === 0 ? "" : formData.agreed_tutor_payout}
                                                 onChange={(e) => setFormData({ ...formData, agreed_tutor_payout: parseFloat(e.target.value) || 0 })}
                                             />
                                             <span className="text-[11px] text-muted-foreground">Fixed payout for the full course. Admin manages via HR Payroll.</span>
