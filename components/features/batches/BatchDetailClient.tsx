@@ -60,7 +60,8 @@ import {
     deleteBatchContent,
     copyBatchContent,
     createBatchCapsule,
-    uploadBatchFile
+    uploadBatchFile,
+    generateBatchSessionsAction
 } from "@/app/(dashboard)/batches/actions";
 import { calculateBatchSchedule } from "@/lib/batch-schedule";
 import { cn, ensureAbsoluteUrl } from "@/lib/utils";
@@ -110,14 +111,58 @@ export default function BatchDetailClient({
         capacity: batch.capacity,
         start_date: batch.start_date,
         end_date: batch.end_date || "",
-        course_duration_days: batch.course_duration_days || 30,
-        schedule_description: batch.schedule_description,
+        course_duration_days: batch.course_duration_days || 10,
+        schedule_description: batch.schedule_description || "",
+        recurring_days: (batch.recurring_days || []) as string[],
+        session_time: batch.session_time || "18:00",
+        session_duration_minutes: batch.session_duration_minutes || 60,
         meeting_link: batch.meeting_link || "",
         status: batch.status as BatchStatus,
         default_course_fee: batch.default_course_fee,
         agreed_tutor_payout: batch.agreed_tutor_payout,
         notes: batch.notes || ""
     });
+
+    const [isAutoScheduling, setIsAutoScheduling] = useState(false);
+
+    const updateEditSchedule = (newStart: string, newClassesCount: number, newDays: string[], newTime: string, newDurationMins: number) => {
+        let newEnd = "";
+        if (newStart && newClassesCount > 0) {
+            const { endDateStr } = calculateBatchSchedule(newStart, newDays, newClassesCount);
+            newEnd = endDateStr;
+        }
+        const desc = newDays.length > 0 
+            ? `${newDays.join(', ')} at ${newTime || '18:00'} (${newDurationMins || 60}m)`
+            : editData.schedule_description;
+        setEditData(prev => ({
+            ...prev,
+            start_date: newStart,
+            course_duration_days: newClassesCount,
+            recurring_days: newDays,
+            session_time: newTime,
+            session_duration_minutes: newDurationMins,
+            end_date: newEnd,
+            schedule_description: desc
+        }));
+    };
+
+    const handleAutoSchedule = async () => {
+        if (!confirm(`Generate all ${batch.course_duration_days || 10} session slots for this batch based on its configured calendar days?`)) return;
+        setIsAutoScheduling(true);
+        try {
+            const res = await generateBatchSessionsAction(batch.id);
+            if (res.success) {
+                toast.success("All batch sessions generated successfully!");
+                router.refresh();
+            } else {
+                toast.error(res.error || "Failed to generate sessions");
+            }
+        } catch (err: any) {
+            toast.error(err.message || "Failed to generate sessions");
+        } finally {
+            setIsAutoScheduling(false);
+        }
+    };
 
     // Enroll Student state
     const [isEnrollOpen, setIsEnrollOpen] = useState(false);
@@ -199,6 +244,9 @@ export default function BatchDetailClient({
                 teacher_id: editData.teacher_id === "none" ? null : editData.teacher_id,
                 capacity: Number(editData.capacity),
                 course_duration_days: Number(editData.course_duration_days) || null,
+                recurring_days: editData.recurring_days,
+                session_time: editData.session_time,
+                session_duration_minutes: Number(editData.session_duration_minutes) || 60,
                 default_course_fee: Number(editData.default_course_fee),
                 agreed_tutor_payout: Number(editData.agreed_tutor_payout),
             });
@@ -1010,24 +1058,51 @@ export default function BatchDetailClient({
                         </div>
 
                         {canTrackSession && (
-                            <Button 
-                                id="add-session-button"
-                                onClick={() => setIsAddSessionOpen(true)} 
-                                className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
-                            >
-                                <Plus className="h-4 w-4" />
-                                Add Session
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                {canManage && (
+                                    <Button 
+                                        type="button"
+                                        variant="outline"
+                                        disabled={isAutoScheduling}
+                                        onClick={handleAutoSchedule}
+                                        className="gap-2 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50"
+                                    >
+                                        <Calendar className="h-4 w-4" />
+                                        {isAutoScheduling ? "Generating..." : "Auto-Schedule All Sessions"}
+                                    </Button>
+                                )}
+                                <Button 
+                                    id="add-session-button"
+                                    onClick={() => setIsAddSessionOpen(true)} 
+                                    className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                    Add Session
+                                </Button>
+                            </div>
                         )}
                     </div>
 
                     {/* Sessions Grid / Table */}
                     <div className="space-y-3">
                         {batch.sessions.length === 0 ? (
-                            <div className="p-12 text-center rounded-2xl border border-dashed border-border bg-card/30">
+                            <div className="p-12 text-center rounded-2xl border border-dashed border-border bg-card/30 space-y-3">
                                 <Calendar className="h-10 w-10 mx-auto text-muted-foreground/40 mb-2" />
                                 <h4 className="font-bold">No Sessions Scheduled</h4>
-                                <p className="text-xs text-muted-foreground mt-1">Schedule upcoming classes for this cohort.</p>
+                                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                                    No class sessions have been scheduled yet for this batch. You can auto-generate all {batch.course_duration_days || 10} session slots across its calendar days.
+                                </p>
+                                {canManage && (
+                                    <Button 
+                                        type="button"
+                                        disabled={isAutoScheduling}
+                                        onClick={handleAutoSchedule}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 mt-2"
+                                    >
+                                        <Calendar className="h-4 w-4" />
+                                        {isAutoScheduling ? "Generating Sessions..." : `Auto-Schedule ${batch.course_duration_days || 10} Sessions Now`}
+                                    </Button>
+                                )}
                             </div>
                         ) : (
                             batch.sessions.map((sess: any) => (
@@ -1372,13 +1447,7 @@ export default function BatchDetailClient({
                                         value={editData.start_date}
                                         onChange={(e) => {
                                             const newStart = e.target.value;
-                                            const days = editData.course_duration_days || 10;
-                                            const calc = calculateBatchSchedule(newStart, batch.recurring_days || [], days);
-                                            setEditData({
-                                                ...editData,
-                                                start_date: newStart,
-                                                end_date: calc.endDateStr
-                                            });
+                                            updateEditSchedule(newStart, editData.course_duration_days, editData.recurring_days, editData.session_time, editData.session_duration_minutes);
                                         }}
                                     />
                                 </div>
@@ -1392,19 +1461,94 @@ export default function BatchDetailClient({
                                         value={editData.course_duration_days || ""}
                                         onChange={(e) => {
                                             const days = parseInt(e.target.value, 10) || 0;
-                                            const calc = calculateBatchSchedule(editData.start_date, batch.recurring_days || [], days);
-                                            setEditData({
-                                                ...editData,
-                                                course_duration_days: days,
-                                                end_date: calc.endDateStr
-                                            });
+                                            updateEditSchedule(editData.start_date, days, editData.recurring_days, editData.session_time, editData.session_duration_minutes);
                                         }}
                                     />
                                     {editData.end_date && (
                                         <p className="text-[10px] text-muted-foreground font-medium">
-                                            Calculated End Date: <span className="text-indigo-600 font-semibold">{editData.end_date}</span>
+                                            Calculated Schedule: <span className="text-indigo-600 font-semibold">{editData.course_duration_days} classes</span> ending on <span className="text-indigo-600 font-semibold">{editData.end_date}</span>
                                         </p>
                                     )}
+                                </div>
+                            </div>
+
+                            {/* Structured Days & Time Picker */}
+                            <div className="space-y-3 p-3.5 rounded-xl bg-muted/30 border border-border/50">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                        <Calendar className="h-3.5 w-3.5 text-indigo-500" />
+                                        Class Days & Time Schedule
+                                    </Label>
+                                    <span className="text-[11px] text-muted-foreground">Select session days & time</span>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <span className="text-xs font-medium text-foreground">Select Calendar Days:</span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
+                                            const isSelected = editData.recurring_days.includes(day);
+                                            return (
+                                                <button
+                                                    key={day}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newDays = isSelected
+                                                            ? editData.recurring_days.filter(d => d !== day)
+                                                            : [...editData.recurring_days, day];
+                                                        updateEditSchedule(editData.start_date, editData.course_duration_days, newDays, editData.session_time, editData.session_duration_minutes);
+                                                    }}
+                                                    className={cn(
+                                                        "px-3 py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer",
+                                                        isSelected
+                                                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                                                            : "bg-background text-muted-foreground border-border/70 hover:border-border hover:text-foreground"
+                                                    )}
+                                                >
+                                                    {day}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                    <div className="space-y-1">
+                                        <Label htmlFor="edit-session-time" className="text-xs flex items-center gap-1">
+                                            <Clock className="h-3 w-3 text-indigo-500" />
+                                            Session Time
+                                        </Label>
+                                        <Input
+                                            id="edit-session-time"
+                                            type="time"
+                                            value={editData.session_time}
+                                            onChange={(e) => {
+                                                const newTime = e.target.value;
+                                                updateEditSchedule(editData.start_date, editData.course_duration_days, editData.recurring_days, newTime, editData.session_duration_minutes);
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label htmlFor="edit-session-duration" className="text-xs">Duration</Label>
+                                        <Select 
+                                            value={String(editData.session_duration_minutes)} 
+                                            onValueChange={(val) => {
+                                                const mins = parseInt(val, 10) || 60;
+                                                updateEditSchedule(editData.start_date, editData.course_duration_days, editData.recurring_days, editData.session_time, mins);
+                                            }}
+                                        >
+                                            <SelectTrigger id="edit-session-duration">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="30">30 minutes</SelectItem>
+                                                <SelectItem value="45">45 minutes</SelectItem>
+                                                <SelectItem value="60">60 minutes (1 hour)</SelectItem>
+                                                <SelectItem value="75">75 minutes</SelectItem>
+                                                <SelectItem value="90">90 minutes (1.5 hours)</SelectItem>
+                                                <SelectItem value="120">120 minutes (2 hours)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
                             </div>
 

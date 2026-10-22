@@ -339,9 +339,11 @@ async function autoGenerateBatchSessions(
     const hours = parseInt(timeParts[0] || '18', 10);
     const minutes = parseInt(timeParts[1] || '0', 10);
 
+    const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
     const sessionPayloads = scheduledDates.map((dateStr, idx) => {
         const parts = dateStr.split('-').map(Number);
-        const scheduledAt = new Date(parts[0], parts[1] - 1, parts[2], hours, minutes, 0, 0);
+        const utcMs = Date.UTC(parts[0], parts[1] - 1, parts[2], hours, minutes, 0, 0) - IST_OFFSET_MS;
+        const scheduledAt = new Date(utcMs);
         return {
             batch_id: batchId,
             session_number: idx + 1,
@@ -369,6 +371,47 @@ async function autoGenerateBatchSessions(
                 .eq('id', batchId);
         }
     }
+}
+
+/**
+ * Action to auto-generate all session slots for a batch according to its configured schedule and class count
+ */
+export async function generateBatchSessionsAction(batchId: string) {
+    const { user, role } = await getAuthenticatedUserRole();
+    if (!user || !['super_admin', 'admin', 'operations'].includes(role || '')) {
+        return { success: false, error: "Unauthorized" };
+    }
+
+    const admin = getAdmin() || await createClient();
+    const { data: batch, error } = await admin
+        .from('batches')
+        .select('*')
+        .eq('id', batchId)
+        .single();
+
+    if (error || !batch) {
+        return { success: false, error: "Batch not found" };
+    }
+
+    if (!batch.recurring_days || batch.recurring_days.length === 0) {
+        return { success: false, error: "Please select recurring calendar days (e.g. Mon, Wed, Fri) for this batch first." };
+    }
+
+    const totalClasses = batch.course_duration_days || 10;
+    await autoGenerateBatchSessions(batch.id, {
+        startDate: batch.start_date,
+        endDate: batch.end_date,
+        durationDays: totalClasses,
+        recurringDays: batch.recurring_days,
+        sessionTime: batch.session_time || "18:00",
+        durationMinutes: Number(batch.session_duration_minutes || 60),
+        meetingLink: batch.meeting_link || null,
+        userId: user.id
+    });
+
+    revalidatePath('/batches');
+    revalidatePath(`/batches/${batchId}`);
+    return { success: true };
 }
 
 /**
@@ -1578,15 +1621,29 @@ export async function getTeacherTodayBatchSessions(teacherId?: string) {
     noStore();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    const targetId = teacherId || user?.id;
-    if (!targetId) return [];
+    if (!user) return [];
 
+    const targetId = teacherId || user.id;
     const admin = getAdmin() || supabase;
 
-    const { data: batches } = await admin
+    // Check user role
+    const { data: profile } = await admin
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+    const isStaff = ['super_admin', 'admin', 'operations'].includes(profile?.role || '');
+
+    let batchQuery = admin
         .from('batches')
-        .select('id, name, course_name, meeting_link')
-        .eq('teacher_id', targetId);
+        .select('id, name, course_name, meeting_link, status, teacher_id')
+        .in('status', ['upcoming', 'ongoing']);
+
+    if (!isStaff || teacherId) {
+        batchQuery = batchQuery.eq('teacher_id', targetId);
+    }
+
+    const { data: batches } = await batchQuery;
 
     if (!batches || batches.length === 0) return [];
 
@@ -1633,12 +1690,20 @@ export async function getTeacherAssignedBatches(teacherId?: string) {
     noStore();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    const targetId = teacherId || user?.id;
-    if (!targetId) return [];
+    if (!user) return [];
 
+    const targetId = teacherId || user.id;
     const admin = getAdmin() || supabase;
 
-    const { data: batches, error } = await admin
+    // Check user role
+    const { data: profile } = await admin
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+    const isStaff = ['super_admin', 'admin', 'operations'].includes(profile?.role || '');
+
+    let query = admin
         .from('batches')
         .select(`
             id,
@@ -1654,8 +1719,13 @@ export async function getTeacherAssignedBatches(teacherId?: string) {
             batch_sessions(id, status, scheduled_at),
             batch_learning_content:batch_learning_content!batch_learning_content_batch_id_fkey(id)
         `)
-        .eq('teacher_id', targetId)
         .order('created_at', { ascending: false });
+
+    if (!isStaff || teacherId) {
+        query = query.eq('teacher_id', targetId);
+    }
+
+    const { data: batches, error } = await query;
 
     if (error || !batches) {
         if (error) console.error("getTeacherAssignedBatches error:", error);
