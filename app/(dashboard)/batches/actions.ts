@@ -24,6 +24,7 @@ export interface BatchSummary {
     capacity: number;
     start_date: string;
     end_date: string | null;
+    course_duration_days?: number | null;
     schedule_description: string | null;
     recurring_days?: string[] | null;
     session_time?: string | null;
@@ -127,6 +128,7 @@ export async function getBatches(filters?: { status?: string; teacherId?: string
             capacity: b.capacity,
             start_date: b.start_date,
             end_date: b.end_date,
+            course_duration_days: b.course_duration_days || null,
             schedule_description: b.schedule_description || null,
             recurring_days: b.recurring_days || null,
             session_time: b.session_time || null,
@@ -215,32 +217,12 @@ export async function getBatchById(batchId: string) {
         console.error("getBatchById sessions error:", sessionsError);
     }
 
-    // 4. Fetch Assigned Learning Content
+    // 4. Fetch Assigned Learning Content (Fresh batch materials)
     const { data: assignedContent, error: contentError } = await admin
         .from('batch_learning_content')
-        .select(`
-            *,
-            capsule:capsules(
-                id,
-                title,
-                type,
-                status,
-                topic:topics(
-                    id,
-                    title,
-                    course:courses(id, title)
-                ),
-                quiz_completions(
-                    id,
-                    score,
-                    total_questions,
-                    completed_at,
-                    student_id
-                )
-            )
-        `)
+        .select('id, batch_id, title, type, content_url, description, source_batch_id, created_at, assigned_at, assigned_by')
         .eq('batch_id', batchId)
-        .order('assigned_at', { ascending: false });
+        .order('created_at', { ascending: false });
 
     if (contentError) {
         console.error("getBatchById content error:", contentError);
@@ -288,19 +270,17 @@ export async function getBatchById(batchId: string) {
         conducted_by_name: s.conducted_by_profile?.full_name || null,
     }));
 
-    const cleanContent = (assignedContent || []).map((item: any) => {
-        const c = item.capsule;
-        return {
-            assignment_id: item.id,
-            capsule_id: item.capsule_id,
-            assigned_at: item.assigned_at,
-            title: c?.title || 'Learning Capsule',
-            type: c?.type || 'video',
-            topic_title: c?.topic?.title || 'General',
-            course_title: c?.topic?.course?.title || 'Course',
-            completions: c?.quiz_completions || [],
-        };
-    });
+    const cleanContent = (assignedContent || []).map((item: any) => ({
+        id: item.id,
+        batch_id: item.batch_id,
+        title: item.title || 'Batch Material',
+        type: item.type || 'document',
+        content_url: item.content_url || null,
+        description: item.description || null,
+        source_batch_id: item.source_batch_id || null,
+        created_at: item.created_at || item.assigned_at,
+        assigned_by: item.assigned_by || null,
+    }));
 
     const totalExpected = cleanEnrollments.reduce((sum, e) => sum + e.course_fee, 0);
     const totalCollected = cleanEnrollments.reduce((sum, e) => sum + e.paid_amount, 0);
@@ -310,6 +290,7 @@ export async function getBatchById(batchId: string) {
         ...batch,
         agreed_tutor_payout: Number(batch.agreed_tutor_payout || 0),
         default_course_fee: Number(batch.default_course_fee || 0),
+        course_duration_days: batch.course_duration_days || null,
         enrollments: cleanEnrollments,
         sessions: cleanSessions,
         assigned_content: cleanContent,
@@ -329,6 +310,19 @@ export async function getBatchById(batchId: string) {
 }
 
 /**
+ * Helper to calculate batch end date from start date and duration days without timezone drift
+ */
+function calculateBatchEndDate(startDateStr: string, durationDays: number): string {
+    const parts = startDateStr.split('-').map(Number);
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    d.setDate(d.getDate() + (durationDays - 1));
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+/**
  * Helper to auto-generate session slots on selected calendar days
  */
 async function autoGenerateBatchSessions(
@@ -336,6 +330,7 @@ async function autoGenerateBatchSessions(
     config: {
         startDate: string;
         endDate: string | null;
+        durationDays?: number | null;
         recurringDays: string[];
         sessionTime: string;
         durationMinutes: number;
@@ -357,11 +352,23 @@ async function autoGenerateBatchSessions(
     const targetDays = new Set(config.recurringDays.map(d => DAY_MAP[d]).filter(d => d !== undefined));
     if (targetDays.size === 0) return;
 
-    const start = new Date(config.startDate + 'T00:00:00');
-    // If no end date provided, generate 4 weeks of sessions (28 days)
-    const end = config.endDate 
-        ? new Date(config.endDate + 'T23:59:59')
-        : new Date(start.getTime() + 28 * 24 * 60 * 60 * 1000);
+    const startParts = config.startDate.split('-').map(Number);
+    const start = new Date(startParts[0], startParts[1] - 1, startParts[2]);
+
+    // If durationDays provided, calculate end date from duration
+    let end: Date;
+    if (config.durationDays && config.durationDays > 0) {
+        end = new Date(startParts[0], startParts[1] - 1, startParts[2]);
+        end.setDate(end.getDate() + (config.durationDays - 1));
+        end.setHours(23, 59, 59, 999);
+    } else if (config.endDate) {
+        const endParts = config.endDate.split('-').map(Number);
+        end = new Date(endParts[0], endParts[1] - 1, endParts[2], 23, 59, 59, 999);
+    } else {
+        end = new Date(startParts[0], startParts[1] - 1, startParts[2]);
+        end.setDate(end.getDate() + 28);
+        end.setHours(23, 59, 59, 999);
+    }
 
     const timeParts = config.sessionTime.split(':');
     const hours = parseInt(timeParts[0] || '18', 10);
@@ -370,7 +377,7 @@ async function autoGenerateBatchSessions(
     const sessionPayloads = [];
     const current = new Date(start);
     let sessionNumber = 1;
-    const MAX_SESSIONS = 60; // safe upper bound
+    const MAX_SESSIONS = 100; // safe upper bound
 
     while (current <= end && sessionPayloads.length < MAX_SESSIONS) {
         if (targetDays.has(current.getDay())) {
@@ -414,6 +421,7 @@ export async function createBatch(data: {
     capacity?: number;
     start_date: string;
     end_date?: string | null;
+    course_duration_days?: number | null;
     schedule_description?: string | null;
     recurring_days?: string[];
     session_time?: string;
@@ -440,6 +448,12 @@ export async function createBatch(data: {
         scheduleDesc = `${data.recurring_days.join(', ')}${timeStr}${durStr}`;
     }
 
+    const durationDays = data.course_duration_days ? Number(data.course_duration_days) : null;
+    let calculatedEndDate = data.end_date || null;
+    if (durationDays && durationDays > 0 && data.start_date) {
+        calculatedEndDate = calculateBatchEndDate(data.start_date, durationDays);
+    }
+
     const admin = getAdmin() || await createClient();
 
     const insertPayload: any = {
@@ -449,7 +463,8 @@ export async function createBatch(data: {
         teacher_id: data.teacher_id || null,
         capacity: Number(data.capacity || 20),
         start_date: data.start_date,
-        end_date: data.end_date || null,
+        end_date: calculatedEndDate,
+        course_duration_days: durationDays,
         schedule_description: scheduleDesc || null,
         recurring_days: data.recurring_days && data.recurring_days.length > 0 ? data.recurring_days : null,
         session_time: data.session_time || null,
@@ -478,7 +493,8 @@ export async function createBatch(data: {
         try {
             await autoGenerateBatchSessions(created.id, {
                 startDate: data.start_date,
-                endDate: data.end_date || null,
+                endDate: calculatedEndDate,
+                durationDays: durationDays,
                 recurringDays: data.recurring_days,
                 sessionTime: data.session_time || "18:00",
                 durationMinutes: Number(data.session_duration_minutes || 60),
@@ -505,6 +521,7 @@ export async function updateBatch(batchId: string, data: Partial<{
     capacity: number;
     start_date: string;
     end_date: string | null;
+    course_duration_days: number | null;
     schedule_description: string | null;
     recurring_days: string[] | null;
     session_time: string | null;
@@ -522,8 +539,14 @@ export async function updateBatch(batchId: string, data: Partial<{
 
     const admin = getAdmin() || await createClient();
 
+    let calculatedEndDate = data.end_date !== undefined ? data.end_date : undefined;
+    if (data.course_duration_days && data.course_duration_days > 0 && data.start_date) {
+        calculatedEndDate = calculateBatchEndDate(data.start_date, data.course_duration_days);
+    }
+
     const updatePayload: any = {
         ...data,
+        ...(calculatedEndDate !== undefined ? { end_date: calculatedEndDate } : {}),
         updated_at: new Date().toISOString()
     };
 
@@ -929,6 +952,195 @@ export async function unassignCapsuleFromBatch(batchId: string, capsuleId: strin
 }
 
 /**
+ * Create fresh learning content specifically for a batch
+ */
+export async function createBatchContent(batchId: string, data: {
+    title: string;
+    type?: string;
+    content_url?: string;
+    description?: string;
+}) {
+    const { user, role } = await getAuthenticatedUserRole();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const admin = getAdmin() || await createClient();
+
+    const { data: batch } = await admin
+        .from('batches')
+        .select('teacher_id')
+        .eq('id', batchId)
+        .single();
+
+    const isStaff = ['super_admin', 'admin', 'operations'].includes(role || '');
+    const isTeacher = batch?.teacher_id === user.id;
+
+    if (!isStaff && !isTeacher) {
+        return { success: false, error: "Unauthorized to add content to this batch" };
+    }
+
+    if (!data.title?.trim()) {
+        return { success: false, error: "Material title is required" };
+    }
+
+    const { data: created, error } = await admin
+        .from('batch_learning_content')
+        .insert({
+            batch_id: batchId,
+            title: data.title.trim(),
+            type: data.type || 'document',
+            content_url: data.content_url?.trim() || null,
+            description: data.description?.trim() || null,
+            assigned_by: user.id
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error("createBatchContent error:", error);
+        return { success: false, error: error.message };
+    }
+
+    revalidatePath(`/batches/${batchId}`);
+    return { success: true, item: created };
+}
+
+/**
+ * Delete a batch content item
+ */
+export async function deleteBatchContent(contentId: string, batchId: string) {
+    const { user, role } = await getAuthenticatedUserRole();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const admin = getAdmin() || await createClient();
+
+    const { data: batch } = await admin
+        .from('batches')
+        .select('teacher_id')
+        .eq('id', batchId)
+        .single();
+
+    const isStaff = ['super_admin', 'admin', 'operations'].includes(role || '');
+    const isTeacher = batch?.teacher_id === user.id;
+
+    if (!isStaff && !isTeacher) {
+        return { success: false, error: "Unauthorized" };
+    }
+
+    const { error } = await admin
+        .from('batch_learning_content')
+        .delete()
+        .eq('id', contentId)
+        .eq('batch_id', batchId);
+
+    if (error) {
+        console.error("deleteBatchContent error:", error);
+        return { success: false, error: error.message };
+    }
+
+    revalidatePath(`/batches/${batchId}`);
+    return { success: true };
+}
+
+/**
+ * Copy learning materials from another batch into this batch
+ */
+export async function copyBatchContent(targetBatchId: string, contentIds: string[]) {
+    const { user, role } = await getAuthenticatedUserRole();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    if (!contentIds || contentIds.length === 0) {
+        return { success: false, error: "No materials selected to copy" };
+    }
+
+    const admin = getAdmin() || await createClient();
+
+    const { data: targetBatch } = await admin
+        .from('batches')
+        .select('teacher_id')
+        .eq('id', targetBatchId)
+        .single();
+
+    const isStaff = ['super_admin', 'admin', 'operations'].includes(role || '');
+    const isTeacher = targetBatch?.teacher_id === user.id;
+
+    if (!isStaff && !isTeacher) {
+        return { success: false, error: "Unauthorized to modify this batch" };
+    }
+
+    // Fetch the selected materials
+    const { data: sourceMaterials, error: fetchErr } = await admin
+        .from('batch_learning_content')
+        .select('*')
+        .in('id', contentIds);
+
+    if (fetchErr || !sourceMaterials || sourceMaterials.length === 0) {
+        return { success: false, error: "Selected materials could not be found" };
+    }
+
+    // Insert copies for targetBatchId
+    const newItems = sourceMaterials.map((item: any) => ({
+        batch_id: targetBatchId,
+        title: item.title,
+        type: item.type || 'document',
+        content_url: item.content_url || null,
+        description: item.description || null,
+        source_batch_id: item.batch_id,
+        assigned_by: user.id
+    }));
+
+    const { error: insertErr } = await admin
+        .from('batch_learning_content')
+        .insert(newItems);
+
+    if (insertErr) {
+        console.error("copyBatchContent insert error:", insertErr);
+        return { success: false, error: insertErr.message };
+    }
+
+    revalidatePath(`/batches/${targetBatchId}`);
+    return { success: true, count: newItems.length };
+}
+
+/**
+ * Fetch other batches that have learning content, for the copy dialog
+ */
+export async function getBatchesWithContent(excludeBatchId: string) {
+    const admin = getAdmin() || await createClient();
+
+    const { data: batches, error } = await admin
+        .from('batches')
+        .select(`
+            id,
+            name,
+            course_name,
+            batch_learning_content(id, title, type, content_url, description, created_at)
+        `)
+        .neq('id', excludeBatchId)
+        .order('created_at', { ascending: false });
+
+    if (error || !batches) {
+        console.error("getBatchesWithContent error:", error);
+        return [];
+    }
+
+    return batches
+        .filter((b: any) => (b.batch_learning_content || []).length > 0)
+        .map((b: any) => ({
+            id: b.id,
+            name: b.name,
+            course_name: b.course_name,
+            materials: (b.batch_learning_content || []).map((m: any) => ({
+                id: m.id,
+                title: m.title || 'Untitled Material',
+                type: m.type || 'document',
+                content_url: m.content_url || null,
+                description: m.description || null,
+                created_at: m.created_at
+            }))
+        }));
+}
+
+/**
  * Fetch available students from academy database for enrollment
  */
 export async function getAvailableStudentsForBatch(batchId: string) {
@@ -1167,6 +1379,113 @@ export async function getTeacherBatches(teacherId?: string) {
             agreed_tutor_payout: Number(b.agreed_tutor_payout || 0),
             enrolled_count: (b.batch_enrollments || []).length,
             sessions
+        };
+    });
+}
+
+/**
+ * Fetch tutor's today's batch sessions
+ */
+export async function getTeacherTodayBatchSessions(teacherId?: string) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const targetId = teacherId || user?.id;
+    if (!targetId) return [];
+
+    const admin = getAdmin() || supabase;
+
+    const { data: batches } = await admin
+        .from('batches')
+        .select('id, name, course_name, meeting_link')
+        .eq('teacher_id', targetId);
+
+    if (!batches || batches.length === 0) return [];
+
+    const batchMap = new Map(batches.map(b => [b.id, b]));
+    const batchIds = batches.map(b => b.id);
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
+
+    const { data: sessions, error } = await admin
+        .from('batch_sessions')
+        .select('*')
+        .in('batch_id', batchIds)
+        .gte('scheduled_at', todayStart)
+        .lte('scheduled_at', todayEnd)
+        .order('scheduled_at', { ascending: true });
+
+    if (error || !sessions) return [];
+
+    return sessions.map((s: any) => {
+        const b = batchMap.get(s.batch_id);
+        return {
+            id: s.id,
+            batch_id: s.batch_id,
+            batch_name: b?.name || 'Batch Class',
+            course_name: b?.course_name || '',
+            session_number: s.session_number,
+            title: s.title,
+            scheduled_at: s.scheduled_at,
+            duration_minutes: s.duration_minutes || 60,
+            meeting_link: s.meeting_link || b?.meeting_link || null,
+            status: s.status as BatchSessionStatus,
+            notes: s.notes,
+            completed_at: s.completed_at
+        };
+    });
+}
+
+/**
+ * Fetch tutor's assigned batches
+ */
+export async function getTeacherAssignedBatches(teacherId?: string) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const targetId = teacherId || user?.id;
+    if (!targetId) return [];
+
+    const admin = getAdmin() || supabase;
+
+    const { data: batches, error } = await admin
+        .from('batches')
+        .select(`
+            id,
+            name,
+            course_name,
+            capacity,
+            start_date,
+            end_date,
+            course_duration_days,
+            schedule_description,
+            meeting_link,
+            status,
+            batch_sessions(id, status, scheduled_at),
+            batch_learning_content(id)
+        `)
+        .eq('teacher_id', targetId)
+        .order('created_at', { ascending: false });
+
+    if (error || !batches) return [];
+
+    return batches.map((b: any) => {
+        const sessions = b.batch_sessions || [];
+        const completedCount = sessions.filter((s: any) => s.status === 'completed').length;
+        return {
+            id: b.id,
+            name: b.name,
+            course_name: b.course_name,
+            capacity: b.capacity,
+            start_date: b.start_date,
+            end_date: b.end_date,
+            course_duration_days: b.course_duration_days || null,
+            schedule_description: b.schedule_description,
+            meeting_link: b.meeting_link,
+            status: b.status as BatchStatus,
+            total_sessions: sessions.length,
+            completed_sessions: completedCount,
+            content_count: (b.batch_learning_content || []).length
         };
     });
 }

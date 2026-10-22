@@ -31,7 +31,7 @@ export const NAV_ITEMS = [
         title: "Batch Classes",
         href: "/batches",
         icon: Layers,
-        roles: ["super_admin", "admin", "operations", "teacher"],
+        roles: ["super_admin", "admin", "operations"],
     },
     {
         title: "Operations",

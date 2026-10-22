@@ -1,16 +1,19 @@
 import { getTeacherStats } from "./actions";
 import { getLiveClasses, getAssignedStudents, getTeacherMissingAttendanceClasses, getTeacherRequestsData, getCurrentProfile } from "@/app/(dashboard)/attendance/actions";
+import { getTeacherTodayBatchSessions, getTeacherAssignedBatches } from "@/app/(dashboard)/batches/actions";
 import { TeacherDashboardClient } from "@/components/features/teacher/TeacherDashboardClient";
 
 export default async function TeacherDashboard() {
-    // Fetch statistics, live classes, assigned students, missing attendance, requests, and profile in parallel
-    const [stats, liveClasses, assignedStudents, missingAttendance, requests, profile] = await Promise.all([
+    // Fetch statistics, live classes, assigned students, missing attendance, requests, profile, and batches in parallel
+    const [stats, liveClasses, assignedStudents, missingAttendance, requests, profile, todayBatchSessions, assignedBatches] = await Promise.all([
         getTeacherStats(),
         getLiveClasses(),
         getAssignedStudents(),
         getTeacherMissingAttendanceClasses(),
         getTeacherRequestsData(),
-        getCurrentProfile()
+        getCurrentProfile(),
+        getTeacherTodayBatchSessions(),
+        getTeacherAssignedBatches()
     ]);
 
     const teacherName = profile?.full_name || profile?.email?.split('@')[0] || "Tutor";
@@ -25,6 +28,8 @@ export default async function TeacherDashboard() {
                 missingAttendance={missingAttendance}
                 rescheduleRequests={requests.rescheduleRequests || []}
                 leaveRequests={requests.leaveRequests || []}
+                todayBatchSessions={todayBatchSessions || []}
+                assignedBatches={assignedBatches || []}
             />
         </div>
     );

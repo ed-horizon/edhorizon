@@ -48,32 +48,36 @@ import {
     updateBatchEnrollmentFee, 
     createBatchSession, 
     updateBatchSessionStatus, 
-    deleteBatchSession, 
-    assignCapsuleToBatch, 
-    unassignCapsuleFromBatch 
+    deleteBatchSession,
+    createBatchContent,
+    deleteBatchContent,
+    copyBatchContent
 } from "@/app/(dashboard)/batches/actions";
 import { cn } from "@/lib/utils";
 
 interface BatchDetailClientProps {
     batch: any;
     availableStudents: any[];
-    availableCapsules: any[];
+    batchesWithContent?: any[];
+    availableCapsules?: any[];
     tutors: any[];
 }
 
 export default function BatchDetailClient({ 
     batch, 
     availableStudents, 
-    availableCapsules, 
+    batchesWithContent = [],
     tutors 
 }: BatchDetailClientProps) {
     const router = useRouter();
+    const isTeacher = batch.user_role === 'teacher';
     const [copied, setCopied] = useState(false);
-    const [activeTab, setActiveTab] = useState("overview");
+    const [activeTab, setActiveTab] = useState(isTeacher ? "sessions" : "overview");
 
-    // Local state for enrollments and available students for instant reactivity
+    // Local state for enrollments and fresh content for instant reactivity
     const [localEnrollments, setLocalEnrollments] = useState<any[]>(batch.enrollments || []);
     const [localAvailableStudents, setLocalAvailableStudents] = useState<any[]>(availableStudents || []);
+    const [localContent, setLocalContent] = useState<any[]>(batch.assigned_content || []);
 
     useEffect(() => {
         setLocalEnrollments(batch.enrollments || []);
@@ -82,6 +86,10 @@ export default function BatchDetailClient({
     useEffect(() => {
         setLocalAvailableStudents(availableStudents || []);
     }, [availableStudents]);
+
+    useEffect(() => {
+        setLocalContent(batch.assigned_content || []);
+    }, [batch.assigned_content]);
 
     // Edit Batch state
     const [isEditOpen, setIsEditOpen] = useState(false);
@@ -92,6 +100,7 @@ export default function BatchDetailClient({
         capacity: batch.capacity,
         start_date: batch.start_date,
         end_date: batch.end_date || "",
+        course_duration_days: batch.course_duration_days || 30,
         schedule_description: batch.schedule_description,
         meeting_link: batch.meeting_link || "",
         status: batch.status as BatchStatus,
@@ -127,12 +136,16 @@ export default function BatchDetailClient({
     const [rescheduleDate, setRescheduleDate] = useState("");
     const [rescheduleNote, setRescheduleNote] = useState("");
 
-    // Assign Capsule state
-    const [isAssignContentOpen, setIsAssignContentOpen] = useState(false);
-    const [contentSearch, setContentSearch] = useState("");
+    // Fresh Content Modals state
+    const [isAddContentOpen, setIsAddContentOpen] = useState(false);
+    const [newContentTitle, setNewContentTitle] = useState("");
+    const [newContentType, setNewContentType] = useState("document");
+    const [newContentUrl, setNewContentUrl] = useState("");
+    const [newContentDesc, setNewContentDesc] = useState("");
 
-    // View Content Completions modal state
-    const [viewingCapsule, setViewingCapsule] = useState<any>(null);
+    const [isCopyContentOpen, setIsCopyContentOpen] = useState(false);
+    const [selectedSourceBatchId, setSelectedSourceBatchId] = useState("");
+    const [selectedMaterialIdsToCopy, setSelectedMaterialIdsToCopy] = useState<string[]>([]);
 
     // General loading & error
     const [actionLoading, setActionLoading] = useState(false);
@@ -158,6 +171,7 @@ export default function BatchDetailClient({
                 ...editData,
                 teacher_id: editData.teacher_id === "none" ? null : editData.teacher_id,
                 capacity: Number(editData.capacity),
+                course_duration_days: Number(editData.course_duration_days) || null,
                 default_course_fee: Number(editData.default_course_fee),
                 agreed_tutor_payout: Number(editData.agreed_tutor_payout),
             });
@@ -384,13 +398,30 @@ export default function BatchDetailClient({
         }
     };
 
-    const handleAssignCapsule = async (capsuleId: string) => {
+    const handleCreateContent = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newContentTitle.trim()) {
+            setErrorMessage("Title is required");
+            return;
+        }
         setActionLoading(true);
         try {
-            const res = await assignCapsuleToBatch(batch.id, capsuleId);
+            const res = await createBatchContent(batch.id, {
+                title: newContentTitle.trim(),
+                type: newContentType,
+                content_url: newContentUrl.trim() || undefined,
+                description: newContentDesc.trim() || undefined,
+            });
             if (!res.success) {
-                alert(res.error || "Failed to assign content");
+                alert(res.error || "Failed to create material");
             } else {
+                if (res.item) {
+                    setLocalContent(prev => [res.item, ...prev]);
+                }
+                setIsAddContentOpen(false);
+                setNewContentTitle("");
+                setNewContentUrl("");
+                setNewContentDesc("");
                 router.refresh();
             }
         } finally {
@@ -398,14 +429,36 @@ export default function BatchDetailClient({
         }
     };
 
-    const handleUnassignCapsule = async (capsuleId: string) => {
-        if (!confirm("Remove this learning material from the batch? Enrolled students will no longer see it.")) return;
+    const handleDeleteContent = async (contentId: string, title: string) => {
+        if (!confirm(`Delete "${title}" from this batch?`)) return;
         setActionLoading(true);
         try {
-            const res = await unassignCapsuleFromBatch(batch.id, capsuleId);
+            const res = await deleteBatchContent(contentId, batch.id);
             if (!res.success) {
-                alert(res.error || "Failed to remove material");
+                alert(res.error || "Failed to delete material");
             } else {
+                setLocalContent(prev => prev.filter(c => c.id !== contentId));
+                router.refresh();
+            }
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleCopyContentSubmit = async () => {
+        if (selectedMaterialIdsToCopy.length === 0) {
+            alert("Please select at least one material to copy");
+            return;
+        }
+        setActionLoading(true);
+        try {
+            const res = await copyBatchContent(batch.id, selectedMaterialIdsToCopy);
+            if (!res.success) {
+                alert(res.error || "Failed to copy materials");
+            } else {
+                setIsCopyContentOpen(false);
+                setSelectedMaterialIdsToCopy([]);
+                setSelectedSourceBatchId("");
                 router.refresh();
             }
         } finally {
@@ -463,10 +516,17 @@ export default function BatchDetailClient({
         <div className="space-y-6">
             {/* Top Navigation & Actions */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <Link href="/batches" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to All Batches
-                </Link>
+                {isTeacher ? (
+                    <Link href="/teacher" className="inline-flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 font-semibold transition-colors">
+                        <ArrowLeft className="h-4 w-4" />
+                        Back to Tutor Dashboard
+                    </Link>
+                ) : (
+                    <Link href="/batches" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                        <ArrowLeft className="h-4 w-4" />
+                        Back to All Batches
+                    </Link>
+                )}
 
                 {canManage && (
                     <div className="flex items-center gap-2">
@@ -551,30 +611,34 @@ export default function BatchDetailClient({
 
             {/* Main Tabs Navigation */}
             <div className="flex border-b border-border/60 gap-2 pb-px overflow-x-auto [scrollbar-width:none]">
-                <button
-                    type="button"
-                    onClick={() => setActiveTab("overview")}
-                    className={cn(
-                        "flex items-center gap-2 px-4 py-2.5 font-medium text-sm rounded-t-xl transition-all border-b-2 whitespace-nowrap",
-                        activeTab === "overview"
-                            ? "border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/20"
-                            : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
-                    )}
-                >
-                    <Info className="h-4 w-4" /> Overview
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setActiveTab("students")}
-                    className={cn(
-                        "flex items-center gap-2 px-4 py-2.5 font-medium text-sm rounded-t-xl transition-all border-b-2 whitespace-nowrap",
-                        activeTab === "students"
-                            ? "border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/20"
-                            : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
-                    )}
-                >
-                    <Users className="h-4 w-4" /> Students & Fees ({enrolledCount})
-                </button>
+                {!isTeacher && (
+                    <>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab("overview")}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2.5 font-medium text-sm rounded-t-xl transition-all border-b-2 whitespace-nowrap",
+                                activeTab === "overview"
+                                    ? "border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/20"
+                                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                            )}
+                        >
+                            <Info className="h-4 w-4" /> Overview
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab("students")}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2.5 font-medium text-sm rounded-t-xl transition-all border-b-2 whitespace-nowrap",
+                                activeTab === "students"
+                                    ? "border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/20"
+                                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                            )}
+                        >
+                            <Users className="h-4 w-4" /> Students & Fees ({enrolledCount})
+                        </button>
+                    </>
+                )}
                 <button
                     type="button"
                     onClick={() => setActiveTab("sessions")}
@@ -585,7 +649,7 @@ export default function BatchDetailClient({
                             : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
                     )}
                 >
-                    <Calendar className="h-4 w-4" /> Sessions ({batch.stats.total_sessions})
+                    <Calendar className="h-4 w-4" /> Class Schedules ({batch.stats.total_sessions})
                 </button>
                 <button
                     type="button"
@@ -597,12 +661,12 @@ export default function BatchDetailClient({
                             : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
                     )}
                 >
-                    <BookOpen className="h-4 w-4" /> Content ({batch.assigned_content.length})
+                    <BookOpen className="h-4 w-4" /> Batch Content ({localContent.length})
                 </button>
             </div>
 
             {/* ================= TAB 1: OVERVIEW ================= */}
-            {activeTab === "overview" && (
+            {!isTeacher && activeTab === "overview" && (
                 <div className="space-y-6 pt-2">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {/* Tutor Card */}
@@ -716,7 +780,7 @@ export default function BatchDetailClient({
             )}
 
             {/* ================= TAB 2: ENROLLED STUDENTS & COURSE FEES ================= */}
-            {activeTab === "students" && (
+            {!isTeacher && activeTab === "students" && (
                 <div className="space-y-6 pt-2">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
@@ -941,85 +1005,119 @@ export default function BatchDetailClient({
                 </div>
             )}
 
-            {/* ================= TAB 4: LEARNING CONTENT ================= */}
+            {/* ================= TAB 4: BATCH LEARNING CONTENT ================= */}
             {activeTab === "content" && (
                 <div className="space-y-6 pt-2">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
-                            <h2 className="text-lg font-bold">Assigned Learning Content</h2>
-                            <p className="text-xs text-muted-foreground">Quizzes, flashcards, and video capsules assigned to this cohort from the academy library.</p>
+                            <h2 className="text-lg font-serif font-bold text-foreground">Batch Learning Materials</h2>
+                            <p className="text-xs text-muted-foreground">Fresh study materials, resources, video links, and assignments created for this batch.</p>
                         </div>
 
                         {canTrackSession && (
-                            <Button 
-                                id="assign-content-button"
-                                onClick={() => setIsAssignContentOpen(true)} 
-                                className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
-                            >
-                                <Plus className="h-4 w-4" />
-                                Assign from Content Library
-                            </Button>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                {(batchesWithContent || []).length > 0 && (
+                                    <Button 
+                                        variant="outline"
+                                        onClick={() => setIsCopyContentOpen(true)}
+                                        className="gap-2 border-indigo-500/30 text-indigo-600 hover:bg-indigo-50/50"
+                                    >
+                                        <Copy className="h-4 w-4" />
+                                        Copy from Another Batch
+                                    </Button>
+                                )}
+                                <Button 
+                                    id="add-batch-content-button"
+                                    onClick={() => setIsAddContentOpen(true)} 
+                                    className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                    Add Batch Material
+                                </Button>
+                            </div>
                         )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {batch.assigned_content.length === 0 ? (
+                        {localContent.length === 0 ? (
                             <div className="col-span-full p-12 text-center rounded-2xl border border-dashed border-border bg-card/30">
                                 <BookOpen className="h-10 w-10 mx-auto text-muted-foreground/40 mb-2" />
-                                <h4 className="font-bold">No Content Assigned</h4>
-                                <p className="text-xs text-muted-foreground mt-1">Assign quizzes, flashcards, or videos to this batch.</p>
+                                <h4 className="font-bold text-foreground">No Materials Added Yet</h4>
+                                <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                                    Create fresh study materials, session notes, assignment links, or copy materials from a previous batch.
+                                </p>
+                                {canTrackSession && (
+                                    <div className="flex items-center justify-center gap-3 mt-4">
+                                        <Button size="sm" onClick={() => setIsAddContentOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                                            <Plus className="h-4 w-4 mr-1.5" /> Add Material
+                                        </Button>
+                                        {(batchesWithContent || []).length > 0 && (
+                                            <Button size="sm" variant="outline" onClick={() => setIsCopyContentOpen(true)}>
+                                                <Copy className="h-4 w-4 mr-1.5" /> Copy Previous Batch Content
+                                            </Button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         ) : (
-                            batch.assigned_content.map((item: any) => {
-                                const enrolledStudentIds = new Set(batch.enrollments.map((e: any) => e.student_id));
-                                const cohortCompletions = item.completions.filter((c: any) => enrolledStudentIds.has(c.student_id));
-
-                                return (
-                                    <Card key={item.assignment_id} className="border border-border/60 bg-card/70 backdrop-blur-sm">
-                                        <CardHeader className="pb-3">
-                                            <div className="flex items-start justify-between gap-2">
-                                                <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-wider">
-                                                    {item.type}
+                            localContent.map((item: any) => (
+                                <Card key={item.id} className="border border-border/60 bg-card/70 backdrop-blur-sm shadow-sm hover:border-indigo-500/20 transition-all">
+                                    <CardHeader className="pb-2">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-wider bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20">
+                                                    {item.type || 'document'}
                                                 </Badge>
-                                                <span className="text-xs text-muted-foreground">
-                                                    {item.course_title} / {item.topic_title}
-                                                </span>
-                                            </div>
-                                            <CardTitle className="text-base font-bold mt-1">{item.title}</CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3 pb-3">
-                                            <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-muted/40">
-                                                <span className="text-muted-foreground">Cohort Completions:</span>
-                                                <span className="font-semibold text-foreground">
-                                                    {cohortCompletions.length} / {batch.stats.enrolled_count} students
-                                                </span>
-                                            </div>
-
-                                            <div className="flex items-center justify-between pt-1">
-                                                <Button 
-                                                    variant="outline" 
-                                                    size="sm" 
-                                                    onClick={() => setViewingCapsule({ ...item, cohortCompletions })}
-                                                    className="text-xs h-8"
-                                                >
-                                                    View Student Scores
-                                                </Button>
-
-                                                {canTrackSession && (
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="sm" 
-                                                        onClick={() => handleUnassignCapsule(item.capsule_id)}
-                                                        className="text-xs h-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                                                    >
-                                                        Remove
-                                                    </Button>
+                                                {item.source_batch_id && (
+                                                    <Badge variant="outline" className="text-[9px] bg-muted/60 text-muted-foreground border-border/50">
+                                                        Shared from other batch
+                                                    </Badge>
                                                 )}
                                             </div>
-                                        </CardContent>
-                                    </Card>
-                                );
-                            })
+                                            {canTrackSession && (
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    onClick={() => handleDeleteContent(item.id, item.title)}
+                                                    className="h-7 w-7 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                                                    title="Delete material"
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            )}
+                                        </div>
+                                        <CardTitle className="text-base font-bold text-foreground mt-1.5">{item.title}</CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="space-y-3 pt-1">
+                                        {item.description && (
+                                            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                                                {item.description}
+                                            </p>
+                                        )}
+
+                                        <div className="flex items-center justify-between pt-2 border-t border-border/40 text-[11px] text-muted-foreground">
+                                            <span>
+                                                {item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Active'}
+                                            </span>
+
+                                            {item.content_url ? (
+                                                <a 
+                                                    href={item.content_url.startsWith('http') ? item.content_url : `https://${item.content_url}`} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                >
+                                                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-indigo-200 dark:border-indigo-900 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50">
+                                                        <span>Open Resource</span>
+                                                        <ExternalLink className="h-3 w-3" />
+                                                    </Button>
+                                                </a>
+                                            ) : (
+                                                <span className="text-[10px] italic text-muted-foreground/60">No URL link attached</span>
+                                            )}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))
                         )}
                     </div>
                 </div>
@@ -1123,6 +1221,29 @@ export default function BatchDetailClient({
                                         step="any"
                                         value={editData.agreed_tutor_payout}
                                         onChange={(e) => setEditData({ ...editData, agreed_tutor_payout: parseFloat(e.target.value) || 0 })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="edit-start-date">Start Date</Label>
+                                    <Input
+                                        id="edit-start-date"
+                                        type="date"
+                                        value={editData.start_date}
+                                        onChange={(e) => setEditData({ ...editData, start_date: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="edit-duration-days">Course Duration (Days)</Label>
+                                    <Input
+                                        id="edit-duration-days"
+                                        type="number"
+                                        min="1"
+                                        max="365"
+                                        value={editData.course_duration_days || ""}
+                                        onChange={(e) => setEditData({ ...editData, course_duration_days: parseInt(e.target.value) || 0 })}
                                     />
                                 </div>
                             </div>
@@ -1638,121 +1759,201 @@ export default function BatchDetailClient({
                 </Dialog>
             )}
 
-            {/* ================= MODAL: ASSIGN LEARNING CONTENT ================= */}
-            <Dialog open={isAssignContentOpen} onOpenChange={setIsAssignContentOpen}>
-                <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+            {/* ================= MODAL: ADD BATCH MATERIAL ================= */}
+            <Dialog open={isAddContentOpen} onOpenChange={setIsAddContentOpen}>
+                <DialogContent className="max-w-md">
+                    <form onSubmit={handleCreateContent}>
+                        <DialogHeader>
+                            <DialogTitle className="text-xl font-bold">Add Batch Material</DialogTitle>
+                            <DialogDescription>
+                                Add a study resource, lecture notes, video recording, or assignment specifically for this batch.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="grid gap-4 py-4">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="material-title">Material Title *</Label>
+                                <Input
+                                    id="material-title"
+                                    placeholder="e.g. Session 1 Slide Deck & Worksheets"
+                                    value={newContentTitle}
+                                    onChange={(e) => setNewContentTitle(e.target.value)}
+                                    required
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="material-type">Resource Type</Label>
+                                <Select value={newContentType} onValueChange={setNewContentType}>
+                                    <SelectTrigger id="material-type">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="document">Document / PDF</SelectItem>
+                                        <SelectItem value="video">Video Recording</SelectItem>
+                                        <SelectItem value="link">Web Link / Article</SelectItem>
+                                        <SelectItem value="assignment">Assignment / Project</SelectItem>
+                                        <SelectItem value="quiz">Quiz / Assessment</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="material-url">Resource URL / Link</Label>
+                                <Input
+                                    id="material-url"
+                                    placeholder="https://drive.google.com/... or https://..."
+                                    value={newContentUrl}
+                                    onChange={(e) => setNewContentUrl(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="material-desc">Instructions / Description (Optional)</Label>
+                                <Textarea
+                                    id="material-desc"
+                                    placeholder="Brief instructions or summary of what students should read/watch..."
+                                    value={newContentDesc}
+                                    onChange={(e) => setNewContentDesc(e.target.value)}
+                                    rows={3}
+                                />
+                            </div>
+                        </div>
+
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsAddContentOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={actionLoading || !newContentTitle.trim()} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                                {actionLoading ? "Saving..." : "Add to Batch"}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* ================= MODAL: COPY CONTENT FROM ANOTHER BATCH ================= */}
+            <Dialog open={isCopyContentOpen} onOpenChange={setIsCopyContentOpen}>
+                <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle className="text-xl font-bold">Assign Learning Content to Batch</DialogTitle>
+                        <DialogTitle className="text-xl font-bold">Copy Materials from Previous Batch</DialogTitle>
                         <DialogDescription>
-                            Browse quizzes, flashcards, and video capsules from the academy library to assign to this cohort.
+                            Select a previously created batch to share its study materials, notes, and links with this new cohort.
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="space-y-4 py-4">
-                        <Input
-                            placeholder="Search library content..."
-                            value={contentSearch}
-                            onChange={(e) => setContentSearch(e.target.value)}
-                        />
-
-                        <div className="max-h-72 overflow-y-auto border border-border/40 rounded-lg divide-y divide-border/30 bg-background/50">
-                            {availableCapsules
-                                .filter(c => 
-                                    !contentSearch ||
-                                    c.title.toLowerCase().includes(contentSearch.toLowerCase()) ||
-                                    c.topic_title.toLowerCase().includes(contentSearch.toLowerCase()) ||
-                                    c.course_title.toLowerCase().includes(contentSearch.toLowerCase())
-                                )
-                                .map(c => (
-                                    <div 
-                                        key={c.id} 
-                                        className="p-3 flex items-center justify-between text-xs hover:bg-muted/30 transition-colors"
-                                    >
-                                        <div className="space-y-0.5">
-                                            <div className="flex items-center gap-1.5">
-                                                <Badge variant="outline" className="text-[9px] uppercase font-bold">
-                                                    {c.type}
-                                                </Badge>
-                                                <span className="font-semibold text-foreground text-sm">{c.title}</span>
-                                            </div>
-                                            <div className="text-muted-foreground text-[10px]">
-                                                {c.course_title} • {c.topic_title}
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            {c.is_already_assigned ? (
-                                                <Badge variant="outline" className="text-[10px]">Assigned</Badge>
-                                            ) : (
-                                                <Button 
-                                                    size="sm" 
-                                                    onClick={() => handleAssignCapsule(c.id)}
-                                                    disabled={actionLoading}
-                                                    className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
-                                                >
-                                                    Assign
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="source-batch">Select Source Batch</Label>
+                            <Select 
+                                value={selectedSourceBatchId} 
+                                onValueChange={(val) => {
+                                    setSelectedSourceBatchId(val);
+                                    const source = (batchesWithContent || []).find((b: any) => b.id === val);
+                                    if (source) {
+                                        setSelectedMaterialIdsToCopy(source.materials.map((m: any) => m.id));
+                                    } else {
+                                        setSelectedMaterialIdsToCopy([]);
+                                    }
+                                }}
+                            >
+                                <SelectTrigger id="source-batch">
+                                    <SelectValue placeholder="Choose a batch to copy from..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {(batchesWithContent || []).map((b: any) => (
+                                        <SelectItem key={b.id} value={b.id}>
+                                            {b.name} ({b.course_name}) — {b.materials.length} items
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
+
+                        {selectedSourceBatchId && (() => {
+                            const source = (batchesWithContent || []).find((b: any) => b.id === selectedSourceBatchId);
+                            if (!source) return null;
+
+                            const allSelected = source.materials.length > 0 && selectedMaterialIdsToCopy.length === source.materials.length;
+
+                            return (
+                                <div className="space-y-2 pt-2">
+                                    <div className="flex items-center justify-between text-xs font-semibold px-1">
+                                        <span>Materials in {source.name}:</span>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => {
+                                                if (allSelected) {
+                                                    setSelectedMaterialIdsToCopy([]);
+                                                } else {
+                                                    setSelectedMaterialIdsToCopy(source.materials.map((m: any) => m.id));
+                                                }
+                                            }}
+                                            className="text-indigo-600 hover:underline"
+                                        >
+                                            {allSelected ? "Deselect All" : "Select All"}
+                                        </button>
+                                    </div>
+
+                                    <div className="max-h-60 overflow-y-auto border border-border/40 rounded-xl divide-y divide-border/30 bg-muted/20">
+                                        {source.materials.map((mat: any) => {
+                                            const isChecked = selectedMaterialIdsToCopy.includes(mat.id);
+                                            return (
+                                                <label 
+                                                    key={mat.id} 
+                                                    className="p-3 flex items-start gap-3 cursor-pointer hover:bg-muted/40 transition-colors"
+                                                >
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={isChecked}
+                                                        onChange={() => {
+                                                            if (isChecked) {
+                                                                setSelectedMaterialIdsToCopy(prev => prev.filter(id => id !== mat.id));
+                                                            } else {
+                                                                setSelectedMaterialIdsToCopy(prev => [...prev, mat.id]);
+                                                            }
+                                                        }}
+                                                        className="mt-1 rounded text-indigo-600 focus:ring-indigo-500"
+                                                    />
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <Badge variant="outline" className="text-[9px] uppercase font-bold">
+                                                                {mat.type}
+                                                            </Badge>
+                                                            <span className="font-semibold text-foreground text-xs truncate">
+                                                                {mat.title}
+                                                            </span>
+                                                        </div>
+                                                        {mat.description && (
+                                                            <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
+                                                                {mat.description}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setIsAssignContentOpen(false)}>
-                            Done
+                        <Button type="button" variant="outline" onClick={() => setIsCopyContentOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button 
+                            type="button" 
+                            disabled={actionLoading || selectedMaterialIdsToCopy.length === 0} 
+                            onClick={handleCopyContentSubmit}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                        >
+                            {actionLoading ? "Copying..." : `Copy Selected (${selectedMaterialIdsToCopy.length}) Materials`}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
-            {/* ================= MODAL: VIEW STUDENT SCORES ================= */}
-            {viewingCapsule && (
-                <Dialog open={true} onOpenChange={() => setViewingCapsule(null)}>
-                    <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
-                        <DialogHeader>
-                            <DialogTitle className="text-lg font-bold">Cohort Quiz Scores</DialogTitle>
-                            <DialogDescription>
-                                Individual student attempts for <strong>{viewingCapsule.title}</strong>
-                            </DialogDescription>
-                        </DialogHeader>
-
-                        <div className="space-y-3 py-3">
-                            {batch.enrollments.map((enr: any) => {
-                                const completion = viewingCapsule.cohortCompletions.find((c: any) => c.student_id === enr.student_id);
-
-                                return (
-                                    <div key={enr.student_id} className="p-2.5 rounded-lg border border-border/40 bg-muted/20 flex items-center justify-between text-xs">
-                                        <div>
-                                            <div className="font-semibold text-foreground">{enr.student.full_name}</div>
-                                            <div className="text-[10px] text-muted-foreground">{enr.student.email}</div>
-                                        </div>
-
-                                        <div>
-                                            {completion ? (
-                                                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-mono">
-                                                    Score: {completion.score}%
-                                                </Badge>
-                                            ) : (
-                                                <Badge variant="outline" className="bg-muted text-muted-foreground">
-                                                    Not Attempted
-                                                </Badge>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setViewingCapsule(null)}>
-                                Close
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-            )}
         </div>
     );
 }

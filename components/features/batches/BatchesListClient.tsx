@@ -36,6 +36,17 @@ interface BatchesListClientProps {
     userRole: string;
 }
 
+function calculateBatchEndDate(startDateStr: string, durationDays: number): string {
+    if (!startDateStr || !durationDays || durationDays <= 0) return "";
+    const parts = startDateStr.split('-').map(Number);
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    d.setDate(d.getDate() + (durationDays - 1));
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 export default function BatchesListClient({ initialBatches, tutors, userRole }: BatchesListClientProps) {
     const router = useRouter();
     const [batches, setBatches] = useState<BatchSummary[]>(initialBatches);
@@ -48,13 +59,21 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
     const canCreate = ['super_admin', 'admin', 'operations'].includes(userRole);
 
     // Form state
+    const todayIso = new Date().toISOString().split('T')[0];
+    const defaultEnd = (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 29);
+        return d.toISOString().split('T')[0];
+    })();
+
     const [formData, setFormData] = useState({
         name: "",
         course_name: "",
         teacher_id: "none",
         capacity: 20,
-        start_date: new Date().toISOString().split('T')[0],
-        end_date: "",
+        start_date: todayIso,
+        end_date: defaultEnd,
+        course_duration_days: 30,
         schedule_description: "",
         recurring_days: [] as string[],
         session_time: "18:00",
@@ -95,6 +114,7 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                 capacity: Number(formData.capacity) || 20,
                 start_date: formData.start_date,
                 end_date: formData.end_date || null,
+                course_duration_days: Number(formData.course_duration_days) || 30,
                 schedule_description: formData.schedule_description?.trim() || null,
                 recurring_days: formData.recurring_days,
                 session_time: formData.session_time,
@@ -120,6 +140,7 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                 capacity: 20,
                 start_date: new Date().toISOString().split('T')[0],
                 end_date: "",
+                course_duration_days: 30,
                 schedule_description: "",
                 recurring_days: [],
                 session_time: "18:00",
@@ -258,18 +279,43 @@ export default function BatchesListClient({ initialBatches, tutors, userRole }: 
                                                 id="start-date"
                                                 type="date"
                                                 value={formData.start_date}
-                                                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                                                onChange={(e) => {
+                                                    const newStart = e.target.value;
+                                                    const calculatedEnd = calculateBatchEndDate(newStart, formData.course_duration_days);
+                                                    setFormData({
+                                                        ...formData,
+                                                        start_date: newStart,
+                                                        end_date: calculatedEnd
+                                                    });
+                                                }}
                                                 required
                                             />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <Label htmlFor="end-date">End Date (Optional)</Label>
+                                            <Label htmlFor="course-duration-days">Course Duration (Number of Days) *</Label>
                                             <Input
-                                                id="end-date"
-                                                type="date"
-                                                value={formData.end_date}
-                                                onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                                                id="course-duration-days"
+                                                type="number"
+                                                min="1"
+                                                max="365"
+                                                placeholder="e.g. 30, 45, 60"
+                                                value={formData.course_duration_days}
+                                                onChange={(e) => {
+                                                    const days = parseInt(e.target.value) || 0;
+                                                    const calculatedEnd = calculateBatchEndDate(formData.start_date, days);
+                                                    setFormData({
+                                                        ...formData,
+                                                        course_duration_days: days,
+                                                        end_date: calculatedEnd
+                                                    });
+                                                }}
+                                                required
                                             />
+                                            {formData.end_date && (
+                                                <p className="text-[11px] text-muted-foreground font-medium">
+                                                    Scheduled Window: <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{formData.start_date}</span> to <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{formData.end_date}</span> ({formData.course_duration_days} days)
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
 
