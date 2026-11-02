@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatTime12Hour } from "@/lib/utils";
+import { getActiveTutorsForSchedule } from "@/app/(dashboard)/teacher/availability-actions";
 
 interface Teacher {
     id: string;
@@ -62,14 +63,8 @@ export default function TutorsSchedulePage() {
             setIsLoading(true);
             const supabase = createClient();
             try {
-                // Fetch all teachers
-                const { data: fetchedTeachers, error: teacherErr } = await supabase
-                    .from('profiles')
-                    .select('id, full_name, email')
-                    .eq('role', 'teacher')
-                    .order('full_name');
-
-                if (teacherErr) throw teacherErr;
+                // Fetch active teachers only (strictly excludes inactive and locked tutors)
+                const fetchedTeachers = await getActiveTutorsForSchedule();
 
                 // Fetch active schedules
                 const { data: fetchedSchedules, error: schedErr } = await supabase

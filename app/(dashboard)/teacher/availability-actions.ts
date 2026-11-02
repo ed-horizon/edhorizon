@@ -1,11 +1,13 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import {
     validateAvailabilityInput,
     TUTOR_AVAILABILITY_TIME_SLOTS,
-    AvailabilityStatus
+    AvailabilityStatus,
+    filterActiveTutors
 } from "@/lib/tutor-availability";
 
 export interface BookedSlotDetail {
@@ -214,4 +216,45 @@ export async function getAllTutorsAvailability() {
     }
 
     return data || [];
+}
+
+/**
+ * Fetch only active tutors for the master Tutor Schedules board (/tutors-schedule)
+ * Strictly excludes inactive and locked tutors.
+ */
+export async function getActiveTutorsForSchedule() {
+    noStore();
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        return [];
+    }
+
+    const admin = createAdminClient();
+    const { data, error } = await admin
+        .from('profiles')
+        .select(`
+            id, 
+            full_name, 
+            email,
+            staff_details (
+                status
+            )
+        `)
+        .eq('role', 'teacher')
+        .order('full_name', { ascending: true });
+
+    if (error) {
+        console.error("getActiveTutorsForSchedule error:", error);
+        return [];
+    }
+
+    const activeTutors = filterActiveTutors(data || []);
+
+    return activeTutors.map(t => ({
+        id: t.id,
+        full_name: t.full_name,
+        email: t.email
+    }));
 }

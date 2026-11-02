@@ -8,7 +8,8 @@ import {
     resolveSlotDisplayState,
     generateAvailabilityPreset,
     buildSlotKey,
-    buildTeacherSlotKey
+    buildTeacherSlotKey,
+    filterActiveTutors
 } from '../lib/tutor-availability.ts';
 
 test('Tutor Availability: validates hourly slots from 5:00 AM to 10:00 PM (05:00 to 22:00)', () => {
@@ -123,4 +124,19 @@ test('Tutor Availability: keys isolate each tutor across days and time slots', (
     assert.equal(keyTutor1, 'tutor-uuid-1_1_09:00');
     assert.equal(keyTutor2, 'tutor-uuid-2_1_09:00');
     assert.notEqual(keyTutor1, keyTutor2, 'Tutor availability slots must remain strictly partitioned by tutor ID');
+});
+
+test('Tutor Availability: filterActiveTutors excludes inactive and locked tutors', () => {
+    const tutors = [
+        { id: '1', full_name: 'Active Tutor 1', staff_details: { status: 'active' } },
+        { id: '2', full_name: 'Inactive Tutor 2', staff_details: { status: 'inactive' } },
+        { id: '3', full_name: 'Locked Tutor 3', staff_details: { status: 'locked' } },
+        { id: '4', full_name: 'Active Tutor Array', staff_details: [{ status: 'active' }] },
+        { id: '5', full_name: 'Inactive Tutor Array', staff_details: [{ status: 'inactive' }] },
+        { id: '6', full_name: 'Default Active Tutor', staff_details: null },
+    ];
+
+    const filtered = filterActiveTutors(tutors);
+    assert.equal(filtered.length, 3);
+    assert.deepEqual(filtered.map(t => t.id), ['1', '4', '6']);
 });
