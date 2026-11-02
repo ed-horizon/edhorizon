@@ -15,7 +15,7 @@ import {
     Video, Calendar, Clock, ExternalLink, CheckCircle2, AlertCircle,
     Users, ChevronDown, ChevronUp, BookOpen, Upload, Download,
     FileText, Award, Star, Loader2, Sparkles, LogOut, Check, X, Plus, Palmtree,
-    Layers
+    Layers, CalendarDays
 } from "lucide-react"
 import { ManageHolidaysDialog } from "@/components/features/holidays/ManageHolidaysDialog"
 import { formatTime12Hour, ensureAbsoluteUrl, formatClassTitle, getEpochMs } from "@/lib/utils"
@@ -458,6 +458,15 @@ export function TeacherDashboardClient({
                                     </Button>
                                 }
                             />
+                            <Link href="/teacher/availability">
+                                <Button 
+                                    variant="outline"
+                                    className="h-10 px-4 rounded-xl border-emerald-500/40 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 font-black uppercase tracking-widest text-[10px] gap-2 transition-all hover:scale-105"
+                                >
+                                    <CalendarDays size={14} className="text-emerald-400" />
+                                    <span>My Availability</span>
+                                </Button>
+                            </Link>
                         </div>
                     </div>
 

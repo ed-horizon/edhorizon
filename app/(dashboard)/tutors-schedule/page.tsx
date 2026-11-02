@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatTime12Hour } from "@/lib/utils";
+import { getActiveTutorsForSchedule } from "@/app/(dashboard)/teacher/availability-actions";
 
 interface Teacher {
     id: string;
@@ -37,24 +38,20 @@ function getStudentName(student: TutorSchedule["student"]) {
     return record?.full_name || "N/A";
 }
 
-const DAYS = [
-    { value: 1, label: 'Monday' },
-    { value: 2, label: 'Tuesday' },
-    { value: 3, label: 'Wednesday' },
-    { value: 4, label: 'Thursday' },
-    { value: 5, label: 'Friday' },
-    { value: 6, label: 'Saturday' },
-    { value: 0, label: 'Sunday' },
-];
+import {
+    TUTOR_AVAILABILITY_DAYS,
+    TUTOR_AVAILABILITY_TIME_SLOTS,
+    buildTeacherSlotKey,
+    AvailabilityStatus
+} from "@/lib/tutor-availability";
 
-const TIME_SLOTS = [
-    "09:00", "10:00", "11:00", "12:00", "13:00", "14:00",
-    "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"
-];
+const DAYS = TUTOR_AVAILABILITY_DAYS;
+const TIME_SLOTS = TUTOR_AVAILABILITY_TIME_SLOTS;
 
 export default function TutorsSchedulePage() {
     const [teachers, setTeachers] = useState<Teacher[]>([]);
     const [schedules, setSchedules] = useState<TutorSchedule[]>([]);
+    const [availabilityMap, setAvailabilityMap] = useState<Map<string, AvailabilityStatus>>(new Map());
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
@@ -66,14 +63,8 @@ export default function TutorsSchedulePage() {
             setIsLoading(true);
             const supabase = createClient();
             try {
-                // Fetch all teachers
-                const { data: fetchedTeachers, error: teacherErr } = await supabase
-                    .from('profiles')
-                    .select('id, full_name, email')
-                    .eq('role', 'teacher')
-                    .order('full_name');
-
-                if (teacherErr) throw teacherErr;
+                // Fetch active teachers only (strictly excludes inactive and locked tutors)
+                const fetchedTeachers = await getActiveTutorsForSchedule();
 
                 // Fetch active schedules
                 const { data: fetchedSchedules, error: schedErr } = await supabase
@@ -94,8 +85,23 @@ export default function TutorsSchedulePage() {
 
                 if (schedErr) throw schedErr;
 
+                // Fetch declared tutor availability
+                const { data: fetchedAvailability, error: availErr } = await supabase
+                    .from('tutor_availability')
+                    .select('teacher_id, day_of_week, time_slot, status');
+
+                if (availErr) {
+                    console.error("Failed to load tutor availability", availErr);
+                }
+
+                const aMap = new Map<string, AvailabilityStatus>();
+                (fetchedAvailability || []).forEach((row: any) => {
+                    aMap.set(buildTeacherSlotKey(row.teacher_id, row.day_of_week, row.time_slot), row.status);
+                });
+
                 setTeachers(fetchedTeachers || []);
                 setSchedules((fetchedSchedules || []) as unknown as TutorSchedule[]);
+                setAvailabilityMap(aMap);
 
                 if (fetchedTeachers && fetchedTeachers.length > 0) {
                     setSelectedTeacherId(fetchedTeachers[0].id);
@@ -252,10 +258,10 @@ export default function TutorsSchedulePage() {
                                 Scheduling Demo Rules
                             </h4>
                             <ul className="text-[10px] text-indigo-900/80 dark:text-indigo-400 mt-2.5 space-y-2 list-disc pl-4">
-                                <li><strong>Green slots</strong> indicate the tutor is fully available.</li>
-                                <li><strong>Rose slots</strong> show existing recurring classes (unavailable).</li>
-                                <li>Always confirm the slot aligns with the student&apos;s timezone.</li>
-                                <li>Slots display in Indian Standard Time (IST).</li>
+                                <li><strong>Green slots</strong> indicate the tutor has marked themselves Available.</li>
+                                <li><strong>Slate slots</strong> indicate the tutor is marked Unavailable.</li>
+                                <li><strong>Rose slots</strong> show confirmed booked classes with student details.</li>
+                                <li>Timing covers <strong>5:00 AM to 10:00 PM</strong> in Indian Standard Time (IST).</li>
                             </ul>
                         </Card>
                     </div>
@@ -276,6 +282,7 @@ export default function TutorsSchedulePage() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Badge variant="outline" className="text-[10px] bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 border-emerald-200/50 rounded-lg">Available</Badge>
+                                        <Badge variant="outline" className="text-[10px] bg-muted text-muted-foreground border-border/40 rounded-lg">Unavailable</Badge>
                                         <Badge variant="outline" className="text-[10px] bg-rose-50 dark:bg-rose-950/20 text-rose-700 border-rose-200/50 rounded-lg">Busy / Booked</Badge>
                                     </div>
                                 </CardHeader>
@@ -301,6 +308,9 @@ export default function TutorsSchedulePage() {
                                                             </td>
                                                             {DAYS.map(day => {
                                                                 const booking = getSlotBooking(selectedTeacher.id, day.value, slotTime);
+                                                                const key = buildTeacherSlotKey(selectedTeacher.id, day.value, slotTime);
+                                                                const isUnavailable = availabilityMap.get(key) === 'unavailable';
+
                                                                 return (
                                                                     <td key={day.value} className="p-1 text-center">
                                                                         {booking ? (
@@ -308,8 +318,12 @@ export default function TutorsSchedulePage() {
                                                                                 <span className="truncate max-w-[110px] font-bold">{booking.title || 'Class'}</span>
                                                                                 <span className="text-[8px] opacity-80 mt-0.5 truncate max-w-[110px]">Student: {getStudentName(booking.student)}</span>
                                                                             </div>
+                                                                        ) : isUnavailable ? (
+                                                                            <div className="bg-muted/40 border border-border/40 text-muted-foreground p-2 rounded-xl text-[9px] font-medium flex justify-center items-center select-none">
+                                                                                Unavailable
+                                                                            </div>
                                                                         ) : (
-                                                                            <div className="bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100/30 text-emerald-800 dark:text-emerald-400 p-2 rounded-xl text-[9px] font-medium flex justify-center items-center select-none opacity-60">
+                                                                            <div className="bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100/30 text-emerald-800 dark:text-emerald-400 p-2 rounded-xl text-[9px] font-medium flex justify-center items-center select-none opacity-80">
                                                                                 Available
                                                                             </div>
                                                                         )}
@@ -382,12 +396,19 @@ export default function TutorsSchedulePage() {
                                                             </td>
                                                             {TIME_SLOTS.map(slotTime => {
                                                                 const booking = getSlotBooking(t.id, selectedDayValue, slotTime);
+                                                                const key = buildTeacherSlotKey(t.id, selectedDayValue, slotTime);
+                                                                const isUnavailable = availabilityMap.get(key) === 'unavailable';
+
                                                                 return (
                                                                     <td key={slotTime} className="p-1">
                                                                         {booking ? (
                                                                             <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-100/60 dark:border-rose-900/10 text-rose-800 dark:text-rose-400 p-1.5 rounded-lg text-[8px] font-bold text-center flex flex-col justify-center select-none leading-tight min-h-[40px] max-w-[85px] mx-auto shadow-sm">
                                                                                 <span className="truncate">{booking.title || 'Busy'}</span>
                                                                                 <span className="opacity-70 mt-0.5 truncate text-[7px]">S: {getStudentName(booking.student)}</span>
+                                                                            </div>
+                                                                        ) : isUnavailable ? (
+                                                                            <div className="bg-muted/40 border border-border/30 text-muted-foreground p-1.5 rounded-lg text-[8px] font-medium text-center flex items-center justify-center min-h-[40px] select-none">
+                                                                                Unavailable
                                                                             </div>
                                                                         ) : (
                                                                             <div className="bg-emerald-50/20 dark:bg-emerald-950/5 border border-emerald-100/10 text-emerald-700 dark:text-emerald-500/80 p-1.5 rounded-lg text-[8px] font-medium text-center flex items-center justify-center min-h-[40px] select-none opacity-40">
