@@ -7,6 +7,7 @@ import { startOfMonth, endOfMonth, isAfter } from "date-fns";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateNextReceiptNumber } from "@/app/(dashboard)/payments/actions";
 import { getEpochMs } from "@/lib/utils";
+import { filterActiveTutors } from "@/lib/tutor-availability";
 import {
     deleteR2Object,
     getSignedDownloadUrl,
@@ -682,7 +683,8 @@ export async function getAllTeachers() {
         .single();
     const currentUserRole = profile?.role || 'student';
 
-    const { data, error } = await supabase
+    const adminClient = createAdminClient();
+    const { data, error } = await adminClient
         .from('profiles')
         .select(`
             id, 
@@ -700,11 +702,7 @@ export async function getAllTeachers() {
         return [];
     }
 
-    const filtered = (data || []).filter(t => {
-        const details = Array.isArray(t.staff_details) ? t.staff_details[0] : t.staff_details;
-        const status = details?.status ? String(details.status).toLowerCase() : 'active';
-        return status !== 'inactive' && status !== 'locked';
-    });
+    const filtered = filterActiveTutors(data || []);
 
     return filtered.map(t => ({
         id: t.id,

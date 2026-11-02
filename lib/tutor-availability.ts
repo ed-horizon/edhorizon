@@ -173,3 +173,15 @@ export function generateAvailabilityPreset(
 
     return slots;
 }
+
+/**
+ * Filter out inactive and locked tutors from schedule displays
+ * Ensures only active tutors appear in tutor directories and timetable matrices
+ */
+export function filterActiveTutors<T extends { staff_details?: { status?: string | null } | Array<{ status?: string | null }> | null }>(teachers: T[]): T[] {
+    return (teachers || []).filter(t => {
+        const details = Array.isArray(t.staff_details) ? t.staff_details[0] : t.staff_details;
+        const status = details?.status ? String(details.status).toLowerCase() : 'active';
+        return status !== 'inactive' && status !== 'locked';
+    });
+}
