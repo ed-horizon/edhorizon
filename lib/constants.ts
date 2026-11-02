@@ -89,6 +89,12 @@ export const NAV_ITEMS = [
         roles: ["teacher"],
     },
     {
+        title: "My Availability",
+        href: "/teacher/availability",
+        icon: CalendarDays,
+        roles: ["teacher"],
+    },
+    {
         title: "Dashboard",
         href: "/super-admin",
         icon: LayoutDashboard,
