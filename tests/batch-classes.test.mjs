@@ -719,3 +719,49 @@ test('Batch Classes: computes aggregate capsule progress and roster breakdown fo
 });
 
 
+
+export function validateBatchQuizPayload(title, questions) {
+    if (!title || !title.trim()) {
+        return { valid: false, error: 'Capsule title is required.' };
+    }
+    const validQuestions = (questions || []).filter(q => q && q.text && q.text.trim());
+    if (validQuestions.length === 0) {
+        return { valid: false, error: 'Please add at least one question with text for the quiz.' };
+    }
+    for (let i = 0; i < validQuestions.length; i++) {
+        const q = validQuestions[i];
+        if (!q.options || q.options.length < 2) {
+            return { valid: false, error: `Question ${i + 1} must have at least 2 options.` };
+        }
+        if (!q.correctOptionId) {
+            return { valid: false, error: `Question ${i + 1} must have a designated correct answer.` };
+        }
+    }
+    return { valid: true, questionCount: validQuestions.length };
+}
+
+test('Batch Classes: quiz builder supports arbitrary question count and validates non-empty questions', () => {
+    // 1. Rejects quiz without title
+    const noTitle = validateBatchQuizPayload('', [{ text: 'Question 1', options: [{ id: '1', text: 'A' }, { id: '2', text: 'B' }], correctOptionId: '1' }]);
+    assert.equal(noTitle.valid, false);
+
+    // 2. Rejects quiz with 0 valid questions
+    const emptyQuiz = validateBatchQuizPayload('Sound Quiz', [{ text: '', options: [{ id: '1', text: '' }, { id: '2', text: '' }], correctOptionId: '1' }]);
+    assert.equal(emptyQuiz.valid, false);
+
+    // 3. Accepts quiz with arbitrary question count (e.g. 15 questions) without limits
+    const fifteenQuestions = Array.from({ length: 15 }, (_, i) => ({
+        id: `q-${i + 1}`,
+        text: `Question prompt ${i + 1}?`,
+        options: [
+            { id: '1', text: `Option 1 for Q${i + 1}` },
+            { id: '2', text: `Option 2 for Q${i + 1}` },
+            { id: '3', text: `Option 3 for Q${i + 1}` }
+        ],
+        correctOptionId: '1'
+    }));
+
+    const validQuiz = validateBatchQuizPayload('Advanced Phonetics Quiz', fifteenQuestions);
+    assert.equal(validQuiz.valid, true);
+    assert.equal(validQuiz.questionCount, 15);
+});

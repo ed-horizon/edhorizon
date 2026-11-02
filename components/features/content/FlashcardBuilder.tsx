@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Plus, Trash2, Image as ImageIcon, Type, Layout, ArrowRightLeft } from "lucide-react"
@@ -39,9 +39,9 @@ export function FlashcardBuilder({ onChange, initialData }: FlashcardBuilderProp
     }
 
     // Pass initial state to parent on mount so default card is captured
-    useState(() => {
+    useEffect(() => {
         onChange({ cards });
-    });
+    }, []);
 
     const addCard = () => {
         const newCard: Flashcard = {
@@ -53,6 +53,7 @@ export function FlashcardBuilder({ onChange, initialData }: FlashcardBuilderProp
     }
 
     const removeCard = (id: string) => {
+        if (cards.length <= 1) return;
         updateCards(cards.filter(c => c.id !== id));
     }
 
@@ -83,10 +84,13 @@ export function FlashcardBuilder({ onChange, initialData }: FlashcardBuilderProp
                                 Card Configuration
                             </h3>
                             <Button
+                                type="button"
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => removeCard(card.id)}
-                                className="text-muted-foreground hover:text-red-500 rounded-full h-10 w-10"
+                                disabled={cards.length <= 1}
+                                className="text-muted-foreground hover:text-red-500 rounded-full h-10 w-10 disabled:opacity-30"
+                                title={cards.length <= 1 ? "At least one card is required" : "Delete card"}
                             >
                                 <Trash2 size={18} />
                             </Button>
@@ -122,11 +126,12 @@ export function FlashcardBuilder({ onChange, initialData }: FlashcardBuilderProp
             ))}
 
             <Button
+                type="button"
                 onClick={addCard}
                 className="w-full h-16 rounded-[2.5rem] bg-indigo-50 border-2 border-dashed border-indigo-200 text-indigo-600 hover:bg-indigo-100 hover:border-indigo-400 transition-all font-black uppercase tracking-widest text-xs gap-3 shadow-sm"
             >
                 <Plus size={20} />
-                Add New Card to Deck
+                Add New Card to Deck ({cards.length})
             </Button>
         </div>
     )
@@ -157,6 +162,9 @@ function SideEditor({ side, onUpdate }: { side: CardSide, onUpdate: (updates: Pa
                     placeholder="https://..."
                     value={side.imageUrl || ''}
                     onChange={(e) => onUpdate({ imageUrl: e.target.value })}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.preventDefault();
+                    }}
                     className="h-12 border-none bg-muted/20 rounded-xl px-4 text-xs font-mono"
                 />
             </div>
