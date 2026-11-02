@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Plus, Trash2, CheckCircle2, HelpCircle } from "lucide-react"
@@ -48,9 +48,9 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
     }
 
     // Pass initial state to parent on mount so default question is captured
-    useState(() => {
+    useEffect(() => {
         onChange({ questions });
-    });
+    }, []);
 
     const addQuestion = () => {
         const newQuestion: Question = {
@@ -68,6 +68,7 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
     }
 
     const removeQuestion = (id: string) => {
+        if (questions.length <= 1) return;
         updateQuestions(questions.filter(q => q.id !== id));
     }
 
@@ -80,6 +81,17 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
             if (q.id === questionId) {
                 const nextId = (q.options.length + 1).toString();
                 return { ...q, options: [...q.options, { id: nextId, text: '' }] };
+            }
+            return q;
+        }));
+    }
+
+    const removeOption = (questionId: string, optionId: string) => {
+        updateQuestions(questions.map(q => {
+            if (q.id === questionId && q.options.length > 2) {
+                const nextOptions = q.options.filter(o => o.id !== optionId);
+                const nextCorrect = q.correctOptionId === optionId ? nextOptions[0].id : q.correctOptionId;
+                return { ...q, options: nextOptions, correctOptionId: nextCorrect };
             }
             return q;
         }));
@@ -118,6 +130,9 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
                                         placeholder="Enter your question here..."
                                         value={q.text}
                                         onChange={(e) => updateQuestionField(q.id, 'text', e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') e.preventDefault();
+                                        }}
                                         className="h-12 border-none bg-muted/30 rounded-xl px-6 font-bold"
                                     />
                                 </div>
@@ -128,6 +143,9 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
                                             placeholder="https://example.com/image.jpg"
                                             value={q.imageUrl}
                                             onChange={(e) => updateQuestionField(q.id, 'imageUrl', e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') e.preventDefault();
+                                            }}
                                             className="h-10 border-none bg-muted/20 rounded-xl px-4 text-xs"
                                         />
                                     </div>
@@ -137,16 +155,22 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
                                             placeholder="Explain the answer..."
                                             value={q.explanation}
                                             onChange={(e) => updateQuestionField(q.id, 'explanation', e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') e.preventDefault();
+                                            }}
                                             className="h-10 border-none bg-muted/20 rounded-xl px-4 text-xs"
                                         />
                                     </div>
                                 </div>
                             </div>
                             <Button
+                                type="button"
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => removeQuestion(q.id)}
-                                className="text-muted-foreground hover:text-red-500 rounded-full h-10 w-10 mt-6"
+                                disabled={questions.length <= 1}
+                                className="text-muted-foreground hover:text-red-500 rounded-full h-10 w-10 mt-6 disabled:opacity-30"
+                                title={questions.length <= 1 ? "At least one question is required" : "Delete question"}
                             >
                                 <Trash2 size={18} />
                             </Button>
@@ -154,32 +178,52 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {q.options.map((opt) => (
-                                <div key={opt.id} className="relative">
-                                    <Input
-                                        placeholder={`Option ${opt.id}...`}
-                                        value={opt.text}
-                                        onChange={(e) => updateOptionText(q.id, opt.id, e.target.value)}
-                                        className={cn(
-                                            "h-12 border-2 bg-transparent rounded-xl px-4 font-medium transition-all",
-                                            q.correctOptionId === opt.id
-                                                ? "border-emerald-500 bg-emerald-50 text-emerald-900"
-                                                : "border-muted/30 focus-visible:ring-indigo-600"
-                                        )}
-                                    />
-                                    <button
-                                        onClick={() => setCorrectOption(q.id, opt.id)}
-                                        className={cn(
-                                            "absolute right-3 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full flex items-center justify-center transition-all",
-                                            q.correctOptionId === opt.id
-                                                ? "bg-emerald-500 text-white"
-                                                : "bg-muted text-muted-foreground opacity-20 hover:opacity-100"
-                                        )}
-                                    >
-                                        <CheckCircle2 size={14} />
-                                    </button>
+                                <div key={opt.id} className="relative flex items-center gap-1.5">
+                                    <div className="relative flex-1">
+                                        <Input
+                                            placeholder={`Option ${opt.id}...`}
+                                            value={opt.text}
+                                            onChange={(e) => updateOptionText(q.id, opt.id, e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') e.preventDefault();
+                                            }}
+                                            className={cn(
+                                                "h-12 border-2 bg-transparent rounded-xl px-4 pr-10 font-medium transition-all",
+                                                q.correctOptionId === opt.id
+                                                    ? "border-emerald-500 bg-emerald-50 text-emerald-900"
+                                                    : "border-muted/30 focus-visible:ring-indigo-600"
+                                            )}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setCorrectOption(q.id, opt.id)}
+                                            title="Mark as correct answer"
+                                            className={cn(
+                                                "absolute right-3 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full flex items-center justify-center transition-all",
+                                                q.correctOptionId === opt.id
+                                                    ? "bg-emerald-500 text-white"
+                                                    : "bg-muted text-muted-foreground opacity-20 hover:opacity-100"
+                                            )}
+                                        >
+                                            <CheckCircle2 size={14} />
+                                        </button>
+                                    </div>
+                                    {q.options.length > 2 && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => removeOption(q.id, opt.id)}
+                                            className="h-9 w-9 text-muted-foreground hover:text-red-500 rounded-lg shrink-0"
+                                            title="Remove option"
+                                        >
+                                            <Trash2 size={14} />
+                                        </Button>
+                                    )}
                                 </div>
                             ))}
                             <Button
+                                type="button"
                                 variant="ghost"
                                 onClick={() => addOption(q.id)}
                                 className="h-12 rounded-xl border-2 border-dashed border-border/40 text-muted-foreground hover:text-indigo-600 hover:border-indigo-600 font-bold text-xs uppercase tracking-widest gap-2"
@@ -193,11 +237,12 @@ export function McqBuilder({ onChange, initialData }: McqBuilderProps) {
             ))}
 
             <Button
+                type="button"
                 onClick={addQuestion}
                 className="w-full h-16 rounded-[2.5rem] bg-muted/30 border-2 border-dashed border-border/60 text-muted-foreground hover:text-indigo-600 hover:border-indigo-600 transition-all font-black uppercase tracking-widest text-xs gap-3"
             >
                 <Plus size={20} />
-                Add Another Question
+                Add Another Question ({questions.length})
             </Button>
         </div>
     )

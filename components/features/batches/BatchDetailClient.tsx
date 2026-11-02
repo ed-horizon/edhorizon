@@ -476,12 +476,31 @@ export default function BatchDetailClient({
         }
     };
 
-    const handleCreateCapsule = async (e: React.FormEvent) => {
+        const handleCreateCapsule = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!capsuleTitle.trim()) {
             toast.error("Please enter a title for the capsule.");
             return;
         }
+
+        if (capsuleFormat === 'quiz') {
+            const questions = quizContent?.questions || [];
+            const validQuestions = questions.filter(q => q.text?.trim());
+            if (validQuestions.length === 0) {
+                toast.error("Please add at least one question with text for the quiz.");
+                return;
+            }
+        }
+
+        if (capsuleFormat === 'flashcards') {
+            const cards = flashcardContent?.cards || [];
+            const validCards = cards.filter(c => c.front?.text?.trim() || c.back?.text?.trim());
+            if (validCards.length === 0) {
+                toast.error("Please add at least one flashcard with content.");
+                return;
+            }
+        }
+
         setActionLoading(true);
         try {
             const payload = capsuleFormat === 'quiz'
@@ -2241,7 +2260,15 @@ export default function BatchDetailClient({
 
                     {/* TAB 1: INTERACTIVE CAPSULE MAKER */}
                     {contentCreationMode === 'capsule' && (
-                        <form onSubmit={handleCreateCapsule} className="space-y-4 pt-2">
+                        <form 
+                            onSubmit={handleCreateCapsule} 
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
+                                    e.preventDefault();
+                                }
+                            }}
+                            className="space-y-4 pt-2"
+                        >
                             {/* Format selector */}
                             <div className="space-y-1.5">
                                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -2277,6 +2304,9 @@ export default function BatchDetailClient({
                                     placeholder="e.g. Session 1: Sound Practice Quiz"
                                     value={capsuleTitle}
                                     onChange={(e) => setCapsuleTitle(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') e.preventDefault();
+                                    }}
                                     required
                                 />
                             </div>
