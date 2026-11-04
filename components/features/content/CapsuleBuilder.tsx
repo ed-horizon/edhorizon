@@ -34,6 +34,43 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
             toast.error("Please enter a title and select a student.");
             return;
         }
+        let finalContent: any = {};
+        if (type === 'quiz') {
+            const rawQuestions = quizContent?.questions || [];
+            const validQuestions = rawQuestions
+                .filter(q => q && typeof q.text === 'string' && q.text.trim().length > 0)
+                .map((q, idx) => {
+                    const validOptions = (Array.isArray(q.options) ? q.options : [])
+                        .filter((opt: any) => {
+                            if (typeof opt === 'string') return opt.trim().length > 0;
+                            return opt && typeof opt.text === 'string' && opt.text.trim().length > 0;
+                        });
+                    return {
+                        id: q.id || `q_${idx + 1}`,
+                        text: q.text.trim(),
+                        options: validOptions,
+                        correctOptionId: q.correctOptionId || validOptions[0]?.id || ''
+                    };
+                })
+                .filter(q => q.options.length >= 2);
+
+            if (validQuestions.length === 0) {
+                toast.error("Please add at least one complete question with text and at least 2 options.");
+                return;
+            }
+            finalContent = { questions: validQuestions };
+        } else if (type === 'flashcards') {
+            const cards = flashcardContent?.cards || [];
+            const validCards = cards.filter(c => c.front?.text?.trim() || c.back?.text?.trim());
+            if (validCards.length === 0) {
+                toast.error("Please add at least one flashcard with content.");
+                return;
+            }
+            finalContent = { cards: validCards };
+        } else if (type === 'video') {
+            finalContent = { videoUrl, description: videoDescription };
+        }
+
         setLoading(true)
         try {
             const res = await saveCapsule({
@@ -42,11 +79,7 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
                 custom_topic_title: customTopicTitle,
                 student_id: studentId,
                 type,
-                content: type === 'quiz'
-                    ? quizContent
-                    : type === 'flashcards'
-                        ? flashcardContent
-                        : (type === 'video' ? { videoUrl, description: videoDescription } : {})
+                content: finalContent
             });
 
             if (res && res.success === false) {
@@ -236,9 +269,15 @@ export function CapsuleBuilder({ topics, students }: { topics: any[]; students: 
                                 </div>
                             </div>
                         ) : type === 'quiz' ? (
-                            <McqBuilder onChange={setQuizContent} />
+                            <McqBuilder 
+                                onChange={setQuizContent} 
+                                initialData={quizContent.questions.length > 0 ? quizContent : undefined} 
+                            />
                         ) : (
-                            <FlashcardBuilder onChange={setFlashcardContent} />
+                            <FlashcardBuilder 
+                                onChange={setFlashcardContent} 
+                                initialData={flashcardContent.cards.length > 0 ? flashcardContent : undefined} 
+                            />
                         )}
                     </Card>
 
