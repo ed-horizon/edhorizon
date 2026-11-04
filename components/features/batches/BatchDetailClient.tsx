@@ -483,32 +483,45 @@ export default function BatchDetailClient({
             return;
         }
 
+        let payload: any;
         if (capsuleFormat === 'quiz') {
-            const questions = quizContent?.questions || [];
-            const validQuestions = questions.filter(q => q.text?.trim());
+            const rawQuestions = quizContent?.questions || [];
+            const validQuestions = rawQuestions
+                .filter(q => q && typeof q.text === 'string' && q.text.trim().length > 0)
+                .map((q, idx) => {
+                    const validOptions = (Array.isArray(q.options) ? q.options : [])
+                        .filter((opt: any) => {
+                            if (typeof opt === 'string') return opt.trim().length > 0;
+                            return opt && typeof opt.text === 'string' && opt.text.trim().length > 0;
+                        });
+                    return {
+                        id: q.id || `q_${idx + 1}`,
+                        text: q.text.trim(),
+                        options: validOptions,
+                        correctOptionId: q.correctOptionId || validOptions[0]?.id || ''
+                    };
+                })
+                .filter(q => q.options.length >= 2);
+
             if (validQuestions.length === 0) {
-                toast.error("Please add at least one question with text for the quiz.");
+                toast.error("Please add at least one complete question with text and at least 2 options.");
                 return;
             }
-        }
-
-        if (capsuleFormat === 'flashcards') {
+            payload = { questions: validQuestions };
+        } else if (capsuleFormat === 'flashcards') {
             const cards = flashcardContent?.cards || [];
             const validCards = cards.filter(c => c.front?.text?.trim() || c.back?.text?.trim());
             if (validCards.length === 0) {
                 toast.error("Please add at least one flashcard with content.");
                 return;
             }
+            payload = { cards: validCards };
+        } else {
+            payload = { videoUrl: capsuleVideoUrl, description: capsuleDesc };
         }
 
         setActionLoading(true);
         try {
-            const payload = capsuleFormat === 'quiz'
-                ? quizContent
-                : capsuleFormat === 'flashcards'
-                    ? flashcardContent
-                    : { videoUrl: capsuleVideoUrl, description: capsuleDesc };
-
             const res = await createBatchCapsule(batch.id, {
                 title: capsuleTitle.trim(),
                 type: capsuleFormat,
@@ -2331,7 +2344,10 @@ export default function BatchDetailClient({
                                             Interactive Questions Builder
                                         </span>
                                     </div>
-                                    <McqBuilder onChange={setQuizContent} />
+                                    <McqBuilder 
+                                        onChange={setQuizContent} 
+                                        initialData={quizContent.questions.length > 0 ? quizContent : undefined} 
+                                    />
                                 </div>
                             )}
 
@@ -2343,7 +2359,10 @@ export default function BatchDetailClient({
                                             Interactive Flashcards Deck Builder
                                         </span>
                                     </div>
-                                    <FlashcardBuilder onChange={setFlashcardContent} />
+                                    <FlashcardBuilder 
+                                        onChange={setFlashcardContent} 
+                                        initialData={flashcardContent.cards.length > 0 ? flashcardContent : undefined} 
+                                    />
                                 </div>
                             )}
 

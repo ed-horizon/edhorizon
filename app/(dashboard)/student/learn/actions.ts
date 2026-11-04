@@ -203,59 +203,63 @@ export async function getStudentAssignedCapsules(studentId?: string) {
 
 
 async function awardXPAndStreak(userId: string, xp: number) {
-    const supabase = await createClient();
+    try {
+        const supabase = await createClient();
 
-    // 1. Update XP Total
-    const { data: gamification } = await supabase
-        .from('user_gamification')
-        .select('xp_total, level')
-        .eq('user_id', userId)
-        .single();
-
-    if (gamification) {
-        const newXP = gamification.xp_total + xp;
-        const newLevel = Math.floor(Math.sqrt(newXP / 100)) + 1; // Simple level logic
-
-        await supabase
+        // 1. Update XP Total
+        const { data: gamification } = await supabase
             .from('user_gamification')
-            .update({
-                xp_total: newXP,
-                level: newLevel,
-                last_activity_at: new Date().toISOString()
-            })
-            .eq('user_id', userId);
-    }
+            .select('xp_total, level')
+            .eq('user_id', userId)
+            .single();
 
-    // 2. Update Streak
-    const { data: streak } = await supabase
-        .from('user_streaks')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-    if (streak) {
-        const today = new Date().toISOString().split('T')[0];
-        const lastDate = streak.last_streak_date;
-
-        if (lastDate !== today) {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-            let newStreak = 1;
-            if (lastDate === yesterdayStr) {
-                newStreak = streak.current_streak + 1;
-            }
+        if (gamification) {
+            const newXP = gamification.xp_total + xp;
+            const newLevel = Math.floor(Math.sqrt(newXP / 100)) + 1; // Simple level logic
 
             await supabase
-                .from('user_streaks')
+                .from('user_gamification')
                 .update({
-                    current_streak: newStreak,
-                    longest_streak: Math.max(newStreak, streak.longest_streak),
-                    last_streak_date: today
+                    xp_total: newXP,
+                    level: newLevel,
+                    last_activity_at: new Date().toISOString()
                 })
                 .eq('user_id', userId);
         }
+
+        // 2. Update Streak
+        const { data: streak } = await supabase
+            .from('user_streaks')
+            .select('*')
+            .eq('user_id', userId)
+            .single();
+
+        if (streak) {
+            const today = new Date().toISOString().split('T')[0];
+            const lastDate = streak.last_streak_date;
+
+            if (lastDate !== today) {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+                let newStreak = 1;
+                if (lastDate === yesterdayStr) {
+                    newStreak = streak.current_streak + 1;
+                }
+
+                await supabase
+                    .from('user_streaks')
+                    .update({
+                        current_streak: newStreak,
+                        longest_streak: Math.max(newStreak, streak.longest_streak),
+                        last_streak_date: today
+                    })
+                    .eq('user_id', userId);
+            }
+        }
+    } catch (err) {
+        console.warn("awardXPAndStreak soft fail:", err);
     }
 }
 
@@ -317,11 +321,14 @@ export async function saveQuizResult(capsuleId: string, score: number, totalQues
             })
             .eq('id', existing.id);
 
-        if (error) throw error;
+        if (error) {
+            console.error("Failed to update quiz completion:", error);
+            throw error;
+        }
     } else {
         const { error } = await adminSupabase
             .from('quiz_completions')
-            .insert({
+            .upsert({
                 student_id: user.id,
                 capsule_id: capsuleId,
                 score: percentageScore,
@@ -330,9 +337,14 @@ export async function saveQuizResult(capsuleId: string, score: number, totalQues
                 attempt_history: [newAttemptItem],
                 total_questions: totalQuestions,
                 completed_at: new Date().toISOString()
+            }, {
+                onConflict: 'student_id,capsule_id'
             });
 
-        if (error) throw error;
+        if (error) {
+            console.error("Failed to insert/upsert quiz completion:", error);
+            throw error;
+        }
     }
 
     // Award XP based on correct count or percentage
