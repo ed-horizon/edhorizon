@@ -219,8 +219,10 @@ export default function OperationsDashboard() {
         toast.success("Parent complaint marked as resolved!");
     };
 
-    const handleDismissAlert = (studentId: string, subjectName: string, startStr: string | null) => {
-        const alertKey = `${studentId}-${subjectName}-${startStr || 'no-cycle'}`;
+    const handleDismissAlert = (studentId: string, subjectName: string, cycleKeyOrStart: string | null) => {
+        const alertKey = cycleKeyOrStart && cycleKeyOrStart.includes(studentId)
+            ? cycleKeyOrStart
+            : `${studentId}-${subjectName}-${cycleKeyOrStart || 'no-cycle'}`;
         const updated = [...dismissedAlerts, alertKey];
         setDismissedAlerts(updated);
         try {
@@ -499,109 +501,132 @@ export default function OperationsDashboard() {
 
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
-    const feeReminderAlerts = students.filter(student => {
+    const feeReminderAlerts = students.map(student => {
         // Build active subjects list for this student
-        const activeSubjects: { name: string; classesPerMonth: number }[] = [];
+        const activeSubjects: { name: string; classesPerMonth: number; fee: number }[] = [];
         const details = student.details;
         if (details) {
             activeSubjects.push({
                 name: details.subject_name_1 || "Maths",
-                classesPerMonth: Number(details.classes_per_month) || 12
+                classesPerMonth: Number(details.classes_per_month) || 12,
+                fee: Number(details.monthly_fee) || Number(student.monthly_fee) || 4500
             });
-            if (details.subject_name_2) {
+            if (details.subject_name_2 && Number(details.classes_per_month_2) > 0) {
                 activeSubjects.push({
                     name: details.subject_name_2,
-                    classesPerMonth: Number(details.classes_per_month_2) || 0
+                    classesPerMonth: Number(details.classes_per_month_2),
+                    fee: Number((details as any).monthly_fee_2) || 0
                 });
             }
-            if (details.subject_name_3) {
+            if (details.subject_name_3 && Number(details.classes_per_month_3) > 0) {
                 activeSubjects.push({
                     name: details.subject_name_3,
-                    classesPerMonth: Number(details.classes_per_month_3) || 0
+                    classesPerMonth: Number(details.classes_per_month_3),
+                    fee: Number((details as any).monthly_fee_3) || 0
                 });
             }
-            if (details.subject_name_4) {
+            if (details.subject_name_4 && Number(details.classes_per_month_4) > 0) {
                 activeSubjects.push({
                     name: details.subject_name_4,
-                    classesPerMonth: Number(details.classes_per_month_4) || 0
+                    classesPerMonth: Number(details.classes_per_month_4),
+                    fee: Number((details as any).monthly_fee_4) || 0
                 });
             }
-            if (details.subject_name_5) {
+            if (details.subject_name_5 && Number(details.classes_per_month_5) > 0) {
                 activeSubjects.push({
                     name: details.subject_name_5,
-                    classesPerMonth: Number(details.classes_per_month_5) || 0
+                    classesPerMonth: Number(details.classes_per_month_5),
+                    fee: Number((details as any).monthly_fee_5) || 0
                 });
             }
         } else {
             activeSubjects.push({
                 name: "Maths",
-                classesPerMonth: Number(student.classes_per_month) || 12
+                classesPerMonth: Number(student.classes_per_month) || 12,
+                fee: Number(student.monthly_fee) || 4500
             });
         }
 
-        // Check if ANY subject meets the fee reminder alert threshold
-        const alertingSubjects = activeSubjects.filter(sub => {
-            if (sub.classesPerMonth <= 0) return false;
+        const studentPayments = completedPayments.filter(p => p.student_id === student.id);
+        const studentClasses = student.classes || [];
 
-            // Find matching schedule for this subject
+        const alertingSubjects: {
+            name: string;
+            completed: number;
+            limit: number;
+            isLimitReached: boolean;
+            isNearLimit: boolean;
+            totalPaidClasses: number;
+            paymentsCount: number;
+            cycleKey: string;
+            subFee: number;
+        }[] = [];
+
+        for (const sub of activeSubjects) {
+            if (sub.classesPerMonth <= 0) continue;
+
             const matchingSchedule = (student.active_schedules || []).find(sch =>
                 sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
             ) || student.active_schedule;
 
-            let startStr: string | null = null;
-            let endStr: string | null = null;
-            if (matchingSchedule) {
-                startStr = matchingSchedule.start_date;
-                endStr = matchingSchedule.end_date;
-            }
-
-            // 1. Check if this alert has been manually dismissed by coordinator
-            const alertKey = `${student.id}-${sub.name}-${startStr || 'no-cycle'}`;
-            if (dismissedAlerts.includes(alertKey)) return false;
-
-            // 2. Check if a completed payment has already been recorded for this cycle/month
-            const hasPaid = completedPayments.some(p => {
-                if (p.student_id !== student.id) return false;
-                if (p.subject_name && !isSubjectMatch(p.subject_name, sub.name)) return false;
-
-                if (startStr) {
-                    const pDate = p.receipt_date || p.created_at.split('T')[0];
-                    return pDate >= startStr;
-                }
-                return p.billing_month === (currentMonth + 1) && p.billing_year === currentYear;
+            // Filter completed classes for this subject
+            const completedClassesForSub = studentClasses.filter((c: any) => {
+                if (c.status !== 'completed') return false;
+                if (c.schedule_id && matchingSchedule && c.schedule_id === matchingSchedule.id) return true;
+                return isSubjectMatch(c.title || "", sub.name) || activeSubjects.length === 1;
             });
 
-            if (hasPaid) return false;
+            // Filter payments for this subject
+            const subjectPayments = studentPayments.filter(p => {
+                if (!p.subject_name) return true;
+                return isSubjectMatch(p.subject_name, sub.name) || activeSubjects.length === 1;
+            });
 
-            // Count completed classes for this subject within its specific cycle date range
-            const completedCount = (student.classes || []).filter((c: any) => {
-                if (c.status !== 'completed') return false;
+            const paymentsCount = subjectPayments.length;
+            const totalPaidClasses = paymentsCount * sub.classesPerMonth;
+            const totalCompleted = completedClassesForSub.length;
 
-                let matches = false;
-                if (c.schedule_id && matchingSchedule && c.schedule_id === matchingSchedule.id) {
-                    matches = true;
-                } else if (isSubjectMatch(c.title || "", sub.name)) {
-                    matches = true;
+            const cycleKey = `${student.id}-${sub.name}-${totalPaidClasses}`;
+            if (dismissedAlerts.includes(cycleKey)) continue;
+
+            let isLimitReached = false;
+            let isNearLimit = false;
+
+            if (totalPaidClasses === 0) {
+                if (totalCompleted >= 1) isLimitReached = true;
+            } else {
+                if (totalCompleted >= totalPaidClasses) {
+                    isLimitReached = true;
+                } else if (totalCompleted >= totalPaidClasses - 1) {
+                    isNearLimit = true;
                 }
+            }
 
-                if (!matches) return false;
+            if (isLimitReached || isNearLimit) {
+                const cycleNumber = Math.max(1, paymentsCount);
+                const cycleCompleted = totalPaidClasses === 0
+                    ? totalCompleted
+                    : (totalCompleted - (cycleNumber - 1) * sub.classesPerMonth);
 
-                const classDateStr = getLocalDateKey(c.scheduled_at);
-                if (startStr && endStr) {
-                    return classDateStr >= startStr && classDateStr <= endStr;
-                }
-                
-                // Fallback: current calendar month
-                const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
-                const currentYearStr = String(currentYear);
-                return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
-            }).length;
+                alertingSubjects.push({
+                    name: sub.name,
+                    completed: Math.max(1, cycleCompleted),
+                    limit: sub.classesPerMonth,
+                    isLimitReached,
+                    isNearLimit,
+                    totalPaidClasses,
+                    paymentsCount,
+                    cycleKey,
+                    subFee: sub.fee
+                });
+            }
+        }
 
-            return completedCount >= sub.classesPerMonth - 1;
-        });
-
-        return alertingSubjects.length > 0;
-    });
+        return {
+            student,
+            alertingSubjects
+        };
+    }).filter(item => item.alertingSubjects.length > 0);
 
     return (
         <div className="space-y-8 max-w-[1600px] mx-auto animate-in fade-in duration-700 text-left">
@@ -774,61 +799,8 @@ export default function OperationsDashboard() {
                                             <div className="space-y-2.5">
                                                 <span className="block text-[10px] font-black uppercase tracking-wider text-rose-600 dark:text-rose-400">💰 Fee Renewal Alerts ({feeReminderAlerts.length})</span>
                                                 <div className="space-y-2">
-                                                    {feeReminderAlerts.map(student => {
-                                                        const details = student.details;
-                                                        const activeSubjects: { name: string; classesPerMonth: number }[] = [];
-                                                        if (details) {
-                                                            activeSubjects.push({ name: details.subject_name_1 || "Maths", classesPerMonth: Number(details.classes_per_month) || 12 });
-                                                            if (details.subject_name_2) activeSubjects.push({ name: details.subject_name_2, classesPerMonth: Number(details.classes_per_month_2) || 0 });
-                                                            if (details.subject_name_3) activeSubjects.push({ name: details.subject_name_3, classesPerMonth: Number(details.classes_per_month_3) || 0 });
-                                                            if (details.subject_name_4) activeSubjects.push({ name: details.subject_name_4, classesPerMonth: Number(details.classes_per_month_4) || 0 });
-                                                            if (details.subject_name_5) activeSubjects.push({ name: details.subject_name_5, classesPerMonth: Number(details.classes_per_month_5) || 0 });
-                                                        } else {
-                                                            activeSubjects.push({ name: "Maths", classesPerMonth: Number(student.classes_per_month) || 12 });
-                                                        }
-
-                                                        const subjectsWithStats = activeSubjects.map(sub => {
-                                                            const matchingSchedule = (student.active_schedules || []).find(sch =>
-                                                                sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
-                                                            ) || student.active_schedule;
-
-                                                            let startStr: string | null = null;
-                                                            let endStr: string | null = null;
-                                                            if (matchingSchedule) {
-                                                                startStr = matchingSchedule.start_date;
-                                                                endStr = matchingSchedule.end_date;
-                                                            }
-
-                                                            const completedCount = (student.classes || []).filter((c: any) => {
-                                                                if (c.status !== 'completed') return false;
-                                                                
-                                                                let matches = false;
-                                                                if (c.schedule_id && matchingSchedule && c.schedule_id === matchingSchedule.id) {
-                                                                    matches = true;
-                                                                } else if (isSubjectMatch(c.title || "", sub.name)) {
-                                                                    matches = true;
-                                                                }
-
-                                                                if (!matches) return false;
-                                                                const classDateStr = getLocalDateKey(c.scheduled_at);
-                                                                if (startStr && endStr) {
-                                                                    return classDateStr >= startStr && classDateStr <= endStr;
-                                                                }
-                                                                const currentMonthStr = String(currentMonth + 1).padStart(2, '0');
-                                                                const currentYearStr = String(currentYear);
-                                                                return classDateStr.startsWith(`${currentYearStr}-${currentMonthStr}`);
-                                                            }).length;
-
-                                                            return {
-                                                                name: sub.name,
-                                                                completed: completedCount,
-                                                                limit: sub.classesPerMonth
-                                                            };
-                                                        });
-
-                                                        const alertingSubjects = subjectsWithStats.filter(s => s.limit > 0 && s.completed >= s.limit - 1);
-                                                        const isLimitReached = alertingSubjects.some(s => s.completed >= s.limit);
-
+                                                    {feeReminderAlerts.map(({ student, alertingSubjects }) => {
+                                                        const isLimitReached = alertingSubjects.some(s => s.isLimitReached);
                                                         const studentPayments = completedPayments.filter(p => p.student_id === student.id);
                                                         const lastPayment = studentPayments.length > 0
                                                             ? [...studentPayments].sort((a, b) => {
@@ -848,6 +820,8 @@ export default function OperationsDashboard() {
                                                                 lastPaidText = `Last Paid: ₹${lastPayment.amount} (${lastPayment.billing_month}/${lastPayment.billing_year})`;
                                                             }
                                                         }
+
+                                                        const primarySub = alertingSubjects[0];
 
                                                         return (
                                                             <div key={student.id} className={cn("p-3 border rounded-xl text-xs flex justify-between items-center gap-4",
@@ -879,11 +853,7 @@ export default function OperationsDashboard() {
                                                                         variant="ghost"
                                                                         onClick={() => {
                                                                             alertingSubjects.forEach(sub => {
-                                                                                const matchingSchedule = (student.active_schedules || []).find(sch =>
-                                                                                    sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
-                                                                                ) || student.active_schedule;
-                                                                                const startStr = matchingSchedule ? matchingSchedule.start_date : null;
-                                                                                handleDismissAlert(student.id, sub.name, startStr);
+                                                                                handleDismissAlert(student.id, sub.name, sub.cycleKey);
                                                                             });
                                                                         }}
                                                                         className="h-7 text-[9px] font-bold uppercase tracking-wider border border-border/50 text-muted-foreground hover:bg-muted dark:hover:bg-muted/10 rounded-lg px-2.5"
@@ -894,7 +864,8 @@ export default function OperationsDashboard() {
                                                                         size="sm" 
                                                                         onClick={() => {
                                                                             setManualStudentId(student.id);
-                                                                            setManualAmount(String(student.monthly_fee || 4500));
+                                                                            setManualAmount(String(primarySub?.subFee || student.monthly_fee || 4500));
+                                                                            setManualSubjectName(primarySub?.name || "Maths");
                                                                             setShowManualPayment(true);
                                                                         }}
                                                                         className="h-7 text-[9px] font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3"
