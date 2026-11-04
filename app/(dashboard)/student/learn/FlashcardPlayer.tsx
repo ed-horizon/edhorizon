@@ -36,10 +36,19 @@ export function FlashcardPlayer({ capsuleId, title, content, attemptNumber = 1, 
     const [isSaving, setIsSaving] = useState(false)
     const [currentAttempt, setCurrentAttempt] = useState(attemptNumber)
 
-    const cards = content.cards || [];
+    const rawCards: any[] = Array.isArray((content as any)?.cards)
+        ? (content as any).cards
+        : Array.isArray(content)
+            ? content
+            : [];
+
+    const cards: Flashcard[] = rawCards.filter(
+        c => c && (c.front?.text?.trim() || c.back?.text?.trim() || c.front?.imageUrl || c.back?.imageUrl)
+    );
     const totalCards = cards.length;
-    const currentCard = cards[currentIdx];
-    const progress = ((currentIdx) / totalCards) * 100;
+    const safeIdx = Math.min(Math.max(0, currentIdx), Math.max(0, totalCards - 1));
+    const currentCard = cards[safeIdx];
+    const progress = totalCards > 0 ? ((safeIdx + 1) / totalCards) * 100 : 0;
 
     const handleFlip = () => setIsFlipped(!isFlipped);
 
@@ -52,12 +61,11 @@ export function FlashcardPlayer({ capsuleId, title, content, attemptNumber = 1, 
             try {
                 // Record completion with "perfect" score for flashcards
                 await saveQuizResult(capsuleId, totalCards, totalCards);
-                setIsFinished(true);
             } catch (error) {
                 console.error("Failed to save result", error);
-                alert("Failed to save progress. Check console.");
             } finally {
                 setIsSaving(false);
+                setIsFinished(true);
             }
         }
     }

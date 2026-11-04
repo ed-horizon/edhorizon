@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { CheckCircle2, XCircle, ArrowRight, Trophy, RefreshCcw } from "lucide-react"
@@ -24,8 +24,9 @@ interface QuizInterfaceProps {
     capsuleId: string;
     title: string;
     content: {
-        questions: Question[];
-    };
+        questions?: any[];
+        [key: string]: any;
+    } | any[];
     attemptNumber?: number;
     bestScoreSoFar?: number | null;
 }
@@ -40,13 +41,59 @@ export function QuizInterface({ capsuleId, title, content, attemptNumber = 1, be
     const [currentAttempt, setCurrentAttempt] = useState(attemptNumber)
     const [finalBestScore, setFinalBestScore] = useState<number | null>(bestScoreSoFar)
 
-    const questions = content.questions || [];
+    // Normalize raw questions from various shapes ({ questions: [...] } or direct array [...])
+    const rawQuestions: any[] = Array.isArray((content as any)?.questions)
+        ? (content as any).questions
+        : Array.isArray(content)
+            ? content
+            : [];
+
+    // Filter and sanitize questions so bad/empty questions never cause runtime crashes
+    const questions: Question[] = rawQuestions
+        .filter(q => q && (typeof q.text === 'string' ? q.text.trim() : typeof q.question === 'string' ? q.question.trim() : false))
+        .map((q, qIdx) => {
+            const text = String(q.text || q.question || `Question ${qIdx + 1}`).trim();
+            const rawOptions: any[] = Array.isArray(q.options)
+                ? q.options
+                : typeof q.options === 'object' && q.options !== null
+                    ? Object.values(q.options)
+                    : [];
+
+            const options: Option[] = rawOptions.map((opt: any, optIdx: number) => {
+                if (typeof opt === 'string') {
+                    return { id: String(optIdx + 1), text: opt.trim() };
+                }
+                return {
+                    id: String(opt?.id ?? optIdx + 1),
+                    text: String(opt?.text ?? opt?.label ?? `Option ${optIdx + 1}`).trim()
+                };
+            }).filter(opt => opt.text.length > 0);
+
+            // Determine correctOptionId: support string id, number, or correctIndex
+            let correctOptionId = String(q.correctOptionId ?? '');
+            if (!correctOptionId && q.correctIndex !== undefined) {
+                correctOptionId = String(Number(q.correctIndex) + 1);
+            }
+            if (!options.some(opt => opt.id === correctOptionId) && options.length > 0) {
+                correctOptionId = options[0].id;
+            }
+
+            return {
+                id: String(q.id || `q-${qIdx + 1}`),
+                text,
+                options,
+                correctOptionId
+            };
+        })
+        .filter(q => q.options.length > 0);
+
     const totalSteps = questions.length;
-    const currentQuestion = questions[currentStep];
-    const progress = (currentStep / totalSteps) * 100;
+    const safeStep = Math.min(Math.max(0, currentStep), Math.max(0, totalSteps - 1));
+    const currentQuestion = questions[safeStep] || null;
+    const progress = totalSteps > 0 ? ((safeStep + 1) / totalSteps) * 100 : 0;
 
     const handleCheck = () => {
-        if (!selectedOptionId) return;
+        if (!selectedOptionId || !currentQuestion) return;
 
         const isCorrect = selectedOptionId === currentQuestion.correctOptionId;
         if (isCorrect) {
@@ -60,6 +107,9 @@ export function QuizInterface({ capsuleId, title, content, attemptNumber = 1, be
             setCurrentStep(prev => prev + 1);
             setSelectedOptionId(null);
             setIsAnswered(false);
+            if (typeof window !== 'undefined') {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
         } else {
             setIsSaving(true);
             try {
@@ -70,12 +120,14 @@ export function QuizInterface({ capsuleId, title, content, attemptNumber = 1, be
                     const currentPct = totalSteps > 0 ? Math.round((score / totalSteps) * 100) : 100;
                     setFinalBestScore(prev => Math.max(prev || 0, currentPct));
                 }
-                setIsFinished(true);
             } catch (error) {
                 console.error("Failed to save result", error);
-                alert("Failed to save result. Check console.");
+                // Gracefully fallback to local score calculation so the student is never stuck
+                const currentPct = totalSteps > 0 ? Math.round((score / totalSteps) * 100) : 100;
+                setFinalBestScore(prev => Math.max(prev || 0, currentPct));
             } finally {
                 setIsSaving(false);
+                setIsFinished(true);
             }
         }
     }
@@ -87,9 +139,12 @@ export function QuizInterface({ capsuleId, title, content, attemptNumber = 1, be
         setIsAnswered(false);
         setScore(0);
         setIsFinished(false);
+        if (typeof window !== 'undefined') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     };
 
-    if (totalSteps === 0) {
+    if (totalSteps === 0 || !currentQuestion) {
         return (
             <div className="text-center py-20 bg-muted/20 rounded-[3rem] border-2 border-dashed">
                 <p className="italic text-muted-foreground">This quiz has no questions yet.</p>
@@ -143,9 +198,9 @@ export function QuizInterface({ capsuleId, title, content, attemptNumber = 1, be
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
-                    <Link href="/student/learn" className="w-full sm:w-auto">
+                    <Link href="/student" className="w-full sm:w-auto">
                         <Button className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-14 px-8 font-black uppercase tracking-widest text-xs gap-3">
-                            Back to Journey
+                            Back to Dashboard
                             <ArrowRight size={18} />
                         </Button>
                     </Link>
@@ -166,10 +221,10 @@ export function QuizInterface({ capsuleId, title, content, attemptNumber = 1, be
     }
 
     return (
-        <div className="max-w-3xl mx-auto space-y-12">
+        <div className="max-w-3xl mx-auto space-y-10 pb-28">
             {/* Nav Header */}
             <div className="flex items-center gap-6">
-                <Link href="/student/learn">
+                <Link href="/student">
                     <Button variant="ghost" size="icon" className="rounded-full h-10 w-10">
                         <XCircle className="text-muted-foreground" size={24} />
                     </Button>
@@ -177,102 +232,106 @@ export function QuizInterface({ capsuleId, title, content, attemptNumber = 1, be
                 <div className="flex-1">
                     <Progress value={progress} className="h-3 bg-muted rounded-full overflow-hidden" />
                 </div>
-                <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground italic">
-                    {currentStep + 1} / {totalSteps}
+                <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-muted-foreground">
+                    Question {safeStep + 1} of {totalSteps}
                 </div>
             </div>
 
-            <div className="space-y-12">
-                <div className="text-center space-y-4">
+            <div className="space-y-8">
+                <div className="text-center space-y-3">
                     <h3 className="text-xs font-black uppercase tracking-widest text-indigo-600 italic">Level UP • {title}</h3>
-                    <h2 className="text-3xl font-serif font-bold tracking-tight">{currentQuestion.text}</h2>
+                    <h2 className="text-2xl md:text-3xl font-serif font-bold tracking-tight text-foreground">{currentQuestion.text}</h2>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-1 gap-3.5">
                     {currentQuestion.options.map((opt) => (
                         <button
                             key={opt.id}
+                            type="button"
                             disabled={isAnswered}
                             onClick={() => setSelectedOptionId(opt.id)}
                             className={cn(
-                                "flex items-center justify-between p-6 rounded-[2rem] border-2 transition-all text-left group",
+                                "flex items-center justify-between p-5 md:p-6 rounded-[2rem] border-2 transition-all text-left group",
                                 selectedOptionId === opt.id
-                                    ? "border-indigo-600 bg-indigo-50 shadow-md"
-                                    : "border-border/40 hover:border-indigo-200 hover:bg-indigo-50/30",
-                                isAnswered && opt.id === currentQuestion.correctOptionId && "border-emerald-500 bg-emerald-50",
-                                isAnswered && selectedOptionId === opt.id && opt.id !== currentQuestion.correctOptionId && "border-red-500 bg-red-50"
+                                    ? "border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 shadow-md scale-[1.01]"
+                                    : "border-border/40 hover:border-indigo-200 dark:hover:border-indigo-800 hover:bg-muted/30",
+                                isAnswered && opt.id === currentQuestion.correctOptionId && "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40",
+                                isAnswered && selectedOptionId === opt.id && opt.id !== currentQuestion.correctOptionId && "border-red-500 bg-red-50 dark:bg-red-950/40"
                             )}
                         >
                             <span className={cn(
-                                "font-bold text-lg",
-                                selectedOptionId === opt.id ? "text-indigo-900" : "text-foreground",
-                                isAnswered && opt.id === currentQuestion.correctOptionId && "text-emerald-900",
-                                isAnswered && selectedOptionId === opt.id && opt.id !== currentQuestion.correctOptionId && "text-red-900"
+                                "font-bold text-base md:text-lg",
+                                selectedOptionId === opt.id ? "text-indigo-950 dark:text-indigo-200" : "text-foreground",
+                                isAnswered && opt.id === currentQuestion.correctOptionId && "text-emerald-900 dark:text-emerald-200",
+                                isAnswered && selectedOptionId === opt.id && opt.id !== currentQuestion.correctOptionId && "text-red-900 dark:text-red-200"
                             )}>
                                 {opt.text}
                             </span>
 
                             {isAnswered && opt.id === currentQuestion.correctOptionId && (
-                                <CheckCircle2 className="text-emerald-500" size={24} />
+                                <CheckCircle2 className="text-emerald-500 shrink-0 ml-3" size={24} />
                             )}
                             {isAnswered && selectedOptionId === opt.id && opt.id !== currentQuestion.correctOptionId && (
-                                <XCircle className="text-red-500" size={24} />
+                                <XCircle className="text-red-500 shrink-0 ml-3" size={24} />
                             )}
                         </button>
                     ))}
                 </div>
             </div>
 
-            {/* Bottom Bar */}
-            <div className={cn(
-                "fixed bottom-0 left-0 right-0 p-8 border-t bg-background transition-all transform",
-                isAnswered ? "translate-y-0" : "translate-y-full md:translate-y-0 md:bg-transparent md:border-none md:relative md:p-0"
-            )}>
-                <div className="max-w-3xl mx-auto flex items-center justify-between gap-6">
+            {/* Bottom Bar: Sticky and always visible on mobile & desktop */}
+            <div className="fixed bottom-0 left-0 right-0 p-4 md:p-6 border-t bg-background/95 backdrop-blur-md z-30 shadow-2xl">
+                <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
                     {isAnswered ? (
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-3 w-full sm:w-auto">
                             {selectedOptionId === currentQuestion.correctOptionId ? (
-                                <div className="flex items-center gap-3 text-emerald-600 font-bold">
-                                    <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
-                                        <CheckCircle2 size={24} />
+                                <div className="flex items-center gap-2.5 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
+                                    <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center shrink-0">
+                                        <CheckCircle2 size={18} />
                                     </div>
-                                    <span>Excellent! Correct answer.</span>
+                                    <span>Correct! Great job.</span>
                                 </div>
                             ) : (
-                                <div className="flex items-center gap-3 text-red-600 font-bold">
-                                    <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
-                                        <XCircle size={24} />
+                                <div className="flex items-center gap-2.5 text-red-600 dark:text-red-400 font-bold text-sm">
+                                    <div className="h-8 w-8 rounded-full bg-red-100 dark:bg-red-950/60 flex items-center justify-center shrink-0">
+                                        <XCircle size={18} />
                                     </div>
-                                    <span>Not quite. Let's learn!</span>
+                                    <span>Incorrect answer. Let's learn!</span>
                                 </div>
                             )}
                         </div>
                     ) : (
-                        <div className="hidden md:block italic text-muted-foreground text-sm font-medium">Select an option to check your knowledge...</div>
+                        <div className="text-xs text-muted-foreground font-medium hidden sm:block">
+                            Select an option above to test your knowledge...
+                        </div>
                     )}
 
-                    {!isAnswered ? (
-                        <Button
-                            disabled={!selectedOptionId}
-                            onClick={handleCheck}
-                            className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-14 px-12 font-black uppercase tracking-widest text-xs gap-3 shadow-xl shadow-indigo-200"
-                        >
-                            Check Answer
-                        </Button>
-                    ) : (
-                        <Button
-                            onClick={handleNext}
-                            className={cn(
-                                "w-full md:w-auto rounded-2xl h-14 px-12 font-black uppercase tracking-widest text-xs gap-3 shadow-xl transition-colors",
-                                selectedOptionId === currentQuestion.correctOptionId
-                                    ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200"
-                                    : "bg-red-600 hover:bg-red-700 text-white shadow-red-200"
-                            )}
-                        >
-                            {isSaving ? "Saving..." : (currentStep + 1 === totalSteps ? "Finish Quiz" : "Continue")}
-                            <ArrowRight size={18} />
-                        </Button>
-                    )}
+                    <div className="w-full sm:w-auto flex justify-end">
+                        {!isAnswered ? (
+                            <Button
+                                type="button"
+                                disabled={!selectedOptionId}
+                                onClick={handleCheck}
+                                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-12 md:h-14 px-10 font-black uppercase tracking-widest text-xs gap-2 shadow-lg shadow-indigo-200 dark:shadow-none"
+                            >
+                                Check Answer
+                            </Button>
+                        ) : (
+                            <Button
+                                type="button"
+                                onClick={handleNext}
+                                className={cn(
+                                    "w-full sm:w-auto rounded-2xl h-12 md:h-14 px-10 font-black uppercase tracking-widest text-xs gap-2 shadow-lg transition-colors",
+                                    selectedOptionId === currentQuestion.correctOptionId
+                                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                        : "bg-red-600 hover:bg-red-700 text-white"
+                                )}
+                            >
+                                {isSaving ? "Saving..." : (safeStep + 1 === totalSteps ? "Finish Quiz" : "Continue")}
+                                <ArrowRight size={18} />
+                            </Button>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
