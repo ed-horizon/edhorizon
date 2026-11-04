@@ -2183,6 +2183,10 @@ export async function getStudentsWithClasses() {
             student_details!student_details_id_fkey (
                 grade_level,
                 monthly_fee,
+                monthly_fee_2,
+                monthly_fee_3,
+                monthly_fee_4,
+                monthly_fee_5,
                 status,
                 assigned_teacher_id,
                 preferred_meeting_link,
