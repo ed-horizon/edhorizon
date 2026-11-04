@@ -328,7 +328,7 @@ export function StudentClassMonitor({ students: initialStudents, teachers, onRef
                         const limit = student.classes_per_month || 12;
                         const isLimitReached = completedThisMonth >= limit;
                         const isNearLimit = completedThisMonth === limit - 1;
-                        const showFeeReminder = student.status !== 'active' && (isLimitReached || isNearLimit);
+                        const showFeeReminder = isLimitReached || isNearLimit;
 
                         return (
                             <div
