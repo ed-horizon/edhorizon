@@ -4,6 +4,7 @@ import {
     isHRPipelineAuthorized,
     validateCandidatePayload,
     filterCandidates,
+    getWhatsAppUrl,
     HR_CANDIDATE_STATUSES,
 } from "../lib/hr-candidates.ts";
 
@@ -144,5 +145,20 @@ test("HR Candidate Filtering: filters by status and text search", () => {
     const searchByFeedback = filterCandidates(mockCandidates, { search: "Friday" });
     assert.equal(searchByFeedback.length, 1);
     assert.equal(searchByFeedback[0].name, "Meera Sen");
+});
+
+test("HR Candidate WhatsApp URL: correctly formats phone number and greeting", () => {
+    // 10-digit number -> defaults to 91
+    const url1 = getWhatsAppUrl("9876543210", "Ananya");
+    assert.equal(url1.startsWith("https://wa.me/919876543210?text="), true);
+    assert.equal(url1.includes(encodeURIComponent("Ananya")), true);
+
+    // Number with +91 country code and spaces
+    const url2 = getWhatsAppUrl("+91 98765 43210");
+    assert.equal(url2.startsWith("https://wa.me/919876543210?text="), true);
+
+    // Empty or invalid
+    const urlEmpty = getWhatsAppUrl("");
+    assert.equal(urlEmpty, "#");
 });
 

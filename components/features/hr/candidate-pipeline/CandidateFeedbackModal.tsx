@@ -13,7 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, MessageSquare, Phone, BookOpen } from "lucide-react";
 import { updateHRCandidateFeedback } from "@/app/(dashboard)/hr/pipeline/actions";
-import { HRCandidate } from "@/lib/hr-candidates";
+import { HRCandidate, getWhatsAppUrl } from "@/lib/hr-candidates";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { toast } from "sonner";
 
 interface CandidateFeedbackModalProps {
@@ -72,9 +73,24 @@ export function CandidateFeedbackModal({
                 </DialogHeader>
 
                 <div className="bg-muted/40 p-3 rounded-xl flex items-center justify-between text-xs text-muted-foreground mb-1">
-                    <div className="flex items-center gap-1.5 font-medium text-foreground">
-                        <Phone size={13} className="text-indigo-500" />
-                        {candidate.phone}
+                    <div className="flex items-center gap-2 font-medium text-foreground">
+                        <a
+                            href={`tel:${candidate.phone}`}
+                            className="flex items-center gap-1.5 hover:text-indigo-600 transition-colors"
+                            title="Click to call"
+                        >
+                            <Phone size={13} className="text-indigo-500" />
+                            <span>{candidate.phone}</span>
+                        </a>
+                        <a
+                            href={getWhatsAppUrl(candidate.phone, candidate.name)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-all ml-1 shadow-xs"
+                            title={`Chat with ${candidate.name} on WhatsApp`}
+                        >
+                            <WhatsAppIcon className="h-3 w-3" />
+                        </a>
                     </div>
                     <div className="flex items-center gap-1.5 font-medium text-foreground">
                         <BookOpen size={13} className="text-indigo-500" />

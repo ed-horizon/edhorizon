@@ -6,10 +6,12 @@ import {
     HRCandidateStatus,
     HR_CANDIDATE_STATUSES,
     filterCandidates,
+    getWhatsAppUrl,
 } from "@/lib/hr-candidates";
 import { AddCandidateDialog } from "./AddCandidateDialog";
 import { EditCandidateDialog } from "./EditCandidateDialog";
 import { CandidateFeedbackModal } from "./CandidateFeedbackModal";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import {
     updateHRCandidateStatus,
     deleteHRCandidate,
@@ -352,15 +354,27 @@ export function CandidatePipelineView({
                                             </div>
                                         </td>
 
-                                        {/* Phone */}
+                                        {/* Phone & WhatsApp */}
                                         <td className="py-3.5 px-4 whitespace-nowrap">
-                                            <a
-                                                href={`tel:${candidate.phone}`}
-                                                className="inline-flex items-center gap-1.5 font-medium text-foreground hover:text-indigo-600 transition-colors"
-                                            >
-                                                <Phone size={13} className="text-indigo-500" />
-                                                <span>{candidate.phone}</span>
-                                            </a>
+                                            <div className="flex items-center gap-2">
+                                                <a
+                                                    href={`tel:${candidate.phone}`}
+                                                    className="inline-flex items-center gap-1.5 font-medium text-foreground hover:text-indigo-600 transition-colors"
+                                                    title="Click to call"
+                                                >
+                                                    <Phone size={13} className="text-indigo-500" />
+                                                    <span>{candidate.phone}</span>
+                                                </a>
+                                                <a
+                                                    href={getWhatsAppUrl(candidate.phone, candidate.name)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-all shadow-xs"
+                                                    title={`Chat with ${candidate.name} on WhatsApp`}
+                                                >
+                                                    <WhatsAppIcon className="h-3.5 w-3.5" />
+                                                </a>
+                                            </div>
                                         </td>
 
                                         {/* Subject */}
