@@ -46,7 +46,7 @@ export function EditCandidateDialog({
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
-        if (candidate) {
+        if (open && candidate) {
             setName(candidate.name || "");
             setPhone(candidate.phone || "");
             setSubject(candidate.subject || "");
@@ -54,7 +54,7 @@ export function EditCandidateDialog({
             setStatus(candidate.status || "new");
             setFeedback(candidate.feedback || "");
         }
-    }, [candidate]);
+    }, [open, candidate]);
 
     if (!candidate) return null;
 

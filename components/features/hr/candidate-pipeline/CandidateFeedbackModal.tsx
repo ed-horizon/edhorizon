@@ -33,10 +33,10 @@ export function CandidateFeedbackModal({
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
-        if (candidate) {
+        if (open && candidate) {
             setFeedback(candidate.feedback || "");
         }
-    }, [candidate]);
+    }, [open, candidate]);
 
     if (!candidate) return null;
 
