@@ -54,7 +54,7 @@ export default async function HRPipelinePage() {
                         <div className="flex items-center gap-2">
                             <UsersRound className="text-indigo-600" size={24} />
                             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-foreground font-serif">
-                                Candidate Pipeline
+                                HR Pipeline
                             </h1>
                         </div>
                         <p className="text-xs md:text-sm text-muted-foreground mt-0.5">

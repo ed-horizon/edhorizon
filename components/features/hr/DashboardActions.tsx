@@ -30,7 +30,7 @@ export function DashboardActions() {
                 className="w-full h-14 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-indigo-500/10 border-2 border-indigo-500/40 text-indigo-700 dark:text-indigo-300 rounded-[1.5rem] font-black uppercase tracking-widest text-[10px] hover:border-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all flex items-center justify-center gap-3 shadow-sm"
             >
                 <UsersRound size={16} className="text-indigo-600 dark:text-indigo-400" />
-                Candidate Pipeline
+                HR Pipeline
             </button>
             <button 
                 onClick={() => router.push('/hr/staff')}

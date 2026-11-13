@@ -174,7 +174,7 @@ export default async function HRDashboard() {
                     <Link href="/hr/pipeline">
                         <Button className="h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-md shadow-indigo-600/20">
                             <UsersRound size={16} />
-                            Candidate Pipeline
+                            HR Pipeline
                         </Button>
                     </Link>
                     <CreateLiveClassDialog />

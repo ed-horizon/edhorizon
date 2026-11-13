@@ -140,10 +140,10 @@ export const NAV_ITEMS = [
         title: "Staff & Payroll",
         href: "/hr",
         icon: Briefcase,
-        roles: ["hr", "super_admin"],
+        roles: ["hr", "super_admin", "admin"],
     },
     {
-        title: "Candidate Pipeline",
+        title: "HR Pipeline",
         href: "/hr/pipeline",
         icon: UsersRound,
         roles: ["hr", "super_admin", "admin"],
