@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, CreditCard, Clock, AlertTriangle, ShieldAlert, Award, FileText, CheckCircle2 } from "lucide-react";
+import { Users, CreditCard, Clock, AlertTriangle, ShieldAlert, Award, FileText, CheckCircle2, UsersRound } from "lucide-react";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
@@ -34,7 +34,7 @@ export default async function HRDashboard() {
     const { data: staffDetailsList } = await supabase
         .from('staff_details')
         .select('status');
-    
+
     const filteredStaffDetails = (staffDetailsList || []).filter((s: any) => {
         return currentUserRole === 'super_admin' || s.status !== 'locked';
     });
@@ -71,7 +71,7 @@ export default async function HRDashboard() {
             .from('payroll_items')
             .select('net_amount')
             .eq('run_id', activeRun.id);
-            
+
         if (payrollItems) {
             currentPayrollTotal = payrollItems.reduce((sum, item) => sum + Number(item.net_amount), 0);
         }
@@ -171,6 +171,12 @@ export default async function HRDashboard() {
                     <p className="text-xs text-muted-foreground italic font-medium mt-1">Manage staff onboarding, verify tutor class logs, and process salary payout disbursements.</p>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
+                    <Link href="/hr/pipeline">
+                        <Button className="h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-md shadow-indigo-600/20">
+                            <UsersRound size={16} />
+                            HR Pipeline
+                        </Button>
+                    </Link>
                     <CreateLiveClassDialog />
                     <ManageSchedulesDialog />
                     <ThemeToggle />
@@ -199,7 +205,7 @@ export default async function HRDashboard() {
                                             <span className="text-[10px] bg-rose-100 dark:bg-rose-950 px-2 py-1 rounded font-bold">
                                                 Scheduled: {formatInIST(c.scheduled_at)}
                                             </span>
-                                            <PostClassLogModal 
+                                            <PostClassLogModal
                                                 classId={c.id}
                                                 studentId={c.student_id}
                                                 studentName={studentName || 'Student'}
@@ -290,7 +296,7 @@ export default async function HRDashboard() {
             {/* Verification Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <AttendanceVerificationList pendingClasses={pendingClasses} />
-                
+
                 <Card className="rounded-[2rem] bg-card border border-border/40 shadow-2xl p-8">
                     <div className="flex items-center justify-between mb-8 px-2">
                         <div>
@@ -323,7 +329,7 @@ export default async function HRDashboard() {
 
             {/* LEAVES, RESIGNATIONS & COMPLAINTS SECTIONS */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                
+
                 {/* Leave Requests */}
                 <Card className="rounded-[2rem] border-border/40 shadow-xl bg-card p-6 space-y-4">
                     <h3 className="text-base font-bold flex items-center gap-2">
