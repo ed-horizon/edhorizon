@@ -143,6 +143,12 @@ export const NAV_ITEMS = [
         roles: ["hr", "super_admin"],
     },
     {
+        title: "Candidate Pipeline",
+        href: "/hr/pipeline",
+        icon: UsersRound,
+        roles: ["hr", "super_admin", "admin"],
+    },
+    {
         title: "Staff Directory",
         href: "/hr/staff",
         icon: Users,
