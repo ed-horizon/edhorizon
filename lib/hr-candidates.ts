@@ -143,3 +143,14 @@ export function filterCandidates(
     return result;
 }
 
+export function getWhatsAppUrl(phone: string, candidateName?: string): string {
+    const digits = (phone || "").replace(/\D/g, "");
+    if (!digits) return "#";
+    // If standard 10-digit number without country code, default to India (+91)
+    const cleanNumber = digits.length === 10 ? `91${digits}` : digits;
+    const greeting = candidateName
+        ? `Hello ${candidateName}, this is Ed Horizon HR regarding your candidate profile.`
+        : `Hello, this is Ed Horizon HR regarding your candidate profile.`;
+    return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(greeting)}`;
+}
+
