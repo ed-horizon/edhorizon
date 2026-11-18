@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Check, X, Clock, Send, CheckCircle2 } from "lucide-react"
-import { finalizeClassSession } from "@/app/(dashboard)/attendance/actions"
+import { submitFinalizeClassSession } from "@/lib/attendance-client"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { cn, formatClassTitle } from "@/lib/utils"
@@ -60,7 +60,7 @@ export function TeacherAttendanceSpreadsheet({ classes }: { classes: ClassData[]
         setSubmitting(classItem.id)
         
         try {
-            const result: any = await finalizeClassSession(
+            const result: any = await submitFinalizeClassSession(
                 classItem.id, 
                 [{
                     studentId: classItem.student.id,

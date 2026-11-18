@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Check, X, Star, AlertCircle, Sparkles } from "lucide-react"
-import { finalizeClassSession } from "@/app/(dashboard)/attendance/actions"
+import { Check, X, Star, AlertCircle, Sparkles, Loader2 } from "lucide-react"
+import { submitFinalizeClassSession } from "@/lib/attendance-client"
 import { toast } from "sonner"
 
 interface PostClassLogModalProps {
@@ -38,7 +38,7 @@ export function PostClassLogModal({ classId, studentId, studentName, onSuccess, 
         setIsSubmitting(true)
         try {
             const studentAttendances = [{ studentId, status: attendance === 'present' ? 'present' as const : 'absent' as const }]
-            const result = await finalizeClassSession(
+            const result = await submitFinalizeClassSession(
                 classId,
                 studentAttendances,
                 attendance === 'present' ? topicTaught : "Student No Show",
@@ -51,6 +51,14 @@ export function PostClassLogModal({ classId, studentId, studentName, onSuccess, 
                 toast.success("Class session report submitted successfully!")
                 setIsOpen(false)
                 if (onSuccess) onSuccess()
+            } else if (result.isSkewError) {
+                toast.error(result.error || "A recent update was deployed. Please refresh your page to submit.", {
+                    action: {
+                        label: "Refresh Page",
+                        onClick: () => window.location.reload()
+                    },
+                    duration: 10000
+                })
             } else {
                 toast.error(result.error || "Failed to submit class report")
             }
@@ -70,7 +78,12 @@ export function PostClassLogModal({ classId, studentId, studentName, onSuccess, 
                     </Button>
                 )}
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[550px] rounded-[2.5rem] p-8 bg-white dark:bg-[#0a0a0a] border border-border/40 overflow-hidden shadow-2xl">
+            <DialogContent 
+                className="sm:max-w-[550px] rounded-[2.5rem] p-8 bg-white dark:bg-[#0a0a0a] border border-border/40 overflow-hidden shadow-2xl"
+                onInteractOutside={(e) => {
+                    if (isSubmitting || topicTaught.trim()) e.preventDefault();
+                }}
+            >
                 <div className="absolute -right-20 -top-20 w-48 h-48 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
                 <div className="absolute -left-20 -bottom-20 w-48 h-48 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
                 
