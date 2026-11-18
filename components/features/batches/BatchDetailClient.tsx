@@ -476,8 +476,10 @@ export default function BatchDetailClient({
         }
     };
 
-        const handleCreateCapsule = async (e: React.FormEvent) => {
-        e.preventDefault();
+        const handleCreateCapsule = async (e?: React.SyntheticEvent) => {
+        if (e && typeof e.preventDefault === 'function') {
+            e.preventDefault();
+        }
         if (!capsuleTitle.trim()) {
             toast.error("Please enter a title for the capsule.");
             return;
@@ -493,12 +495,27 @@ export default function BatchDetailClient({
                         .filter((opt: any) => {
                             if (typeof opt === 'string') return opt.trim().length > 0;
                             return opt && typeof opt.text === 'string' && opt.text.trim().length > 0;
+                        })
+                        .map((opt: any, optIdx: number) => {
+                            if (typeof opt === 'string') {
+                                return { id: String(optIdx + 1), text: opt.trim() };
+                            }
+                            return {
+                                id: opt.id ? String(opt.id) : String(optIdx + 1),
+                                text: opt.text.trim()
+                            };
                         });
+
+                    const hasValidCorrect = validOptions.some((o: any) => o.id === q.correctOptionId);
+                    const safeCorrectId = hasValidCorrect ? q.correctOptionId : (validOptions[0]?.id || '1');
+
                     return {
                         id: q.id || `q_${idx + 1}`,
                         text: q.text.trim(),
                         options: validOptions,
-                        correctOptionId: q.correctOptionId || validOptions[0]?.id || ''
+                        correctOptionId: safeCorrectId,
+                        explanation: q.explanation?.trim() || undefined,
+                        imageUrl: q.imageUrl?.trim() || undefined
                     };
                 })
                 .filter(q => q.options.length >= 2);
@@ -557,8 +574,10 @@ export default function BatchDetailClient({
         }
     };
 
-    const handleUploadDirectFile = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleUploadDirectFile = async (e?: React.SyntheticEvent) => {
+        if (e && typeof e.preventDefault === 'function') {
+            e.preventDefault();
+        }
         if (!selectedFile) {
             toast.error("Please select a file from your device.");
             return;
@@ -594,8 +613,10 @@ export default function BatchDetailClient({
         }
     };
 
-    const handleCreateContent = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleCreateContent = async (e?: React.SyntheticEvent) => {
+        if (e && typeof e.preventDefault === 'function') {
+            e.preventDefault();
+        }
         if (!newContentTitle.trim()) {
             setErrorMessage("Title is required");
             return;
@@ -2218,7 +2239,15 @@ export default function BatchDetailClient({
 
             {/* ================= MODAL: ADD BATCH MATERIAL & CAPSULES ================= */}
             <Dialog open={isAddContentOpen} onOpenChange={setIsAddContentOpen}>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogContent 
+                    className="max-w-2xl max-h-[90vh] overflow-y-auto"
+                    onInteractOutside={(e) => e.preventDefault()}
+                    onEscapeKeyDown={(e) => {
+                        if (capsuleTitle.trim() || (quizContent?.questions || []).length > 1 || uploadTitle.trim() || newContentTitle.trim()) {
+                            e.preventDefault();
+                        }
+                    }}
+                >
                     <DialogHeader>
                         <DialogTitle className="text-xl font-bold flex items-center gap-2">
                             <span>Add Batch Content & Materials</span>
@@ -2273,15 +2302,7 @@ export default function BatchDetailClient({
 
                     {/* TAB 1: INTERACTIVE CAPSULE MAKER */}
                     {contentCreationMode === 'capsule' && (
-                        <form 
-                            onSubmit={handleCreateCapsule} 
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
-                                    e.preventDefault();
-                                }
-                            }}
-                            className="space-y-4 pt-2"
-                        >
+                        <div className="space-y-4 pt-2">
                             {/* Format selector */}
                             <div className="space-y-1.5">
                                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -2317,9 +2338,6 @@ export default function BatchDetailClient({
                                     placeholder="e.g. Session 1: Sound Practice Quiz"
                                     value={capsuleTitle}
                                     onChange={(e) => setCapsuleTitle(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') e.preventDefault();
-                                    }}
                                     required
                                 />
                             </div>
@@ -2384,7 +2402,8 @@ export default function BatchDetailClient({
                                     Cancel
                                 </Button>
                                 <Button 
-                                    type="submit" 
+                                    type="button" 
+                                    onClick={handleCreateCapsule}
                                     disabled={actionLoading || !capsuleTitle.trim()} 
                                     className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
                                 >
@@ -2392,12 +2411,12 @@ export default function BatchDetailClient({
                                     <span>{actionLoading ? "Creating Capsule..." : "Create & Add Capsule"}</span>
                                 </Button>
                             </DialogFooter>
-                        </form>
+                        </div>
                     )}
 
                     {/* TAB 2: DIRECT FILE UPLOAD */}
                     {contentCreationMode === 'upload' && (
-                        <form onSubmit={handleUploadDirectFile} className="space-y-4 pt-2">
+                        <div className="space-y-4 pt-2">
                             <div className="space-y-2">
                                 <Label htmlFor="direct-file-input">Select File from Device (PDF, Document, Worksheet) *</Label>
                                 <div className="p-6 border-2 border-dashed border-border/70 hover:border-indigo-500/60 rounded-2xl bg-muted/10 text-center transition-all">
@@ -2413,13 +2432,13 @@ export default function BatchDetailClient({
                                         type="file"
                                         accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.png,.jpg,.jpeg"
                                         onChange={(e) => {
-                                            const f = e.target.files?.[0];
-                                            if (f) {
-                                                setSelectedFile(f);
-                                                if (!uploadTitle.trim()) {
-                                                    setUploadTitle(f.name.replace(/\.[^/.]+$/, ""));
-                                                }
-                                            }
+                                             const f = e.target.files?.[0];
+                                             if (f) {
+                                                 setSelectedFile(f);
+                                                 if (!uploadTitle.trim()) {
+                                                     setUploadTitle(f.name.replace(/\.[^/.]+$/, ""));
+                                                 }
+                                             }
                                         }}
                                         className="text-xs cursor-pointer file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
                                     />
@@ -2453,7 +2472,8 @@ export default function BatchDetailClient({
                                     Cancel
                                 </Button>
                                 <Button 
-                                    type="submit" 
+                                    type="button" 
+                                    onClick={handleUploadDirectFile}
                                     disabled={isUploadingFile || !selectedFile || !uploadTitle.trim()} 
                                     className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
                                 >
@@ -2461,12 +2481,12 @@ export default function BatchDetailClient({
                                     <span>{isUploadingFile ? "Uploading to Cloud..." : "Upload & Save to Batch"}</span>
                                 </Button>
                             </DialogFooter>
-                        </form>
+                        </div>
                     )}
 
                     {/* TAB 3: RESOURCE URL */}
                     {contentCreationMode === 'url' && (
-                        <form onSubmit={handleCreateContent} className="space-y-4 pt-2">
+                        <div className="space-y-4 pt-2">
                             <div className="space-y-1.5">
                                 <Label htmlFor="material-title">Material Title *</Label>
                                 <Input
@@ -2520,11 +2540,16 @@ export default function BatchDetailClient({
                                 <Button type="button" variant="outline" onClick={() => setIsAddContentOpen(false)}>
                                     Cancel
                                 </Button>
-                                <Button type="submit" disabled={actionLoading || !newContentTitle.trim()} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                                <Button 
+                                    type="button" 
+                                    onClick={handleCreateContent}
+                                    disabled={actionLoading || !newContentTitle.trim()} 
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                                >
                                     {actionLoading ? "Saving..." : "Add to Batch"}
                                 </Button>
                             </DialogFooter>
-                        </form>
+                        </div>
                     )}
                 </DialogContent>
             </Dialog>
