@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { parseQuizText } from '../lib/quiz-parser.ts';
 
 /**
  * Pure domain logic helpers reflecting the Batch Classes system specifications
@@ -764,4 +765,50 @@ test('Batch Classes: quiz builder supports arbitrary question count and validate
     const validQuiz = validateBatchQuizPayload('Advanced Phonetics Quiz', fifteenQuestions);
     assert.equal(validQuiz.valid, true);
     assert.equal(validQuiz.questionCount, 15);
+});
+
+test('Batch Classes: parseQuizText correctly parses multiline copy-pasted quizzes', () => {
+    const rawQuiz = `
+1. What is the sound of letter A?
+A. /æ/ as in apple
+B. /b/ as in ball
+C. /k/ as in cat
+D. /d/ as in dog
+Answer: A
+
+2. Which word has a short 'e' sound?
+a) Bed
+b) Bee
+c) Sea
+d) Tree
+Ans: a
+
+3. Choose the action verb:
+(A) Blue
+*(B) Run
+(C) Soft
+Answer: B
+Explanation: "Run" is an action verb.
+    `;
+
+    const res = parseQuizText(rawQuiz);
+    assert.equal(res.success, true);
+    assert.equal(res.questions.length, 3);
+
+    // Q1
+    assert.equal(res.questions[0].text, "What is the sound of letter A?");
+    assert.equal(res.questions[0].options.length, 4);
+    assert.equal(res.questions[0].options[0].text, "/æ/ as in apple");
+    assert.equal(res.questions[0].correctOptionId, "1");
+
+    // Q2
+    assert.equal(res.questions[1].text, "Which word has a short 'e' sound?");
+    assert.equal(res.questions[1].options[0].text, "Bed");
+    assert.equal(res.questions[1].correctOptionId, "1");
+
+    // Q3
+    assert.equal(res.questions[2].text, "Choose the action verb:");
+    assert.equal(res.questions[2].options[1].text, "Run");
+    assert.equal(res.questions[2].correctOptionId, "2");
+    assert.equal(res.questions[2].explanation, '"Run" is an action verb.');
 });
