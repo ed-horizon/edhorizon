@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Check, X, Clock, Save, Sparkles, Star, BookOpen, FileText } from "lucide-react"
-import { markStudentAttendance, finalizeClassSession } from "@/app/(dashboard)/attendance/actions"
+import { markStudentAttendance } from "@/app/(dashboard)/attendance/actions"
+import { submitFinalizeClassSession } from "@/lib/attendance-client"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
@@ -79,7 +80,7 @@ export function AttendanceSheet({ classId, students, initialAttendance = {}, isC
                 status
             }));
 
-            const result = await finalizeClassSession(
+            const result = await submitFinalizeClassSession(
                 classId,
                 studentAttendances,
                 hasPresentStudent ? topicTaught.trim() : "Student No Show",
@@ -91,6 +92,14 @@ export function AttendanceSheet({ classId, students, initialAttendance = {}, isC
             if (result.success) {
                 toast.success("Session finalized and submitted for payroll verification!")
                 router.push('/teacher')
+            } else if (result.isSkewError) {
+                toast.error(result.error || "A recent update was deployed. Please refresh your page to submit.", {
+                    action: {
+                        label: "Refresh Page",
+                        onClick: () => window.location.reload()
+                    },
+                    duration: 10000
+                })
             } else {
                 toast.error(result.error || "Failed to submit class report")
             }

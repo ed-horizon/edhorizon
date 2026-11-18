@@ -14,6 +14,7 @@ import {
     getSignedUploadUrl,
     headR2Object,
 } from "@/lib/r2";
+import { executeFinalizeClassSession } from "@/lib/attendance-finalize";
 
 const MAX_R2_FILE_SIZE = 20 * 1024 * 1024;
 const ALLOWED_R2_MIME_TYPES = new Set([
@@ -909,87 +910,14 @@ export async function finalizeClassSession(
     studentPerformance: string,
     parentNote: string
 ) {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, error: "Unauthorized" };
-
-    // Tutors cannot edit attendance logs once submitted
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-    const { data: classObj } = await supabase
-        .from('live_classes')
-        .select('status, verification_status, scheduled_at, tutor_joined_at, student_joined_at')
-        .eq('id', classId)
-        .single();
-
-    if (profile?.role === 'teacher') {
-        if (classObj?.status === 'completed') {
-            return { 
-                success: false, 
-                error: "Tutors cannot edit attendance logs once submitted. Please contact HR or Operations to request changes." 
-            };
-        }
-        if (classObj?.scheduled_at) {
-            const scheduledTime = new Date(classObj.scheduled_at).getTime();
-            const elapsed = new Date().getTime() - scheduledTime;
-            if (elapsed > 24 * 60 * 60 * 1000) {
-                return {
-                    success: false,
-                    error: "This session is locked because it was scheduled more than 24 hours ago. Tutors are only permitted to mark attendance within 24 hours of the session. Please contact HR or Operations to log this session."
-                };
-            }
-        }
-    }
-
-    // Save all student attendances
-    for (const att of studentAttendances) {
-        const { error } = await supabase
-            .from('student_attendance')
-            .upsert({
-                class_id: classId,
-                student_id: att.studentId,
-                status: att.status,
-                marked_by: user.id
-            }, { onConflict: 'class_id,student_id' });
-            
-        if (error) {
-            console.error("finalizeClassSession Error:", error);
-            return { success: false, error: error.message };
-        }
-    }
-
-    // Preserve existing verification status if already verified or rejected
-    const targetVerificationStatus = (classObj?.verification_status === 'verified' || classObj?.verification_status === 'rejected')
-        ? classObj.verification_status
-        : 'pending';
-
-    // Update live_classes with status, verification_status and post-class logs
-    const { error: updateError } = await supabase
-        .from('live_classes')
-        .update({ 
-            status: 'completed',
-            verification_status: targetVerificationStatus,
-            topic_taught: topicTaught,
-            homework_given: homeworkGiven,
-            student_performance: studentPerformance,
-            parent_note: parentNote,
-            // Join timestamps are populated only by an actual check-in.
-            tutor_joined_at: classObj?.tutor_joined_at || null,
-            student_joined_at: classObj?.student_joined_at || null
-        })
-        .eq('id', classId);
-
-    if (updateError) {
-        console.error("finalizeClassSession Live Class Update Error:", updateError);
-        return { success: false, error: updateError.message };
-    }
-
-    revalidatePath('/(dashboard)', 'layout');
-    return { success: true };
+    return executeFinalizeClassSession({
+        classId,
+        studentAttendances,
+        topicTaught,
+        homeworkGiven,
+        studentPerformance,
+        parentNote
+    });
 }
 
 // --- Teacher Action Loggers ---
