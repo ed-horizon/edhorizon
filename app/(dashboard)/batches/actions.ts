@@ -1123,7 +1123,8 @@ export async function createBatchCapsule(
 
     try {
         let topicId: string | null = null;
-        const topicTitle = `${batch.course_name} (Batch Material)`;
+        const effectiveCourseName = (batch.course_name && batch.course_name.trim()) || batch.name?.trim() || "Batch Course";
+        const topicTitle = `${effectiveCourseName} (Batch Material)`;
 
         const { data: existingTopic } = await admin
             .from('topics')
@@ -1156,7 +1157,7 @@ export async function createBatchCapsule(
             const { data: existingCourse } = await admin
                 .from('courses')
                 .select('id')
-                .eq('title', batch.course_name)
+                .eq('title', effectiveCourseName)
                 .maybeSingle();
 
             let courseId = existingCourse?.id;
@@ -1165,7 +1166,7 @@ export async function createBatchCapsule(
                     .from('courses')
                     .insert({
                         module_id: moduleId,
-                        title: batch.course_name
+                        title: effectiveCourseName
                     })
                     .select('id')
                     .single();
