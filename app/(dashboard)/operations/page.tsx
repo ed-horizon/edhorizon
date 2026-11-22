@@ -566,14 +566,18 @@ export default function OperationsDashboard() {
             if (sub.classesPerMonth <= 0) continue;
 
             const matchingSchedule = (student.active_schedules || []).find(sch =>
-                sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
-            ) || student.active_schedule;
+                isSubjectMatch(sch.title || sch.subject || "", sub.name)
+            ) || (activeSubjects.length === 1 ? student.active_schedule : null);
 
             // Filter completed classes for this subject
             const completedClassesForSub = studentClasses.filter((c: any) => {
                 if (c.status !== 'completed') return false;
-                if (c.schedule_id && matchingSchedule && c.schedule_id === matchingSchedule.id) return true;
-                return isSubjectMatch(c.title || "", sub.name) || activeSubjects.length === 1;
+                if (isSubjectMatch(c.title || "", sub.name)) return true;
+                if (c.schedule_id && matchingSchedule && c.schedule_id === matchingSchedule.id) {
+                    const isOtherSub = activeSubjects.some(o => o.name !== sub.name && isSubjectMatch(c.title || "", o.name));
+                    return !isOtherSub;
+                }
+                return activeSubjects.length === 1;
             });
 
             // Filter payments for this subject
