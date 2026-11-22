@@ -147,12 +147,18 @@ export function formatInIST(dateInput: string | Date | null | undefined, formatS
 export function isSubjectMatch(classTitle: string, subjectName: string): boolean {
   const title = (classTitle || "").toLowerCase().trim();
   const subject = (subjectName || "").toLowerCase().trim();
+  if (!title || !subject) return false;
   if (title.includes(subject) || subject.includes(title)) return true;
   
   // Math variations
   const isMathTitle = title.includes("math") || title.includes("algebra") || title.includes("geometry") || title.includes("mathematics");
   const isMathSubject = subject.includes("math") || subject.includes("mathematics");
   if (isMathTitle && isMathSubject) return true;
+
+  // Science variations
+  const isScienceTitle = title.includes("science") || title.includes("physics") || title.includes("chemistry") || title.includes("biology") || title.includes("evs");
+  const isScienceSubject = subject.includes("science") || subject.includes("physics") || subject.includes("chemistry") || subject.includes("biology") || subject.includes("evs");
+  if (isScienceTitle && isScienceSubject) return true;
 
   // Hindi variations
   const isHindiTitle = title.includes("hindi");
