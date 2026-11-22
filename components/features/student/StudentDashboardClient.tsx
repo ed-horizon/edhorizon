@@ -142,6 +142,7 @@ interface Payment {
 interface ScheduleSummary {
     id: string;
     title?: string | null;
+    subject?: string | null;
     start_date?: string | null;
     end_date?: string | null;
 }
@@ -313,10 +314,10 @@ export function StudentDashboardClient({
 
     // Calculate completed classes for each active subject based on its own specific schedule/billing cycle
     const subjectCompletions = activeSubjects.map(sub => {
-        // Find an active schedule that matches this subject name
+        // Find an active schedule that matches this subject name (do not fall back to other subjects' schedules if multiple subjects exist)
         const matchingSchedule = (activeSchedules || []).find(sch => 
-            sch.title && sch.title.toLowerCase().includes(sub.name.toLowerCase())
-        ) || activeSchedule;
+            isSubjectMatch(sch.title || sch.subject || "", sub.name)
+        ) || (activeSubjects.length === 1 ? activeSchedule : null);
 
         let startStr: string | null = null;
         let endStr: string | null = null;
@@ -326,13 +327,19 @@ export function StudentDashboardClient({
         }
 
         const completedClassesForSubject = completedClasses.filter(c => {
+            // Check if class belongs to this subject
             let isMatch = false;
-            if (c.schedule_id && matchingSchedule) {
-                if (c.schedule_id === matchingSchedule.id) {
+            if (isSubjectMatch(c.title || "", sub.name)) {
+                isMatch = true;
+            } else if (c.schedule_id && matchingSchedule && c.schedule_id === matchingSchedule.id) {
+                // If matched via schedule_id, ensure class doesn't explicitly belong to another active subject
+                const isOtherSubject = activeSubjects.some(
+                    other => other.name !== sub.name && isSubjectMatch(c.title || "", other.name)
+                );
+                if (!isOtherSubject) {
                     isMatch = true;
                 }
-            }
-            if (!isMatch && isSubjectMatch(c.title, sub.name)) {
+            } else if (activeSubjects.length === 1) {
                 isMatch = true;
             }
 
